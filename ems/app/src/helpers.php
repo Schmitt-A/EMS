@@ -71,6 +71,32 @@ function csrf_check(): void
     }
 }
 
+function ingest_json_body(): void
+{
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || $_POST) {
+        return;
+    }
+    $type = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? ''));
+    if (!str_contains($type, 'application/json')) {
+        return;
+    }
+    $raw = file_get_contents('php://input');
+    $data = is_string($raw) ? json_decode($raw, true) : null;
+    if (!is_array($data)) {
+        return;
+    }
+    foreach ($data as $key => $value) {
+        if (!is_string($key) || str_contains($key, "\0")) {
+            continue;
+        }
+        if (is_bool($value)) {
+            $_POST[$key] = $value ? '1' : '0';
+        } elseif (is_scalar($value)) {
+            $_POST[$key] = (string) $value;
+        }
+    }
+}
+
 function flash(?string $message = null): ?string
 {
     if ($message !== null) {

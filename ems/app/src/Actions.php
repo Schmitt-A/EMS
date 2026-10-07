@@ -32,7 +32,7 @@ final class Actions
         'weather_radiation' => 'sensor.soonwald_west_4_sonneneinstrahlung',
         'weather_cloud' => 'sensor.soonwald_west_4_bewolkungsgrad',
         'weather_sunshine' => 'sensor.soonwald_west_4_sonnenscheindauer',
-        'weather_temp' => 'sensor.soonwald_west_4_temperatur_auf_2m_hohe',
+        'weather_temp' => 'sensor.soonwald_west_4_temperatur',
     ];
 
     public static function nextStep(string $step): string

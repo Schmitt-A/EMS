@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
+ingest_json_body();
+
 $path = request_path();
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
