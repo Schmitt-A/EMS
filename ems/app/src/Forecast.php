@@ -88,6 +88,19 @@ final class Forecast
         return $energy;
     }
 
+    /** @param array<int, array{t:int, radiation:?float}> $rows */
+    public static function fromRadiation(array $rows, array $plant): array
+    {
+        $mapped = [];
+        foreach ($rows as $row) {
+            if (!isset($row['t']) || $row['radiation'] === null) {
+                continue;
+            }
+            $mapped[] = ['datetime' => gmdate('c', (int) $row['t']), 'value' => (float) $row['radiation']];
+        }
+        return self::fromAttribute($mapped, $plant);
+    }
+
     /** @param array<int, array{datetime:string,value:float|int}> $rows */
     public static function fromAttribute(array $rows, array $plant): array
     {
@@ -119,7 +132,7 @@ final class Forecast
         return $sum;
     }
 
-    public static function brief(array $series, array $plant, int $now): array
+    public static function brief(array $series, array $plant, int $now, ?float $actualToday = null): array
     {
         $tz = new DateTimeZone('Europe/Berlin');
         $today = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0);
@@ -128,15 +141,47 @@ final class Forecast
         $modelToday = self::sumBetween($series, $today->getTimestamp(), $tomorrow->getTimestamp());
         $modelTomorrow = self::sumBetween($series, $tomorrow->getTimestamp(), $after->getTimestamp());
         $futureModel = self::sumBetween($series, $now, $tomorrow->getTimestamp());
-        $adjustedToday = self::dailyAdjusted($modelToday, $plant);
-        $remaining = $modelToday > 0.05 ? $adjustedToday * ($futureModel / $modelToday) : 0.0;
+        $earliest = null;
+        foreach ($series as $point) {
+            if ($point['t'] >= $today->getTimestamp() && $point['t'] < $tomorrow->getTimestamp()) {
+                $earliest = $earliest === null ? $point['t'] : min($earliest, $point['t']);
+            }
+        }
+        $coversDay = $earliest !== null && $earliest <= $today->getTimestamp() + 5400;
+        if ($coversDay && $modelToday > 0.05) {
+            $adjustedToday = self::dailyAdjusted($modelToday, $plant);
+            $remaining = $adjustedToday * ($futureModel / $modelToday);
+            $total = $adjustedToday;
+        } else {
+            $scale = ((int) ($plant['regress_days'] ?? 0) >= 5) ? (float) $plant['regress_b'] : (float) ($plant['factor'] ?? 1);
+            $remaining = max(0, $futureModel * $scale);
+            $total = ($actualToday ?? 0) + $remaining;
+        }
         return [
             'model_today_kwh' => $modelToday,
-            'today_kwh' => $adjustedToday,
+            'today_kwh' => $total,
             'remaining_kwh' => $remaining,
             'tomorrow_kwh' => self::dailyAdjusted($modelTomorrow, $plant),
             'model_tomorrow_kwh' => $modelTomorrow,
             'method' => self::methodLabel($plant),
         ];
+    }
+
+    /** @return array<int, array{day:string, start:int, kwh:float}> */
+    public static function dailyTotals(array $series, array $plant): array
+    {
+        $tz = new DateTimeZone('Europe/Berlin');
+        $byDay = [];
+        foreach ($series as $point) {
+            $local = (new DateTimeImmutable('@' . $point['t']))->setTimezone($tz);
+            $day = $local->format('Y-m-d');
+            $byDay[$day] = ($byDay[$day] ?? 0) + $point['kw'];
+        }
+        $out = [];
+        foreach ($byDay as $day => $model) {
+            $start = (new DateTimeImmutable($day . ' 00:00:00', $tz))->getTimestamp();
+            $out[] = ['day' => $day, 'start' => $start, 'kwh' => self::dailyAdjusted($model, $plant)];
+        }
+        return $out;
     }
 }

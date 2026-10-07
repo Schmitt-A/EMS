@@ -15,6 +15,7 @@ require EMS_APP . '/src/ConfigStore.php';
 require EMS_APP . '/src/HaClient.php';
 require EMS_APP . '/src/Energy.php';
 require EMS_APP . '/src/Forecast.php';
+require EMS_APP . '/src/WeatherFeed.php';
 require EMS_APP . '/src/Sessions.php';
 require EMS_APP . '/src/Snapshot.php';
 require EMS_APP . '/src/Series.php';

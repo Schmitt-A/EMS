@@ -18,6 +18,11 @@ if ($path === '/api/live') {
     json_out($snapshot->livePayload($snap));
 }
 
+if ($path === '/api/config.json') {
+    header('Content-Disposition: attachment; filename="ems-konfiguration.json"');
+    json_out(Actions::portable());
+}
+
 if ($path === '/api/entities') {
     try {
         json_out(['results' => ha()->search((string) ($_GET['q'] ?? ''), 15)]);
@@ -38,8 +43,10 @@ if ($path === '/api/series') {
             json_out($series->power($config['mapping'], $config['plant']));
         }
         if ($chart === 'daily' || $chart === 'compare') {
-            $days = $series->days($config['plant']);
-            json_out(['series' => $days[$chart]]);
+            json_out($series->days($config['plant'])[$chart]);
+        }
+        if ($chart === 'outlook') {
+            json_out($series->outlook($config['plant']));
         }
         if ($chart === 'weather') {
             json_out($series->weather($config['mapping']));
@@ -60,6 +67,9 @@ if (!$wizard && !$inWizard) {
 }
 
 if ($inWizard && $method === 'POST') {
+    if (($_POST['section'] ?? '') === 'import') {
+        Actions::importConfig();
+    }
     $step = trim(substr($path, strlen('/einrichten')), '/');
     $step = $step === '' ? 'verbindung' : $step;
     if (!isset(Actions::STEPS[$step])) {
@@ -206,11 +216,13 @@ function safe_yield(): ?float
 
 function yesterday_yield(): ?float
 {
-    $day = (new DateTimeImmutable('yesterday'))->format('Y-m-d');
-    $stmt = store()->pdo()->prepare('SELECT actual_kwh FROM daily WHERE day = ?');
-    $stmt->execute([$day]);
-    $row = $stmt->fetch();
-    return $row && $row['actual_kwh'] !== null ? (float) $row['actual_kwh'] : null;
+    $tz = new DateTimeZone('Europe/Berlin');
+    $end = (new DateTimeImmutable('today', $tz))->getTimestamp();
+    try {
+        return (new Series(store(), ha()))->yieldBetween($end - 86400, $end, cfg()['mapping']);
+    } catch (Throwable) {
+        return null;
+    }
 }
 
 function review_lines(array $mapping): array

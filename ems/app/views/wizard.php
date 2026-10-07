@@ -70,6 +70,7 @@ page_head('Einrichten', Actions::STEPS[$step] . ' · Schritt ' . (($index === fa
     <?php entity_field('wallbox_phases', 'Gemeldete Phasen', (string) $mapping['wallbox_phases'], '1-phasig, 3-phasig oder automatisch.', $suggest['wallbox_phases'] ?? ''); ?>
     <?php entity_field('wallbox_force', 'Zwangszustand', (string) $mapping['wallbox_force'], 'Optional, nur Anzeige.', $suggest['wallbox_force'] ?? ''); ?>
   <?php elseif ($step === 'wetter'): ?>
+    <p class="text-sm text-muted-foreground">Die Prognose lädt die DWD-Datei. Diese Sensoren sind die aktuellen Messwerte und bleiben optional. Die Adresse der Datei stellst du in den Einstellungen ein.</p>
     <label class="block text-sm">Station
       <select class="field mt-1" name="weather_station">
         <?php foreach (['soonwald' => 'Soonwald West', 'hahn' => 'Flugplatz Hahn', 'kreuznach' => 'Bad Kreuznach'] as $value => $label): ?>
@@ -77,7 +78,7 @@ page_head('Einrichten', Actions::STEPS[$step] . ' · Schritt ' . (($index === fa
         <?php endforeach; ?>
       </select>
     </label>
-    <?php entity_field('weather_radiation', 'Globalstrahlung', (string) $mapping['weather_radiation'], 'W/m², mit Prognosereihe im Attribut.', $suggest['weather_radiation'] ?? ''); ?>
+    <?php entity_field('weather_radiation', 'Globalstrahlung', (string) $mapping['weather_radiation'], 'Aktueller Messwert in W/m². Die Prognose kommt aus der DWD-Datei.', $suggest['weather_radiation'] ?? ''); ?>
     <?php entity_field('weather_cloud', 'Bewölkung', (string) $mapping['weather_cloud'], 'Prozent.', $suggest['weather_cloud'] ?? ''); ?>
     <?php entity_field('weather_sunshine', 'Sonnenschein', (string) $mapping['weather_sunshine'], 'Sekunden oder Minuten je Stunde.', $suggest['weather_sunshine'] ?? ''); ?>
     <?php entity_field('weather_temp', 'Temperatur', (string) $mapping['weather_temp'], 'Grad Celsius.', $suggest['weather_temp'] ?? ''); ?>
@@ -98,3 +99,10 @@ page_head('Einrichten', Actions::STEPS[$step] . ' · Schritt ' . (($index === fa
     <button class="btn-primary" type="submit"><?= $step === 'pruefen' ? 'Fertig' : 'Weiter' ?></button>
   </div>
 </form>
+<?php if ($step === 'verbindung' || $step === 'pruefen'): ?>
+<section class="card mt-4 space-y-3 p-5 text-sm">
+  <h2 class="font-medium">Vorhandene Konfiguration</h2>
+  <p class="text-muted-foreground">Eine früher gespeicherte JSON-Datei setzt Zuordnung, Tarife, Dach und die DWD-Adresse auf einmal.</p>
+  <?php config_exchange('/einrichten/' . $step, '/einrichten/' . $step); ?>
+</section>
+<?php endif; ?>

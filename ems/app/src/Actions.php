@@ -177,6 +177,42 @@ final class Actions
                 'on_delay_s' => post_int('on_delay_s', 60, 600, 60),
                 'off_delay_s' => post_int('off_delay_s', 60, 600, 60),
             ]);
+        } elseif ($section === 'mapping') {
+            $mapping = store()->get('mapping', []);
+            if (!is_array($mapping)) {
+                $mapping = [];
+            }
+            $enums = [
+                'battery_mode' => ['split', 'signed'],
+                'battery_sign' => ['positive_charge', 'positive_discharge'],
+                'grid_mode' => ['split', 'signed'],
+                'grid_sign' => ['positive_import', 'positive_export'],
+                'weather_station' => ['soonwald', 'hahn', 'kreuznach'],
+            ];
+            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force', 'weather_radiation', 'weather_cloud', 'weather_sunshine', 'weather_temp'];
+            foreach ($enums as $key => $allowed) {
+                $value = (string) ($_POST[$key] ?? ($mapping[$key] ?? ''));
+                $mapping[$key] = in_array($value, $allowed, true) ? $value : (string) ($mapping[$key] ?? $allowed[0]);
+            }
+            foreach ($entities as $key) {
+                $mapping[$key] = post_entity($key);
+            }
+            $mapping['house_includes_wallbox'] = ($_POST['house_includes_wallbox'] ?? '0') === '1';
+            store()->put('mapping', $mapping);
+        } elseif ($section === 'weather') {
+            $url = trim((string) ($_POST['weather_url'] ?? ''));
+            try {
+                WeatherFeed::assertUrl($url);
+                store()->merge('weather', ['url' => $url]);
+                $meta = (new WeatherFeed(store()))->refresh(true);
+                flash(empty($meta['ok']) ? (string) ($meta['error'] ?? 'Die Wetterdatei konnte nicht geladen werden.') : 'Wetterdatei übernommen.');
+                self::redirectBack();
+            } catch (Throwable $e) {
+                flash($e->getMessage());
+                self::redirectBack();
+            }
+        } elseif ($section === 'import') {
+            self::importConfig();
         } elseif ($section === 'theme') {
             $theme = (string) ($_POST['theme'] ?? 'system');
             if (!in_array($theme, ['system', 'light', 'dark'], true)) {
@@ -185,6 +221,165 @@ final class Actions
             store()->merge('ui', ['theme' => $theme]);
         }
         flash('Gespeichert.');
+        self::redirectBack();
+    }
+
+    public static function portable(): array
+    {
+        $cfg = cfg();
+        return [
+            'version' => 1,
+            'mapping' => $cfg['mapping'],
+            'tariffs' => $cfg['tariffs'],
+            'plant' => $cfg['plant'],
+            'charge' => $cfg['charge'],
+            'battery_strategy' => $cfg['battery_strategy'],
+            'weather' => ['url' => (new WeatherFeed(store()))->url()],
+            'ui' => ['theme' => $cfg['ui']['theme'] ?? 'system'],
+        ];
+    }
+
+    public static function importConfig(): void
+    {
+        csrf_check();
+        $raw = '';
+        if (!empty($_FILES['config_file']['tmp_name']) && is_uploaded_file($_FILES['config_file']['tmp_name'])) {
+            $raw = (string) file_get_contents($_FILES['config_file']['tmp_name']);
+        }
+        if (trim($raw) === '') {
+            $raw = (string) ($_POST['config_json'] ?? '');
+        }
+        if (strlen($raw) > 262144) {
+            flash('Die Konfiguration ist zu groß.');
+            self::redirectBack();
+        }
+        try {
+            $data = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            $data = null;
+        }
+        if (!is_array($data)) {
+            flash('Das ist kein gültiges JSON.');
+            self::redirectBack();
+        }
+        self::applyPortable($data);
+        if (!self::missing(cfg()['mapping'])) {
+            store()->put('wizard_done', true);
+        }
+        flash('Konfiguration übernommen.');
+        $back = (string) ($_POST['back'] ?? '/einstellungen');
+        if (!str_starts_with($back, '/') || (store()->get('wizard_done', false) && str_starts_with($back, '/einrichten'))) {
+            $back = '/';
+        }
+        redirect($back);
+    }
+
+    private static function applyPortable(array $data): void
+    {
+        if (isset($data['mapping']) && is_array($data['mapping'])) {
+            $current = store()->get('mapping', []);
+            if (!is_array($current)) {
+                $current = [];
+            }
+            $enums = [
+                'battery_mode' => ['split', 'signed'],
+                'battery_sign' => ['positive_charge', 'positive_discharge'],
+                'grid_mode' => ['split', 'signed'],
+                'grid_sign' => ['positive_import', 'positive_export'],
+                'weather_station' => ['soonwald', 'hahn', 'kreuznach'],
+            ];
+            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force', 'weather_radiation', 'weather_cloud', 'weather_sunshine', 'weather_temp'];
+            foreach ($enums as $key => $allowed) {
+                if (!array_key_exists($key, $data['mapping'])) {
+                    continue;
+                }
+                $value = (string) $data['mapping'][$key];
+                if (in_array($value, $allowed, true)) {
+                    $current[$key] = $value;
+                }
+            }
+            foreach ($entities as $key) {
+                if (!array_key_exists($key, $data['mapping'])) {
+                    continue;
+                }
+                $id = strtolower(trim((string) $data['mapping'][$key]));
+                $current[$key] = $id === '' || is_entity_id($id) ? $id : ($current[$key] ?? '');
+            }
+            if (array_key_exists('house_includes_wallbox', $data['mapping'])) {
+                $current['house_includes_wallbox'] = (bool) $data['mapping']['house_includes_wallbox'];
+            }
+            store()->put('mapping', $current);
+        }
+        if (isset($data['tariffs']) && is_array($data['tariffs'])) {
+            store()->merge('tariffs', [
+                'import_ct' => self::clamped($data['tariffs']['import_ct'] ?? null, 0, 200, 34.7),
+                'export_ct' => self::clamped($data['tariffs']['export_ct'] ?? null, 0, 200, 11),
+            ]);
+        }
+        if (isset($data['plant']) && is_array($data['plant'])) {
+            $plant = $data['plant'];
+            store()->merge('plant', [
+                'kwp' => self::clamped($plant['kwp'] ?? null, 0.1, 100, 10),
+                'inverter_kw' => self::clamped($plant['inverter_kw'] ?? null, 0.1, 100, 10),
+                'tilt' => self::clamped($plant['tilt'] ?? null, 0, 90, 13),
+                'azimuth' => self::clamped($plant['azimuth'] ?? null, 0, 360, 270),
+                'n_days' => (int) round(self::clamped($plant['n_days'] ?? null, 3, 30, 7)),
+                'factor' => self::clamped($plant['factor'] ?? null, 0.3, 1.8, 0.93),
+                'factor_locked' => !empty($plant['factor_locked']),
+                'regress_a' => self::clamped($plant['regress_a'] ?? null, -20, 20, 2.1),
+                'regress_b' => self::clamped($plant['regress_b'] ?? null, -2, 3, 0.86),
+                'regress_locked' => !empty($plant['regress_locked']),
+            ]);
+        }
+        if (isset($data['charge']) && is_array($data['charge'])) {
+            $charge = $data['charge'];
+            $mode = (string) ($charge['mode'] ?? 'smart');
+            $phase = (string) ($charge['phase_mode'] ?? 'auto');
+            store()->merge('charge', [
+                'mode' => in_array($mode, ['aus', 'smart', 'smart_dauerhaft', 'schnell'], true) ? $mode : 'smart',
+                'phase_mode' => in_array($phase, ['auto', '1p', '3p'], true) ? $phase : 'auto',
+                'solar_share' => self::clamped($charge['solar_share'] ?? null, 0, 100, 100),
+                'reserve_w' => self::clamped($charge['reserve_w'] ?? null, 0, 2000, 200),
+                'min_a' => (int) round(self::clamped($charge['min_a'] ?? null, 6, 32, 6)),
+                'max_a' => (int) round(self::clamped($charge['max_a'] ?? null, 6, 32, 16)),
+                'switch_s' => (int) round(self::clamped($charge['switch_s'] ?? null, 60, 600, 60)),
+                'on_delay_s' => (int) round(self::clamped($charge['on_delay_s'] ?? null, 60, 600, 60)),
+                'off_delay_s' => (int) round(self::clamped($charge['off_delay_s'] ?? null, 60, 600, 60)),
+            ]);
+        }
+        if (isset($data['battery_strategy']) && is_array($data['battery_strategy'])) {
+            store()->merge('battery_strategy', [
+                'priority_soc' => self::clamped($data['battery_strategy']['priority_soc'] ?? null, 0, 100, 80),
+                'reserve_soc' => self::clamped($data['battery_strategy']['reserve_soc'] ?? null, 0, 100, 100),
+            ]);
+        }
+        if (isset($data['weather']['url'])) {
+            try {
+                $url = trim((string) $data['weather']['url']);
+                WeatherFeed::assertUrl($url);
+                store()->merge('weather', ['url' => $url]);
+            } catch (Throwable) {
+                // Eine fremde Adresse bleibt draußen, der Rest der Datei gilt.
+            }
+        }
+        if (isset($data['ui']['theme'])) {
+            $theme = (string) $data['ui']['theme'];
+            if (in_array($theme, ['system', 'light', 'dark'], true)) {
+                store()->merge('ui', ['theme' => $theme]);
+            }
+        }
+    }
+
+    private static function clamped(mixed $value, float $min, float $max, float $fallback): float
+    {
+        if (!is_numeric($value)) {
+            return $fallback;
+        }
+        return clamp_float((float) $value, $min, $max);
+    }
+
+    private static function redirectBack(): never
+    {
         $back = (string) ($_POST['back'] ?? '/einstellungen');
         if (!str_starts_with($back, '/')) {
             $back = '/einstellungen';

@@ -9,7 +9,7 @@ RUN npm run build
 
 FROM php:8.3-fpm-bookworm
 RUN apt-get update \
- && apt-get install -y --no-install-recommends nginx libsqlite3-dev \
+ && apt-get install -y --no-install-recommends nginx libsqlite3-dev unzip \
  && docker-php-ext-install pdo_sqlite \
  && rm -rf /var/lib/apt/lists/* \
  && echo 'date.timezone=Europe/Berlin' > /usr/local/etc/php/conf.d/timezone.ini

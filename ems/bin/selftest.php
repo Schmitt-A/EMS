@@ -76,4 +76,63 @@ check($latched['latched_amps'] === 0 && $latched['wait_s'] === 60, 'Einschalten 
 $latched = Energy::latch(['amps' => 10, 'phases' => 1], ['amps' => 0, 'phases' => 1, 'pending_amps' => 10, 'pending_phases' => 1, 'pending_since' => 900], 1000, $charge);
 check($latched['latched_amps'] === 10 && $latched['wait_s'] === 0, 'Nach der Wartezeit wird verriegelt');
 
+$sample = <<<'KML'
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<kml:kml>
+<kml:name>F9519</kml:name>
+<kml:description>SOONWALD WEST 4</kml:description>
+<dwd:IssueTime>2026-10-07T15:00:00.000Z</dwd:IssueTime>
+<dwd:ForecastTimeSteps>
+<dwd:TimeStep>2026-10-07T16:00:00.000Z</dwd:TimeStep>
+<dwd:TimeStep>2026-10-07T17:00:00.000Z</dwd:TimeStep>
+</dwd:ForecastTimeSteps>
+<dwd:Forecast dwd:elementName="Rad1h"><dwd:value>0 1320</dwd:value></dwd:Forecast>
+<dwd:Forecast dwd:elementName="Neff"><dwd:value>80 20</dwd:value></dwd:Forecast>
+<dwd:Forecast dwd:elementName="SunD1"><dwd:value>0 1800</dwd:value></dwd:Forecast>
+<dwd:Forecast dwd:elementName="TTT"><dwd:value>295.15 -</dwd:value></dwd:Forecast>
+</kml:kml>
+KML;
+$parsed = WeatherFeed::parse($sample);
+check(count($parsed['hours']) === 2 && $parsed['station'] === 'F9519', 'MOSMIX-Stunden');
+check(abs($parsed['hours'][1]['radiation'] - (1320 / 3.6)) < 0.01, 'Rad1h nach W/m²');
+check($parsed['hours'][1]['t'] === strtotime('2026-10-07T17:00:00.000Z') - 3600, 'Stunde beginnt eine Stunde vor dem Zeitstempel');
+check(abs((float) $parsed['hours'][0]['temp_c'] - 22.0) < 0.02 && $parsed['hours'][1]['temp_c'] === null, 'Temperatur in Celsius, Fehlwert bleibt leer');
+$rejected = false;
+try {
+    WeatherFeed::assertUrl('https://example.com/MOSMIX.kmz');
+} catch (Throwable) {
+    $rejected = true;
+}
+check($rejected, 'nur opendata.dwd.de');
+WeatherFeed::assertUrl(WeatherFeed::DEFAULT_URL);
+
+$plant = ['kwp' => 10, 'factor' => 1, 'tilt' => 13, 'azimuth' => 180, 'inverter_kw' => 10, 'regress_days' => 0, 'regress_a' => 0, 'regress_b' => 1];
+$now = strtotime('2026-10-07 16:00:00 Europe/Berlin');
+$partial = [
+    ['t' => strtotime('2026-10-07 15:00:00 Europe/Berlin'), 'kw' => 2.0],
+    ['t' => strtotime('2026-10-07 16:00:00 Europe/Berlin'), 'kw' => 1.5],
+    ['t' => strtotime('2026-10-07 17:00:00 Europe/Berlin'), 'kw' => 1.0],
+];
+$brief = Forecast::brief($partial, $plant, $now, 6.5);
+check(abs($brief['remaining_kwh'] - 2.5) < 0.01 && abs($brief['today_kwh'] - 9.0) < 0.01, 'Rest plus bisheriger Ertrag');
+$full = [
+    ['t' => strtotime('2026-10-07 00:00:00 Europe/Berlin'), 'kw' => 0.0],
+    ['t' => strtotime('2026-10-07 12:00:00 Europe/Berlin'), 'kw' => 4.0],
+    ['t' => strtotime('2026-10-07 18:00:00 Europe/Berlin'), 'kw' => 1.0],
+];
+$covered = Forecast::brief($full, $plant, $now, 3.0);
+check(abs($covered['today_kwh'] - 5.0) < 0.01 && abs($covered['remaining_kwh'] - 1.0) < 0.01, 'Gesamtprognose wenn der Tag in der Datei steht');
+
+$kmz = '/tmp/MOSMIX_L_LATEST_F9519.kmz';
+if (is_file($kmz)) {
+    $kml = shell_exec('unzip -p ' . escapeshellarg($kmz));
+    $real = WeatherFeed::parse((string) $kml);
+    check(count($real['hours']) > 200 && $real['station'] === 'F9519' && $real['name'] === 'SOONWALD WEST 4', 'echte Soonwald-Datei');
+    $peak = 0.0;
+    foreach ($real['hours'] as $hour) {
+        $peak = max($peak, (float) ($hour['radiation'] ?? 0));
+    }
+    check($peak > 50 && $peak < 1400, 'Strahlung der echten Datei in W/m², Spitze ' . round($peak));
+}
+
 echo "alle prüfungen bestanden\n";

@@ -98,6 +98,12 @@
   .chip { @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium tabular-nums; }
   .nav-link { @apply flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground; }
   .nav-link[aria-current='page'] { @apply bg-muted font-medium text-foreground; }
+  .entity { @apply relative; }
+  .entity [data-results] { @apply absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-card shadow-card; }
+  .tip { @apply relative inline-flex; }
+  .tip-btn { @apply inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-foreground; }
+  .tip-body { @apply pointer-events-none invisible absolute left-1/2 top-6 z-30 w-64 -translate-x-1/2 rounded-lg border border-border bg-card p-3 text-left text-xs font-normal leading-relaxed text-foreground opacity-0 shadow-card; }
+  .tip:hover .tip-body, .tip:focus-within .tip-body, .tip.open .tip-body { @apply visible opacity-100; }
 }
 
 .flow-move {

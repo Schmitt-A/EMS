@@ -32,6 +32,14 @@
   });
 
   document.addEventListener('click', (event) => {
+    const tip = event.target.closest('.tip-btn');
+    document.querySelectorAll('.tip.open').forEach((node) => {
+      if (!tip || !node.contains(tip)) node.classList.remove('open');
+    });
+    if (tip) {
+      event.preventDefault();
+      tip.parentElement.classList.toggle('open');
+    }
     const fill = event.target.closest('[data-fill]');
     if (!fill) return;
     const input = document.querySelector('[name="' + fill.dataset.fill + '"]');
@@ -39,35 +47,92 @@
   });
 
   let searchTimer = 0;
+  let searchIndex = -1;
+
+  function closeSearch(except) {
+    document.querySelectorAll('[data-results]').forEach((list) => {
+      if (except && list === except) return;
+      list.remove();
+    });
+    searchIndex = -1;
+  }
+
+  async function searchEntities(input) {
+    let list = input.parentElement.querySelector('[data-results]');
+    if (!list) {
+      list = document.createElement('ul');
+      list.setAttribute('data-results', '');
+      list.setAttribute('role', 'listbox');
+      input.insertAdjacentElement('afterend', list);
+    }
+    const query = input.value.trim();
+    if (query.length < 2) {
+      list.innerHTML = '';
+      return;
+    }
+    const response = await fetch(base + '/api/entities?q=' + encodeURIComponent(query));
+    const payload = await response.json();
+    list.innerHTML = '';
+    searchIndex = -1;
+    const rows = payload.results || [];
+    if (!rows.length) {
+      const empty = document.createElement('li');
+      empty.className = 'px-3 py-2 text-muted-foreground';
+      empty.textContent = payload.error || 'Keine passende Entität';
+      list.appendChild(empty);
+      return;
+    }
+    rows.forEach((row) => {
+      const item = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('role', 'option');
+      button.className = 'block w-full px-3 py-2 text-left hover:bg-muted';
+      const name = document.createElement('span');
+      name.className = 'block';
+      name.textContent = row.name || row.id;
+      const meta = document.createElement('span');
+      meta.className = 'block text-xs text-muted-foreground';
+      meta.textContent = row.id + ' · ' + row.state + (row.unit ? ' ' + row.unit : '');
+      button.append(name, meta);
+      button.addEventListener('click', () => {
+        input.value = row.id;
+        closeSearch();
+      });
+      item.appendChild(button);
+      list.appendChild(item);
+    });
+  }
+
   document.addEventListener('input', (event) => {
     const input = event.target.closest('[data-entity-search]');
     if (!input) return;
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(async () => {
-      let list = input.parentElement.querySelector('[data-results]');
-      if (!list) {
-        list = document.createElement('ul');
-        list.setAttribute('data-results', '');
-        list.className = 'mt-1 max-h-48 overflow-auto rounded-lg border border-border bg-card text-sm';
-        input.insertAdjacentElement('afterend', list);
-      }
-      const response = await fetch(base + '/api/entities?q=' + encodeURIComponent(input.value));
-      const payload = await response.json();
-      list.innerHTML = '';
-      (payload.results || []).forEach((row) => {
-        const item = document.createElement('li');
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'block w-full px-3 py-2 text-left hover:bg-muted';
-        button.textContent = (row.name || row.id) + ' · ' + row.state + (row.unit ? ' ' + row.unit : '');
-        button.addEventListener('click', () => {
-          input.value = row.id;
-          list.innerHTML = '';
-        });
-        item.appendChild(button);
-        list.appendChild(item);
-      });
-    }, 180);
+    searchTimer = setTimeout(() => { searchEntities(input); }, 160);
+  });
+  document.addEventListener('focusin', (event) => {
+    const input = event.target.closest('[data-entity-search]');
+    if (!input || input.value.trim().length < 2) return;
+    searchEntities(input);
+  });
+  document.addEventListener('keydown', (event) => {
+    const input = event.target.closest('[data-entity-search]');
+    if (!input) return;
+    const list = input.parentElement.querySelector('[data-results]');
+    const buttons = list ? [...list.querySelectorAll('button')] : [];
+    if (event.key === 'Escape') {
+      closeSearch();
+      return;
+    }
+    if (!buttons.length || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Enter')) return;
+    event.preventDefault();
+    if (event.key === 'ArrowDown') searchIndex = Math.min(buttons.length - 1, searchIndex + 1);
+    if (event.key === 'ArrowUp') searchIndex = Math.max(0, searchIndex - 1);
+    buttons.forEach((button, index) => button.classList.toggle('bg-muted', index === searchIndex));
+    if (event.key === 'Enter' && buttons[searchIndex]) buttons[searchIndex].click();
+  });
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.entity')) closeSearch();
   });
 
   function formatX(value, axis) {
@@ -103,7 +168,30 @@
       box.appendChild(note);
       return;
     }
+    const days = Number(payload.days || 1);
+    if (box.dataset.scroll === '1') {
+      const parent = box.parentElement ? box.parentElement.clientWidth : 640;
+      box.style.minWidth = Math.max(parent, days * 88) + 'px';
+    }
+    const todayBand = {
+      id: 'todayBand',
+      beforeDatasetsDraw(chart) {
+        const range = payload.today;
+        if (!range || range.length < 2) return;
+        const scale = chart.scales.x;
+        const area = chart.chartArea;
+        const x0 = scale.getPixelForValue(range[0]);
+        const x1 = scale.getPixelForValue(range[1]);
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.fillStyle = color('pv');
+        ctx.globalAlpha = 0.12;
+        ctx.fillRect(x0, area.top, Math.max(2, x1 - x0), area.bottom - area.top);
+        ctx.restore();
+      },
+    };
     box._chart = new Chart(canvas, {
+      plugins: [todayBand],
       data: { datasets },
       options: {
         responsive: true,
@@ -111,7 +199,7 @@
         interaction: { mode: 'index', intersect: false },
         plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
         scales: {
-          x: { type: 'linear', ticks: { maxTicksLimit: 6, callback: (value) => formatX(value, payload.axis) } },
+          x: { type: 'linear', ticks: { maxTicksLimit: box.dataset.scroll === '1' ? Math.min(Math.max(days, 6), 16) : 6, callback: (value) => formatX(value, payload.axis) } },
           y: { beginAtZero: true, ticks: { maxTicksLimit: 5 } },
           y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, display: datasets.some((set) => set.yAxisID === 'y1') },
         },

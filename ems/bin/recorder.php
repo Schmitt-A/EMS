@@ -10,6 +10,7 @@ $series = new Series(store(), ha());
 while (true) {
     $started = time();
     try {
+        (new WeatherFeed(store()))->refresh();
         $snap = $snapshot->build();
         if ($snap['connected']) {
             $sessions->tick(

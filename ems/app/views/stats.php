@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-page_head('Ladestatistik', 'Sonnenanteil, Netzanteil und Kosten der Ladevorgänge in diesem Monat.');
+page_head('Ladestatistik', 'Sonnenanteil, Netzanteil und Kosten der Ladevorgänge in diesem Monat. Neue Vorgänge legt der Recorder selbst an, solange die App läuft: ab 0,2 kW oder beim Status Laden, und er schließt sie nach der Ausschaltverzögerung.');
 $import = (float) $tariffs['import_ct'];
 ?>
 <form class="mb-4" method="get" action="<?= e(url('/statistik')) ?>">

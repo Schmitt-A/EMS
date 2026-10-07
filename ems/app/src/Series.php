@@ -3,27 +3,40 @@ declare(strict_types=1);
 
 final class Series
 {
+    private ?string $statNote = null;
+
     public function __construct(private ConfigStore $store, private HaClient $ha) {}
 
     public function yieldToday(array $mapping, ?string $powerUnit = 'W'): ?float
     {
-        $cache = $this->store->get('yield_cache', null);
-        if (is_array($cache) && (time() - (int) ($cache['t'] ?? 0)) < 60) {
-            return $cache['kwh'];
+        $tz = new DateTimeZone('Europe/Berlin');
+        $start = (new DateTimeImmutable('now', $tz))->setTime(0, 0)->getTimestamp();
+        return $this->yieldBetween($start, time(), $mapping);
+    }
+
+    public function yieldBetween(int $start, int $end, array $mapping): ?float
+    {
+        $cache = $this->store->get('yield_cache', []);
+        $entries = is_array($cache) && isset($cache['entries']) && is_array($cache['entries']) ? $cache['entries'] : [];
+        $key = $start . ':' . (int) floor($end / 60);
+        if (isset($entries[$key]) && (time() - (int) ($entries[$key]['t'] ?? 0)) < 60) {
+            return $entries[$key]['kwh'];
         }
-        $kwh = $this->computeYieldToday($mapping);
-        $this->store->put('yield_cache', ['t' => time(), 'kwh' => $kwh]);
+        $kwh = $this->computeYield($start, $end, $mapping);
+        $entries[$key] = ['t' => time(), 'kwh' => $kwh];
+        $this->store->put('yield_cache', ['entries' => array_slice($entries, -4, null, true)]);
         return $kwh;
     }
 
-    private function computeYieldToday(array $mapping): ?float
+    private function computeYield(int $start, int $end, array $mapping): ?float
     {
-        $tz = new DateTimeZone('Europe/Berlin');
-        $start = (new DateTimeImmutable('now', $tz))->setTime(0, 0)->getTimestamp();
-        $end = time();
         $energy = (string) ($mapping['pv_energy'] ?? '');
         if ($energy !== '' && $this->ha->configured()) {
-            $rows = $this->ha->statistics($energy, $start, $end, 'hour');
+            try {
+                $rows = $this->ha->statistics($energy, $start, $end, 'hour');
+            } catch (Throwable) {
+                $rows = [];
+            }
             $sum = 0.0;
             $seen = false;
             $unit = $this->unitOf($energy);
@@ -48,7 +61,7 @@ final class Series
         if ($power === '' || !$this->ha->configured()) {
             return null;
         }
-        $rows = $this->ha->statistics($power, $start, $end, 'hour');
+        $rows = $this->statisticRows($power, $start, $end, 'hour');
         $unit = $this->unitOf($power);
         $sum = 0.0;
         foreach ($rows as $row) {
@@ -65,46 +78,85 @@ final class Series
         $soc = $this->points((string) ($mapping['battery_soc'] ?? ''), $start, $end, $period, 1);
         $capId = (string) ($mapping['battery_capacity'] ?? '');
         $cap = $this->points($capId, $start, $end, $period, $this->energyScale($capId));
-        return [
+        return $this->withNote([
             'series' => [
                 ['key' => 'soc', 'label' => 'Ladestand', 'color' => 'pv', 'axis' => 'y', 'data' => $soc],
                 ['key' => 'cap', 'label' => 'Kapazität', 'color' => 'house', 'axis' => 'y1', 'data' => $cap],
                 ['key' => 'priority', 'label' => 'Speicher-Vorrang', 'color' => 'export', 'axis' => 'y', 'dash' => true, 'data' => $this->flat($soc, (float) $strategy['priority_soc'])],
                 ['key' => 'reserve', 'label' => 'Mindestreserve', 'color' => 'import', 'axis' => 'y', 'dash' => true, 'data' => $this->flat($soc, (float) $strategy['reserve_soc'])],
             ],
-        ];
+        ]);
     }
 
     public function power(array $mapping, array $plant): array
     {
         $tz = new DateTimeZone('Europe/Berlin');
-        $start = (new DateTimeImmutable('now', $tz))->modify('-24 hours')->getTimestamp();
-        $end = (new DateTimeImmutable('now', $tz))->modify('+1 day')->setTime(22, 0)->getTimestamp();
+        $now = time();
+        $today = (new DateTimeImmutable('now', $tz))->setTime(0, 0);
+        $historyStart = $today->modify('-45 days')->getTimestamp();
         $pvId = (string) ($mapping['pv_power'] ?? '');
-        $actual = $this->points($pvId, $start, time(), '5minute', $this->wattScale($pvId));
-        $state = $this->ha->configured() ? $this->ha->state((string) ($mapping['weather_radiation'] ?? '')) : null;
-        $forecast = Forecast::fromAttribute(is_array($state) ? ($state['attributes']['data'] ?? []) : [], $plant);
+        $actual = $this->points($pvId, $historyStart, $now, 'hour', $this->wattScale($pvId));
+        $feed = new WeatherFeed($this->store);
+        $horizon = $feed->hours($today->getTimestamp(), $now + 12 * 86400);
+        $forecast = Forecast::fromRadiation($horizon, $plant);
         $future = [];
         $radiation = [];
+        $last = $now;
         foreach ($forecast as $point) {
-            if ($point['t'] < $start || $point['t'] > $end) {
+            if ($point['t'] < $today->getTimestamp()) {
                 continue;
             }
+            $last = max($last, $point['t']);
             $future[] = ['x' => $point['t'] * 1000, 'y' => round($point['kw'], 3)];
             $radiation[] = ['x' => $point['t'] * 1000, 'y' => round($point['g'], 0)];
         }
-        return [
+        $first = $actual[0]['x'] ?? ($today->getTimestamp() * 1000);
+        $span = max(1, (int) ceil(($last - (int) ($first / 1000)) / 86400));
+        return $this->withNote([
+            'days' => $span,
+            'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
             'series' => [
                 ['key' => 'actual', 'label' => 'PV gemessen', 'color' => 'pv', 'axis' => 'y', 'data' => $actual],
                 ['key' => 'forecast', 'label' => 'Prognose', 'color' => 'export', 'axis' => 'y', 'data' => $future],
                 ['key' => 'radiation', 'label' => 'Strahlung', 'color' => 'wallbox', 'axis' => 'y1', 'data' => $radiation],
+            ],
+        ]);
+    }
+
+    public function outlook(array $plant): array
+    {
+        $tz = new DateTimeZone('Europe/Berlin');
+        $today = (new DateTimeImmutable('now', $tz))->setTime(0, 0);
+        $feed = new WeatherFeed($this->store);
+        $hours = $feed->hours($today->modify('-1 day')->getTimestamp(), time() + 12 * 86400);
+        $totals = Forecast::dailyTotals(Forecast::fromRadiation($hours, $plant), $plant);
+        $stored = [];
+        foreach ($this->store->pdo()->query('SELECT day, actual_kwh FROM daily') ?: [] as $row) {
+            $stored[$row['day']] = $row['actual_kwh'] !== null ? round((float) $row['actual_kwh'], 2) : null;
+        }
+        $forecast = $actual = [];
+        foreach ($totals as $row) {
+            $x = ($row['start'] + 43200) * 1000;
+            $forecast[] = ['x' => $x, 'y' => round($row['kwh'], 2)];
+            $actual[] = ['x' => $x, 'y' => $stored[$row['day']] ?? null];
+        }
+        return [
+            'days' => max(1, count($totals)),
+            'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
+            'series' => [
+                ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'type' => 'bar', 'data' => $actual],
+                ['key' => 'forecast', 'label' => 'Prognose', 'color' => 'export', 'type' => 'bar', 'data' => $forecast],
             ],
         ];
     }
 
     public function days(array $plant): array
     {
-        $this->calibrate($plant, false);
+        try {
+            $this->calibrate($plant, false);
+        } catch (Throwable) {
+            // Vorhandene Tage bleiben sichtbar, auch wenn die Statistik gerade nicht antwortet.
+        }
         $stored = $this->store->get('plant', []);
         if (is_array($stored)) {
             $plant = array_merge($plant, $stored);
@@ -122,41 +174,81 @@ final class Series
             $fitted[] = ['x' => $x, 'y' => $m !== null ? round($m * $f, 2) : null];
             $regress[] = ['x' => $x, 'y' => $m !== null ? round(max(0, (float) $plant['regress_a'] + (float) $plant['regress_b'] * $m), 2) : null];
         }
-        return [
-            'daily' => [
+        $tz = new DateTimeZone('Europe/Berlin');
+        $today = (new DateTimeImmutable('now', $tz))->setTime(0, 0);
+        $frame = [
+            'days' => max(1, count($rows)),
+            'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
+        ];
+        $noted = $this->withNote(['series' => [
+            ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'data' => $actual],
+        ]]);
+        $error = $noted['error'] ?? null;
+        $daily = $frame + [
+            'series' => [
                 ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'type' => 'bar', 'data' => $actual],
                 ['key' => 'model', 'label' => 'Modell roh', 'color' => 'house', 'type' => 'bar', 'data' => $model],
                 ['key' => 'k', 'label' => 'Güte k', 'color' => 'wallbox', 'axis' => 'y1', 'data' => $factor],
                 ['key' => 'factor', 'label' => 'Eichfaktor', 'color' => 'export', 'axis' => 'y1', 'dash' => true, 'data' => $this->span($rows, $f)],
                 ['key' => 'ideal', 'label' => 'Ideal 1,0', 'color' => 'muted', 'axis' => 'y1', 'dash' => true, 'data' => $this->span($rows, 1)],
             ],
-            'compare' => [
+        ];
+        $compare = $frame + [
+            'series' => [
                 ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'data' => $actual],
                 ['key' => 'model', 'label' => 'Modell roh', 'color' => 'muted', 'data' => $model],
                 ['key' => 'fitted', 'label' => 'Starrer Faktor', 'color' => 'house', 'data' => $fitted],
                 ['key' => 'regress', 'label' => 'Regression', 'color' => 'export', 'data' => $regress],
             ],
-            'goodness' => $factor,
         ];
+        if ($error) {
+            $daily['error'] = $error;
+            $compare['error'] = $error;
+        }
+        return ['daily' => $daily, 'compare' => $compare];
     }
 
     public function weather(array $mapping): array
     {
-        $start = time() - 24 * 3600;
-        $end = time() + 36 * 3600;
-        $sunId = (string) ($mapping['weather_sunshine'] ?? '');
-        $sunUnit = $this->unitOf($sunId);
-        $sunScale = str_contains($sunUnit, 'min') ? 1.0 : (1 / 60);
-        $sun = $this->points($sunId, $start, time(), 'hour', $sunScale);
-        $cloud = $this->points((string) ($mapping['weather_cloud'] ?? ''), $start, time(), 'hour', 1);
-        $temp = $this->points((string) ($mapping['weather_temp'] ?? ''), $start, time(), 'hour', 1);
-        return [
+        $tz = new DateTimeZone('Europe/Berlin');
+        $today = (new DateTimeImmutable('now', $tz))->setTime(0, 0);
+        $rows = (new WeatherFeed($this->store))->hours($today->modify('-2 days')->getTimestamp(), time() + 12 * 86400);
+        $sun = $cloud = $temp = $radiation = [];
+        $last = time();
+        foreach ($rows as $row) {
+            $x = $row['t'] * 1000;
+            $last = max($last, $row['t']);
+            if ($row['sunshine_s'] !== null) {
+                $sun[] = ['x' => $x, 'y' => round($row['sunshine_s'] / 60, 2)];
+            }
+            if ($row['cloud'] !== null) {
+                $cloud[] = ['x' => $x, 'y' => round($row['cloud'], 1)];
+            }
+            if ($row['temp_c'] !== null) {
+                $temp[] = ['x' => $x, 'y' => round($row['temp_c'], 1)];
+            }
+            if ($row['radiation'] !== null) {
+                $radiation[] = ['x' => $x, 'y' => round($row['radiation'], 0)];
+            }
+        }
+        $span = max(1, (int) ceil(($last - $today->modify('-2 days')->getTimestamp()) / 86400));
+        $payload = [
+            'days' => $span,
+            'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
             'series' => [
-                ['key' => 'sun', 'label' => 'Sonnenschein', 'color' => 'pv', 'axis' => 'y', 'data' => $sun],
+                ['key' => 'radiation', 'label' => 'Strahlung', 'color' => 'pv', 'axis' => 'y', 'data' => $radiation],
+                ['key' => 'sun', 'label' => 'Sonnenschein', 'color' => 'export', 'axis' => 'y1', 'data' => $sun],
                 ['key' => 'cloud', 'label' => 'Bewölkung', 'color' => 'house', 'axis' => 'y1', 'data' => $cloud],
                 ['key' => 'temp', 'label' => 'Temperatur', 'color' => 'import', 'axis' => 'y', 'data' => $temp],
             ],
         ];
+        if (!$radiation && !$sun && !$cloud && !$temp) {
+            $error = (new WeatherFeed($this->store))->meta()['error'] ?? null;
+            if ($error) {
+                $payload['error'] = $error;
+            }
+        }
+        return $payload;
     }
 
     public function calibrate(array $plant, bool $force): void
@@ -173,15 +265,20 @@ final class Series
         $map = $cfg['mapping'];
         $power = (string) ($map['pv_power'] ?? '');
         $radiation = (string) ($map['weather_radiation'] ?? '');
-        if ($power === '' || $radiation === '') {
+        if ($power === '') {
+            return;
+        }
+        $this->rememberActuals($power);
+        if ($radiation === '') {
+            $this->store->put('last_calibration', $today);
             return;
         }
         $n = max(3, (int) $plant['n_days']);
         $tz = new DateTimeZone('Europe/Berlin');
         $end = (new DateTimeImmutable('today', $tz))->getTimestamp();
         $start = $end - $n * 86400;
-        $actualRows = $this->ha->statistics($power, $start, $end, 'hour');
-        $modelRows = $this->ha->statistics($radiation, $start, $end, 'hour');
+        $actualRows = $this->statisticRows($power, $start, $end, 'hour');
+        $modelRows = $this->statisticRows($radiation, $start, $end, 'hour');
         $byDay = [];
         $powerUnit = $this->unitOf($power);
         foreach ($actualRows as $row) {
@@ -279,16 +376,78 @@ final class Series
         return 0.0;
     }
 
-    private function points(string $entity, int $start, int $end, string $period, float $scale): array
+    private function rememberActuals(string $power): void
+    {
+        $rows = $this->statisticRows($power, time() - 420 * 86400, time(), 'day');
+        $unit = $this->unitOf($power);
+        $tz = new DateTimeZone('Europe/Berlin');
+        $today = (new DateTimeImmutable('now', $tz))->format('Y-m-d');
+        $stmt = $this->store->pdo()->prepare('INSERT INTO daily (day, actual_kwh) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET actual_kwh = excluded.actual_kwh');
+        foreach ($rows as $row) {
+            if ($row['mean'] === null) {
+                continue;
+            }
+            $day = (new DateTimeImmutable('@' . $row['start']))->setTimezone($tz)->format('Y-m-d');
+            if ($day === $today) {
+                continue;
+            }
+            $stmt->execute([$day, round($this->meanKw($row['mean'], $unit) * 24, 3)]);
+        }
+    }
+
+    private function statisticRows(string $entity, int $start, int $end, string $period): array
     {
         if ($entity === '' || !$this->ha->configured()) {
             return [];
         }
         try {
-            $rows = $this->ha->statistics($entity, $start, $end, $period);
+            return $this->ha->statistics($entity, $start, $end, $period);
+        } catch (Throwable $e) {
+            $this->statNote = $e->getMessage();
+            return $this->historyBuckets($entity, $start, $end, $period);
+        }
+    }
+
+    private function withNote(array $payload): array
+    {
+        foreach ($payload['series'] as $series) {
+            if (!empty($series['data'])) {
+                return $payload;
+            }
+        }
+        if ($this->statNote) {
+            $payload['error'] = $this->statNote;
+        }
+        return $payload;
+    }
+
+    private function historyBuckets(string $entity, int $start, int $end, string $period): array
+    {
+        try {
+            $samples = $this->ha->history($entity, $start, $end);
         } catch (Throwable) {
             return [];
         }
+        $bucket = match ($period) {
+            'day' => 86400,
+            'hour' => 3600,
+            default => 300,
+        };
+        $groups = [];
+        foreach ($samples as $sample) {
+            $key = intdiv($sample['t'], $bucket) * $bucket;
+            $groups[$key][] = $sample['v'];
+        }
+        $out = [];
+        foreach ($groups as $t => $values) {
+            $out[] = ['start' => $t, 'mean' => array_sum($values) / count($values), 'change' => null];
+        }
+        return $out;
+    }
+
+    private function points(string $entity, int $start, int $end, string $period, float $scale): array
+    {
+        $rows = $this->statisticRows($entity, $start, $end, $period);
         $out = [];
         foreach ($rows as $row) {
             if ($row['mean'] === null) {

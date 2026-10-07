@@ -13,14 +13,74 @@ page_head('Einstellungen', 'Tarife, Dach und Strategie liegen hier. Die Messwert
     <p class="mt-2 text-muted-foreground"><?= $ping['ok'] ? 'Erreichbar, Home Assistant ' . e($ping['version']) . ($ping['location'] ? ', ' . e($ping['location']) : '') : e($ping['error'] ?? 'Nicht verbunden') ?>.</p>
     <a class="mt-2 inline-block font-medium text-primary" href="<?= e(url('/einrichten/verbindung')) ?>">Verbindung prüfen</a>
   </section>
-  <section class="card p-5 text-sm">
+  <form method="post" class="card space-y-4 p-5">
+    <?= csrf_field() ?><input type="hidden" name="section" value="mapping"><input type="hidden" name="back" value="/einstellungen">
     <h2 class="font-medium">Zuordnung</h2>
-    <ul class="mt-3 space-y-2">
-      <?php foreach (['pv_power' => 'Photovoltaik', 'battery_soc' => 'Speicher', 'grid_import' => 'Netzbezug', 'house_power' => 'Haus', 'wallbox_power' => 'Wallbox', 'weather_radiation' => 'Strahlung'] as $key => $label): ?>
-        <li class="flex justify-between gap-3"><span><?= e($label) ?></span><span class="truncate text-muted-foreground"><?= e($m[$key] ?: 'nicht gesetzt') ?></span></li>
-      <?php endforeach; ?>
-    </ul>
-    <a class="mt-3 inline-block font-medium text-primary" href="<?= e(url('/einrichten/photovoltaik')) ?>">Zuordnung ändern</a>
+    <p class="text-sm text-muted-foreground">Tippe einen Namen oder eine Entität. Die Liste sucht in Home Assistant und übernimmt die gewählte Kennung.</p>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <?php entity_field('pv_power', 'PV-Leistung', (string) $m['pv_power'], 'Watt oder Kilowatt.'); ?>
+      <?php entity_field('pv_energy', 'PV-Energiezähler, optional', (string) $m['pv_energy'], 'total_increasing in kWh. Sonst wird die Leistung aufintegriert.'); ?>
+      <?php entity_field('battery_soc', 'Ladestand', (string) $m['battery_soc'], 'Prozent.'); ?>
+      <?php entity_field('battery_capacity', 'Restkapazität, optional', (string) $m['battery_capacity'], 'Wh oder kWh.'); ?>
+      <?php entity_field('battery_charge', 'Speicher laden', (string) $m['battery_charge'], 'Leistung beim Laden.'); ?>
+      <?php entity_field('battery_discharge', 'Speicher entladen', (string) $m['battery_discharge'], 'Leistung beim Entladen.'); ?>
+      <?php entity_field('battery_signed', 'Speicher mit Vorzeichen', (string) $m['battery_signed'], 'Nur bei einem gemeinsamen Sensor.'); ?>
+      <?php entity_field('grid_import', 'Netzbezug', (string) $m['grid_import'], 'Leistung aus dem Netz.'); ?>
+      <?php entity_field('grid_export', 'Einspeisung', (string) $m['grid_export'], 'Leistung ins Netz.'); ?>
+      <?php entity_field('grid_signed', 'Netz mit Vorzeichen', (string) $m['grid_signed'], 'Nur bei einem gemeinsamen Sensor.'); ?>
+      <?php entity_field('house_power', 'Hausverbrauch', (string) $m['house_power'], 'Leistung des Haushalts.'); ?>
+      <?php entity_field('wallbox_power', 'Wallbox-Leistung', (string) $m['wallbox_power'], 'Watt oder Kilowatt.'); ?>
+      <?php entity_field('wallbox_car', 'Fahrzeugstatus', (string) $m['wallbox_car'], 'Zum Beispiel charging.'); ?>
+      <?php entity_field('wallbox_amps', 'Gemeldeter Strom', (string) $m['wallbox_amps'], 'Ampere, nur Anzeige.'); ?>
+      <?php entity_field('wallbox_amps_max', 'Maximalstrom', (string) $m['wallbox_amps_max'], 'Optional.'); ?>
+      <?php entity_field('wallbox_phases', 'Gemeldete Phasen', (string) $m['wallbox_phases'], '1-phasig oder 3-phasig.'); ?>
+      <?php entity_field('wallbox_force', 'Zwangszustand', (string) $m['wallbox_force'], 'Optional, nur Anzeige.'); ?>
+      <?php entity_field('weather_radiation', 'Strahlung, optional', (string) $m['weather_radiation'], 'Aktueller Messwert. Die Prognose kommt aus der DWD-Datei.'); ?>
+      <?php entity_field('weather_cloud', 'Bewölkung, optional', (string) $m['weather_cloud'], 'Aktueller Messwert.'); ?>
+      <?php entity_field('weather_sunshine', 'Sonnenschein, optional', (string) $m['weather_sunshine'], 'Aktueller Messwert.'); ?>
+      <?php entity_field('weather_temp', 'Temperatur, optional', (string) $m['weather_temp'], 'Aktueller Messwert.'); ?>
+    </div>
+    <div class="grid gap-3 sm:grid-cols-2">
+      <label class="block text-sm">Speicherleistung
+        <select class="field mt-1" name="battery_mode">
+          <option value="split" <?= $m['battery_mode'] === 'split' ? 'selected' : '' ?>>Laden und Entladen getrennt</option>
+          <option value="signed" <?= $m['battery_mode'] === 'signed' ? 'selected' : '' ?>>Ein Sensor mit Vorzeichen</option>
+        </select>
+      </label>
+      <label class="block text-sm">Positives Vorzeichen beim Speicher
+        <select class="field mt-1" name="battery_sign">
+          <option value="positive_charge" <?= $m['battery_sign'] === 'positive_charge' ? 'selected' : '' ?>>Laden</option>
+          <option value="positive_discharge" <?= $m['battery_sign'] === 'positive_discharge' ? 'selected' : '' ?>>Entladen</option>
+        </select>
+      </label>
+      <label class="block text-sm">Netzleistung
+        <select class="field mt-1" name="grid_mode">
+          <option value="split" <?= $m['grid_mode'] === 'split' ? 'selected' : '' ?>>Bezug und Einspeisung getrennt</option>
+          <option value="signed" <?= $m['grid_mode'] === 'signed' ? 'selected' : '' ?>>Ein Sensor mit Vorzeichen</option>
+        </select>
+      </label>
+      <label class="block text-sm">Positives Vorzeichen beim Netz
+        <select class="field mt-1" name="grid_sign">
+          <option value="positive_import" <?= $m['grid_sign'] === 'positive_import' ? 'selected' : '' ?>>Bezug</option>
+          <option value="positive_export" <?= $m['grid_sign'] === 'positive_export' ? 'selected' : '' ?>>Einspeisung</option>
+        </select>
+      </label>
+      <label class="block text-sm">Wetterstation für die Beschriftung
+        <select class="field mt-1" name="weather_station">
+          <?php foreach (['soonwald' => 'Soonwald West', 'hahn' => 'Flugplatz Hahn', 'kreuznach' => 'Bad Kreuznach'] as $value => $label): ?>
+            <option value="<?= e($value) ?>" <?= $m['weather_station'] === $value ? 'selected' : '' ?>><?= e($label) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+    </div>
+    <input type="hidden" name="house_includes_wallbox" value="0">
+    <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="house_includes_wallbox" value="1" <?= !empty($m['house_includes_wallbox']) ? 'checked' : '' ?>> Der Hausverbrauch enthält die Wallbox</label>
+    <button class="btn-primary" type="submit">Zuordnung speichern</button>
+  </form>
+  <section class="card space-y-3 p-5 text-sm">
+    <h2 class="font-medium">Konfiguration als JSON</h2>
+    <p class="text-muted-foreground">Die Datei enthält Zuordnung, Tarife, Dach, Ladeparameter und die DWD-Adresse. Verbindung und Ladevorgänge bleiben draußen.</p>
+    <?php config_exchange('/einstellungen', '/einstellungen'); ?>
   </section>
   <form method="post" class="card space-y-4 p-5">
     <?= csrf_field() ?><input type="hidden" name="section" value="tariffs">
@@ -58,6 +118,24 @@ page_head('Einstellungen', 'Tarife, Dach und Strategie liegen hier. Die Messwert
       <label class="text-sm">Mindestreserve (%)<input class="field mt-1" name="reserve_soc" value="<?= e((string) $b['reserve_soc']) ?>"></label>
     </div>
     <button class="btn-primary" type="submit">Speicher speichern</button>
+  </form>
+  <form method="post" class="card space-y-4 p-5">
+    <?= csrf_field() ?><input type="hidden" name="section" value="weather"><input type="hidden" name="back" value="/einstellungen">
+    <h2 class="font-medium">DWD-Prognose</h2>
+    <p class="text-sm text-muted-foreground">Die Strahlungsprognose kommt direkt vom Deutschen Wetterdienst, stündlich für etwa zehn Tage. Die App holt die Datei ungefähr alle 30 Minuten neu.</p>
+    <label class="block text-sm">KMZ-Adresse
+      <input class="field mt-1 font-mono text-xs" name="weather_url" value="<?= e((string) ($cfg['weather']['url'] ?? '')) ?>">
+    </label>
+    <div class="space-y-2 text-sm text-muted-foreground">
+      <p>So findest du den Link:</p>
+      <ol class="list-decimal space-y-1 pl-5">
+        <li>Öffne <a class="font-medium text-primary" href="https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/single_stations/">die Stationsliste MOSMIX_L</a>.</li>
+        <li>Die Kennung steht im <a class="font-medium text-primary" href="https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.cfg?view=nasPublication&amp;nn=16102">Stationskatalog</a>. Soonwald West ist F9519.</li>
+        <li>Im Ordner der Station liegt <span class="font-mono text-xs">kml/MOSMIX_L_LATEST_F9519.kmz</span>.</li>
+        <li>Die Adresse endet auf diese Datei und beginnt mit <span class="font-mono text-xs">https://opendata.dwd.de/</span>.</li>
+      </ol>
+    </div>
+    <button class="btn-primary" type="submit">Wetteradresse speichern</button>
   </form>
   <form method="post" class="card space-y-4 p-5">
     <?= csrf_field() ?><input type="hidden" name="section" value="theme">

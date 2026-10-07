@@ -161,8 +161,24 @@ final class Snapshot
                 'pending_since' => $latched['pending_since'],
             ]);
         }
-        $series = Forecast::fromAttribute(is_array($values['radiation_rows'] ?? null) ? $values['radiation_rows'] : [], $cfg['plant']);
-        $brief = $series ? Forecast::brief($series, $cfg['plant'], $now) : null;
+        $feed = new WeatherFeed($this->store);
+        if ($feed->stale()) {
+            $meta = $feed->refresh();
+            if (empty($meta['ok']) && !empty($meta['error'])) {
+                $base['warnings'][] = (string) $meta['error'];
+            }
+        }
+        $tz = new DateTimeZone('Europe/Berlin');
+        $todayStart = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0)->getTimestamp();
+        $hours = $feed->hours($todayStart, $now + 12 * 86400);
+        $series = Forecast::fromRadiation($hours, $cfg['plant']);
+        $actualToday = null;
+        try {
+            $actualToday = (new Series($this->store, $this->ha))->yieldToday($cfg['mapping']);
+        } catch (Throwable) {
+            $actualToday = null;
+        }
+        $brief = $series ? Forecast::brief($series, $cfg['plant'], $now, $actualToday) : null;
         $sessions = new Sessions($this->store);
         $session = $sessions->open() ?: $sessions->latest();
         $base['balance'] = $balance;

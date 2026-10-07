@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 final class HaClient
 {
+    private string $pending = '';
+
     public function __construct(private string $baseUrl, private string $token) {}
 
     public function configured(): bool
@@ -85,17 +87,18 @@ final class HaClient
         $series = [];
         $rows = is_array($payload) && isset($payload[0]) && is_array($payload[0]) ? $payload[0] : [];
         foreach ($rows as $row) {
-            if (!is_array($row) || !isset($row['state']) || !is_numeric($row['state'])) {
+            if (!is_array($row)) {
                 continue;
             }
-            $when = isset($row['last_changed']) ? strtotime((string) $row['last_changed']) : false;
-            if ($when === false && isset($row['lu'])) {
-                $when = (int) ($row['lu'] ?? 0);
-            }
-            if ($when === false || $when <= 0) {
+            $state = $row['state'] ?? $row['s'] ?? null;
+            if (!is_numeric($state)) {
                 continue;
             }
-            $series[] = ['t' => (int) $when, 'v' => (float) $row['state']];
+            $when = self::stamp($row);
+            if ($when <= 0) {
+                continue;
+            }
+            $series[] = ['t' => $when, 'v' => (float) $state];
         }
         usort($series, fn ($a, $b) => $a['t'] <=> $b['t']);
         return $series;
@@ -107,13 +110,14 @@ final class HaClient
         if (!is_entity_id($entityId)) {
             return [];
         }
-        $query = http_build_query([
-            'start_time' => gmdate('Y-m-d\TH:i:s\Z', $start),
-            'end_time' => gmdate('Y-m-d\TH:i:s\Z', $end),
-            'statistic_ids' => $entityId,
+        $payload = $this->socket([
+            'type' => 'recorder/statistics_during_period',
+            'start_time' => gmdate('Y-m-d\TH:i:s+00:00', $start),
+            'end_time' => gmdate('Y-m-d\TH:i:s+00:00', $end),
+            'statistic_ids' => [$entityId],
             'period' => $period,
+            'types' => ['mean', 'min', 'max', 'change'],
         ]);
-        $payload = $this->get('/api/recorder/statistics_during_period?' . $query);
         $rows = [];
         if (is_array($payload) && isset($payload[$entityId]) && is_array($payload[$entityId])) {
             $rows = $payload[$entityId];
@@ -140,8 +144,11 @@ final class HaClient
 
     public function search(string $query, int $limit = 20): array
     {
-        $q = mb_strtolower(trim($query));
-        $out = [];
+        $q = self::fold(trim($query));
+        if (strlen($q) < 2) {
+            return [];
+        }
+        $scored = [];
         foreach ($this->states() as $row) {
             if (!is_array($row)) {
                 continue;
@@ -152,21 +159,204 @@ final class HaClient
                 continue;
             }
             $name = (string) ($row['attributes']['friendly_name'] ?? '');
-            $hay = mb_strtolower($id . ' ' . $name);
-            if ($q !== '' && !str_contains($hay, $q)) {
+            $idLower = self::fold($id);
+            $nameLower = self::fold($name);
+            $score = 0;
+            if ($idLower === $q) {
+                $score = 100;
+            } elseif (str_starts_with($idLower, $q) || str_starts_with($nameLower, $q)) {
+                $score = 80;
+            } elseif (str_contains($idLower, $q)) {
+                $score = 60;
+            } elseif (str_contains($nameLower, $q)) {
+                $score = 40;
+            }
+            if ($score === 0) {
                 continue;
             }
-            $out[] = [
+            $scored[] = [$score, [
                 'id' => $id,
                 'name' => $name,
                 'unit' => $row['attributes']['unit_of_measurement'] ?? '',
                 'state' => (string) ($row['state'] ?? ''),
-            ];
-            if (count($out) >= $limit) {
+            ]];
+        }
+        usort($scored, fn ($a, $b) => $b[0] <=> $a[0] ?: strcmp($a[1]['id'], $b[1]['id']));
+        return array_map(fn ($row) => $row[1], array_slice($scored, 0, $limit));
+    }
+
+    private function socket(array $command): mixed
+    {
+        $parts = parse_url($this->baseUrl);
+        $host = (string) ($parts['host'] ?? '');
+        $scheme = (string) ($parts['scheme'] ?? 'http');
+        $port = (int) ($parts['port'] ?? ($scheme === 'https' ? 443 : 80));
+        $path = rtrim((string) ($parts['path'] ?? ''), '/') . '/api/websocket';
+        $transport = $scheme === 'https' ? 'ssl' : 'tcp';
+        $socket = stream_socket_client($transport . '://' . $host . ':' . $port, $errno, $errstr, 8);
+        if (!is_resource($socket)) {
+            throw new RuntimeException($errstr !== '' ? $errstr : 'Statistik-Verbindung fehlgeschlagen.');
+        }
+        stream_set_timeout($socket, 20);
+        $key = base64_encode(random_bytes(16));
+        $hostHeader = $host . (($scheme === 'https' && $port !== 443) || ($scheme === 'http' && $port !== 80) ? ':' . $port : '');
+        $token = str_replace(["\r", "\n"], '', $this->token);
+        fwrite($socket, "GET {$path} HTTP/1.1\r\nHost: {$hostHeader}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {$key}\r\nSec-WebSocket-Version: 13\r\nAuthorization: Bearer {$token}\r\n\r\n");
+        $handshake = '';
+        while (!str_contains($handshake, "\r\n\r\n")) {
+            $chunk = fread($socket, 2048);
+            if ($chunk === false || $chunk === '') {
+                break;
+            }
+            $handshake .= $chunk;
+            if (strlen($handshake) > 16384) {
                 break;
             }
         }
-        return $out;
+        $split = explode("\r\n\r\n", $handshake, 2);
+        $this->pending = $split[1] ?? '';
+        if (!str_contains($split[0], '101')) {
+            fclose($socket);
+            throw new RuntimeException('Home Assistant öffnet keine Statistik-Verbindung.');
+        }
+        try {
+            $hello = json_decode($this->frame($socket), true);
+            if (is_array($hello) && ($hello['type'] ?? '') === 'auth_required') {
+                $this->sendFrame($socket, json_encode(['type' => 'auth', 'access_token' => $this->token], JSON_THROW_ON_ERROR));
+                $hello = json_decode($this->frame($socket), true);
+            }
+            if (!is_array($hello) || ($hello['type'] ?? '') !== 'auth_ok') {
+                throw new RuntimeException('Zugriff auf die Statistik abgelehnt.');
+            }
+            $command['id'] = 1;
+            $this->sendFrame($socket, json_encode($command, JSON_THROW_ON_ERROR));
+            $decoded = null;
+            for ($i = 0; $i < 8; $i++) {
+                $decoded = json_decode($this->frame($socket), true);
+                if (is_array($decoded) && (int) ($decoded['id'] ?? 0) === 1) {
+                    break;
+                }
+            }
+        } finally {
+            fclose($socket);
+        }
+        if (!is_array($decoded) || empty($decoded['success'])) {
+            $message = is_array($decoded) ? (string) ($decoded['error']['message'] ?? '') : '';
+            throw new RuntimeException($message !== '' ? $message : 'Home Assistant liefert keine Statistik.');
+        }
+        return $decoded['result'] ?? [];
+    }
+
+    private function frame($socket): string
+    {
+        $payload = '';
+        while (true) {
+            $header = $this->readExact($socket, 2);
+            $first = ord($header[0]);
+            $second = ord($header[1]);
+            $opcode = $first & 0x0f;
+            $fin = ($first & 0x80) !== 0;
+            $length = $second & 0x7f;
+            if ($length === 126) {
+                $length = unpack('n', $this->readExact($socket, 2))[1];
+            } elseif ($length === 127) {
+                $wide = unpack('N2', $this->readExact($socket, 8));
+                $length = $wide[1] * 4294967296 + $wide[2];
+            }
+            if ($length > 8000000) {
+                throw new RuntimeException('Die Statistik-Antwort ist unerwartet groß.');
+            }
+            if (($second & 0x80) !== 0) {
+                $mask = $this->readExact($socket, 4);
+                $chunk = $this->readExact($socket, (int) $length);
+                $plain = '';
+                $n = strlen($chunk);
+                for ($i = 0; $i < $n; $i++) {
+                    $plain .= $chunk[$i] ^ $mask[$i % 4];
+                }
+                $chunk = $plain;
+            } else {
+                $chunk = $length > 0 ? $this->readExact($socket, (int) $length) : '';
+            }
+            if ($opcode === 0x9) {
+                $this->sendFrame($socket, $chunk, 0xA);
+                continue;
+            }
+            if ($opcode === 0xA) {
+                continue;
+            }
+            if ($opcode === 0x8) {
+                throw new RuntimeException('Die Statistik-Verbindung wurde geschlossen.');
+            }
+            if ($opcode === 0x1 || $opcode === 0x0 || $opcode === 0x2) {
+                $payload .= $chunk;
+                if ($fin) {
+                    return $payload;
+                }
+            }
+        }
+    }
+
+    /** @param array<string, mixed> $row */
+    private static function stamp(array $row): int
+    {
+        foreach (['last_changed', 'last_updated', 'lc', 'lu'] as $key) {
+            if (!isset($row[$key])) {
+                continue;
+            }
+            $raw = $row[$key];
+            if (is_numeric($raw)) {
+                $when = (int) $raw;
+                return $when > 20000000000 ? (int) round($when / 1000) : $when;
+            }
+            $when = strtotime((string) $raw);
+            if ($when !== false && $when > 0) {
+                return $when;
+            }
+        }
+        return 0;
+    }
+
+    private static function fold(string $value): string
+    {
+        return strtolower(strtr($value, ['Ä' => 'ä', 'Ö' => 'ö', 'Ü' => 'ü', 'ẞ' => 'ss', 'ß' => 'ss']));
+    }
+
+    private function sendFrame($socket, string $payload, int $opcode = 0x1): void
+    {
+        $length = strlen($payload);
+        $header = chr(0x80 | $opcode);
+        if ($length < 126) {
+            $header .= chr(0x80 | $length);
+        } elseif ($length < 65536) {
+            $header .= chr(0x80 | 126) . pack('n', $length);
+        } else {
+            $header .= chr(0x80 | 127) . pack('NN', 0, $length);
+        }
+        $mask = random_bytes(4);
+        $masked = '';
+        for ($i = 0; $i < $length; $i++) {
+            $masked .= $payload[$i] ^ $mask[$i % 4];
+        }
+        fwrite($socket, $header . $mask . $masked);
+    }
+
+    private function readExact($socket, int $length): string
+    {
+        $data = $this->pending;
+        $this->pending = '';
+        while (strlen($data) < $length) {
+            $chunk = fread($socket, $length - strlen($data));
+            if ($chunk === false || $chunk === '') {
+                throw new RuntimeException('Die Statistik-Antwort ist unvollständig.');
+            }
+            $data .= $chunk;
+        }
+        if (strlen($data) > $length) {
+            $this->pending = substr($data, $length);
+            $data = substr($data, 0, $length);
+        }
+        return $data;
     }
 
     private function get(string $path): mixed

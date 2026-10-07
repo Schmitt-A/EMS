@@ -38,7 +38,7 @@ page_head('Lademanagement', 'Der Vorschlag wird nur angezeigt. Die Wallbox wird 
     <dl class="mt-3 space-y-2">
       <div class="flex justify-between"><dt>PV</dt><dd class="tabular-nums" data-live="pv"><?= e(kw($v['pv_kw'])) ?></dd></div>
       <div class="flex justify-between"><dt>Haus ohne Wallbox</dt><dd class="tabular-nums" data-live="house"><?= e(kw($b['house_base_kw'])) ?></dd></div>
-      <div class="flex justify-between"><dt>Speicher-Vorrang</dt><dd class="tabular-nums" data-live="storage"><?= e(kw($b['storage_priority_kw'])) ?></dd></div>
+      <div class="flex justify-between"><dt class="inline-flex items-center gap-1">Speicher-Vorrang <?php tip('Das ist die aktuelle Ladeleistung, solange der Ladestand unter der Vorrang-Schwelle liegt. Sonst null. Die Schwelle stellst du bei der Batterie ein, Startwert 80 %. Sie nimmt dem Auto den Sonnenstrom, den der Speicher gerade schluckt.'); ?></dt><dd class="tabular-nums" data-live="storage"><?= e(kw($b['storage_priority_kw'])) ?></dd></div>
       <div class="flex justify-between font-medium"><dt>Überschuss</dt><dd class="tabular-nums" data-live="surplus"><?= e(kw($b['surplus_kw'])) ?></dd></div>
     </dl>
   </section>
@@ -48,7 +48,7 @@ page_head('Lademanagement', 'Der Vorschlag wird nur angezeigt. Die Wallbox wird 
     <dl class="mt-3 space-y-2">
       <div class="flex justify-between"><dt>Wallbox</dt><dd class="tabular-nums" data-live="wallbox"><?= e(kw($v['wallbox_kw'])) ?></dd></div>
       <div class="flex justify-between"><dt>Netz</dt><dd class="tabular-nums"><?= e(kw($s['grid_signed_kw'])) ?></dd></div>
-      <div class="flex justify-between"><dt>Reserve</dt><dd class="tabular-nums"><?= e(num(((float) $c['reserve_w']) / 1000, 2)) ?> kW</dd></div>
+      <div class="flex justify-between"><dt class="inline-flex items-center gap-1">Reserve <?php tip('Puffer in Watt am Hauszähler, nicht der Ladestand des Speichers. Die Sollleistung ist Wallbox minus Netz minus diese Reserve. Der Puffer hält das Haus bei einer Wolke vom Netzbezug fern. Startwert 200 W, einstellbar am Regler Regelreserve.'); ?></dt><dd class="tabular-nums"><?= e(num(((float) $c['reserve_w']) / 1000, 2)) ?> kW</dd></div>
       <div class="flex justify-between font-medium"><dt>Soll</dt><dd class="tabular-nums" data-live="psoll"><?= e(kw($s['p_soll_kw'])) ?></dd></div>
       <div class="flex justify-between text-muted-foreground"><dt>Abweichung</dt><dd class="tabular-nums" data-live="delta"><?= e(kw($s['delta_kw'])) ?></dd></div>
     </dl>
@@ -62,17 +62,17 @@ page_head('Lademanagement', 'Der Vorschlag wird nur angezeigt. Die Wallbox wird 
   <input type="hidden" name="mode" value="<?= e($c['mode']) ?>">
   <?php
     $ranges = [
-        'solar_share' => ['Mindest-Sonnenanteil', '%', 0, 100, 1],
-        'reserve_w' => ['Regelreserve', 'W', 0, 2000, 10],
-        'min_a' => ['Minimaler Strom', 'A', 6, 16, 1],
-        'max_a' => ['Maximaler Strom', 'A', 6, 32, 1],
-        'switch_s' => ['Schütz-Schutzzeit', 's', 60, 600, 10],
-        'on_delay_s' => ['Einschaltverzögerung', 's', 60, 600, 10],
-        'off_delay_s' => ['Ausschaltverzögerung', 's', 60, 600, 10],
+        'solar_share' => ['Mindest-Sonnenanteil', '%', 0, 100, 1, ''],
+        'reserve_w' => ['Regelreserve', 'W', 0, 2000, 10, 'Watt, die am Zähler als Abstand zur Nulllinie bleiben. Das ist der Puffer der Sollleistung und etwas anderes als der Speicher-Vorrang.'],
+        'min_a' => ['Minimaler Strom', 'A', 6, 16, 1, ''],
+        'max_a' => ['Maximaler Strom', 'A', 6, 32, 1, ''],
+        'switch_s' => ['Schütz-Schutzzeit', 's', 60, 600, 10, ''],
+        'on_delay_s' => ['Einschaltverzögerung', 's', 60, 600, 10, ''],
+        'off_delay_s' => ['Ausschaltverzögerung', 's', 60, 600, 10, ''],
     ];
-    foreach ($ranges as $name => [$label, $unit, $min, $max, $step]): ?>
+    foreach ($ranges as $name => [$label, $unit, $min, $max, $step, $hint]): ?>
     <label class="block">
-      <span class="flex justify-between text-sm"><span><?= e($label) ?></span><span class="tabular-nums" data-range-out><?= e((string) $c[$name]) ?> <?= e($unit) ?></span></span>
+      <span class="flex justify-between text-sm"><span class="inline-flex items-center gap-1"><?= e($label) ?><?php if ($hint !== ''): ?> <?php tip($hint); ?><?php endif; ?></span><span class="tabular-nums" data-range-out><?= e((string) $c[$name]) ?> <?= e($unit) ?></span></span>
       <input class="mt-2 w-full accent-primary" type="range" name="<?= e($name) ?>" min="<?= $min ?>" max="<?= $max ?>" step="<?= $step ?>" value="<?= e((string) $c[$name]) ?>">
     </label>
   <?php endforeach; ?>
