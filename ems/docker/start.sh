@@ -6,6 +6,6 @@ if [ -f /usr/local/etc/php-fpm.d/www.conf ]; then
   sed -i 's/^user = .*/user = root/' /usr/local/etc/php-fpm.d/www.conf
   sed -i 's/^group = .*/group = root/' /usr/local/etc/php-fpm.d/www.conf
 fi
-php-fpm -D
+php-fpm -D -R
 php /opt/ems/bin/recorder.php &
 exec nginx -g 'daemon off;'
