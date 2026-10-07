@@ -96,6 +96,10 @@
   .btn-ghost { @apply btn border border-border bg-card hover:bg-muted; }
   .field { @apply w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none ring-primary/30 focus:ring-2; }
   .chip { @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium tabular-nums; }
+  button.chip { @apply cursor-pointer; }
+  .chip[aria-pressed='true'] { @apply border-foreground bg-muted text-foreground; }
+  [data-pan] { touch-action: pan-y; cursor: grab; }
+  [data-pan].is-panning { cursor: grabbing; }
   .nav-link { @apply flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground; }
   .nav-link[aria-current='page'] { @apply bg-muted font-medium text-foreground; }
   .entity { @apply relative; }

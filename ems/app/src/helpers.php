@@ -169,7 +169,7 @@ function icon(string $name, string $class = 'h-4 w-4'): string
     $svg = (string) file_get_contents($file);
     $svg = preg_replace('/<!--.*?-->/s', '', $svg) ?? $svg;
     $svg = preg_replace('/\s(?:width|height|class)="[^"]*"/', '', $svg) ?? $svg;
-    $svg = preg_replace('/<svg\b/', '<svg class="' . e($class) . '" aria-hidden="true"', $svg, 1) ?? $svg;
+    $svg = preg_replace('/<svg\b/', '<svg class="' . e($class) . ' overflow-visible" overflow="visible" aria-hidden="true"', $svg, 1) ?? $svg;
     return $svg;
 }
 

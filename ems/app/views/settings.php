@@ -17,64 +17,92 @@ page_head('Einstellungen', 'Tarife, Dach und Strategie liegen hier. Die Messwert
     <?= csrf_field() ?><input type="hidden" name="section" value="mapping"><input type="hidden" name="back" value="/einstellungen">
     <h2 class="font-medium">Zuordnung</h2>
     <p class="text-sm text-muted-foreground">Tippe einen Namen oder eine Entität. Die Liste sucht in Home Assistant und übernimmt die gewählte Kennung.</p>
-    <div class="grid gap-4 sm:grid-cols-2">
-      <?php entity_field('pv_power', 'PV-Leistung', (string) $m['pv_power'], 'Watt oder Kilowatt.'); ?>
-      <?php entity_field('pv_energy', 'PV-Energiezähler, optional', (string) $m['pv_energy'], 'total_increasing in kWh. Sonst wird die Leistung aufintegriert.'); ?>
-      <?php entity_field('battery_soc', 'Ladestand', (string) $m['battery_soc'], 'Prozent.'); ?>
-      <?php entity_field('battery_capacity', 'Restkapazität, optional', (string) $m['battery_capacity'], 'Wh oder kWh.'); ?>
-      <?php entity_field('battery_charge', 'Speicher laden', (string) $m['battery_charge'], 'Leistung beim Laden.'); ?>
-      <?php entity_field('battery_discharge', 'Speicher entladen', (string) $m['battery_discharge'], 'Leistung beim Entladen.'); ?>
-      <?php entity_field('battery_signed', 'Speicher mit Vorzeichen', (string) $m['battery_signed'], 'Nur bei einem gemeinsamen Sensor.'); ?>
-      <?php entity_field('grid_import', 'Netzbezug', (string) $m['grid_import'], 'Leistung aus dem Netz.'); ?>
-      <?php entity_field('grid_export', 'Einspeisung', (string) $m['grid_export'], 'Leistung ins Netz.'); ?>
-      <?php entity_field('grid_signed', 'Netz mit Vorzeichen', (string) $m['grid_signed'], 'Nur bei einem gemeinsamen Sensor.'); ?>
-      <?php entity_field('house_power', 'Hausverbrauch', (string) $m['house_power'], 'Leistung des Haushalts.'); ?>
-      <?php entity_field('wallbox_power', 'Wallbox-Leistung', (string) $m['wallbox_power'], 'Watt oder Kilowatt.'); ?>
-      <?php entity_field('wallbox_car', 'Fahrzeugstatus', (string) $m['wallbox_car'], 'Zum Beispiel charging.'); ?>
-      <?php entity_field('wallbox_amps', 'Gemeldeter Strom', (string) $m['wallbox_amps'], 'Ampere, nur Anzeige.'); ?>
-      <?php entity_field('wallbox_amps_max', 'Maximalstrom', (string) $m['wallbox_amps_max'], 'Optional.'); ?>
-      <?php entity_field('wallbox_phases', 'Gemeldete Phasen', (string) $m['wallbox_phases'], '1-phasig oder 3-phasig.'); ?>
-      <?php entity_field('wallbox_force', 'Zwangszustand', (string) $m['wallbox_force'], 'Optional, nur Anzeige.'); ?>
-      <?php entity_field('weather_radiation', 'Strahlung, optional', (string) $m['weather_radiation'], 'Aktueller Messwert. Die Prognose kommt aus der DWD-Datei.'); ?>
-      <?php entity_field('weather_cloud', 'Bewölkung, optional', (string) $m['weather_cloud'], 'Aktueller Messwert.'); ?>
-      <?php entity_field('weather_sunshine', 'Sonnenschein, optional', (string) $m['weather_sunshine'], 'Aktueller Messwert.'); ?>
-      <?php entity_field('weather_temp', 'Temperatur, optional', (string) $m['weather_temp'], 'Aktueller Messwert.'); ?>
+    <div class="space-y-4">
+      <fieldset class="rounded-lg border border-border p-4">
+        <legend class="px-1 text-sm font-medium">Photovoltaik</legend>
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <?php entity_field('pv_power', 'PV-Leistung', (string) $m['pv_power'], 'Watt oder Kilowatt.'); ?>
+          <?php entity_field('pv_energy', 'PV-Energiezähler, optional', (string) $m['pv_energy'], 'total_increasing in kWh. Sonst wird die Leistung aufintegriert.'); ?>
+        </div>
+      </fieldset>
+      <fieldset class="rounded-lg border border-border p-4">
+        <legend class="px-1 text-sm font-medium">Speicher</legend>
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <?php entity_field('battery_soc', 'Ladestand', (string) $m['battery_soc'], 'Prozent.'); ?>
+          <?php entity_field('battery_capacity', 'Restkapazität, optional', (string) $m['battery_capacity'], 'Wh oder kWh.'); ?>
+          <?php entity_field('battery_charge', 'Speicher laden', (string) $m['battery_charge'], 'Leistung beim Laden.'); ?>
+          <?php entity_field('battery_discharge', 'Speicher entladen', (string) $m['battery_discharge'], 'Leistung beim Entladen.'); ?>
+          <?php entity_field('battery_signed', 'Speicher mit Vorzeichen', (string) $m['battery_signed'], 'Nur bei einem gemeinsamen Sensor.'); ?>
+          <label class="block text-sm">Speicherleistung
+            <select class="field mt-1" name="battery_mode">
+              <option value="split" <?= $m['battery_mode'] === 'split' ? 'selected' : '' ?>>Laden und Entladen getrennt</option>
+              <option value="signed" <?= $m['battery_mode'] === 'signed' ? 'selected' : '' ?>>Ein Sensor mit Vorzeichen</option>
+            </select>
+          </label>
+          <label class="block text-sm">Positives Vorzeichen beim Speicher
+            <select class="field mt-1" name="battery_sign">
+              <option value="positive_charge" <?= $m['battery_sign'] === 'positive_charge' ? 'selected' : '' ?>>Laden</option>
+              <option value="positive_discharge" <?= $m['battery_sign'] === 'positive_discharge' ? 'selected' : '' ?>>Entladen</option>
+            </select>
+          </label>
+        </div>
+      </fieldset>
+      <fieldset class="rounded-lg border border-border p-4">
+        <legend class="px-1 text-sm font-medium">Netz</legend>
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <?php entity_field('grid_import', 'Netzbezug', (string) $m['grid_import'], 'Leistung aus dem Netz.'); ?>
+          <?php entity_field('grid_export', 'Einspeisung', (string) $m['grid_export'], 'Leistung ins Netz.'); ?>
+          <?php entity_field('grid_signed', 'Netz mit Vorzeichen', (string) $m['grid_signed'], 'Nur bei einem gemeinsamen Sensor.'); ?>
+          <label class="block text-sm">Netzleistung
+            <select class="field mt-1" name="grid_mode">
+              <option value="split" <?= $m['grid_mode'] === 'split' ? 'selected' : '' ?>>Bezug und Einspeisung getrennt</option>
+              <option value="signed" <?= $m['grid_mode'] === 'signed' ? 'selected' : '' ?>>Ein Sensor mit Vorzeichen</option>
+            </select>
+          </label>
+          <label class="block text-sm">Positives Vorzeichen beim Netz
+            <select class="field mt-1" name="grid_sign">
+              <option value="positive_import" <?= $m['grid_sign'] === 'positive_import' ? 'selected' : '' ?>>Bezug</option>
+              <option value="positive_export" <?= $m['grid_sign'] === 'positive_export' ? 'selected' : '' ?>>Einspeisung</option>
+            </select>
+          </label>
+        </div>
+      </fieldset>
+      <fieldset class="rounded-lg border border-border p-4">
+        <legend class="px-1 text-sm font-medium">Haus</legend>
+        <div class="mt-3 grid gap-4">
+          <?php entity_field('house_power', 'Hausverbrauch', (string) $m['house_power'], 'Leistung des Haushalts.'); ?>
+          <input type="hidden" name="house_includes_wallbox" value="0">
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="house_includes_wallbox" value="1" <?= !empty($m['house_includes_wallbox']) ? 'checked' : '' ?>> Der Hausverbrauch enthält die Wallbox</label>
+        </div>
+      </fieldset>
+      <fieldset class="rounded-lg border border-border p-4">
+        <legend class="px-1 text-sm font-medium">Wallbox</legend>
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <?php entity_field('wallbox_power', 'Wallbox-Leistung', (string) $m['wallbox_power'], 'Watt oder Kilowatt.'); ?>
+          <?php entity_field('wallbox_car', 'Fahrzeugstatus', (string) $m['wallbox_car'], 'Zum Beispiel charging.'); ?>
+          <?php entity_field('wallbox_amps', 'Gemeldeter Strom', (string) $m['wallbox_amps'], 'Ampere, nur Anzeige.'); ?>
+          <?php entity_field('wallbox_amps_max', 'Maximalstrom', (string) $m['wallbox_amps_max'], 'Optional.'); ?>
+          <?php entity_field('wallbox_phases', 'Gemeldete Phasen', (string) $m['wallbox_phases'], '1-phasig oder 3-phasig.'); ?>
+          <?php entity_field('wallbox_force', 'Zwangszustand', (string) $m['wallbox_force'], 'Optional, nur Anzeige.'); ?>
+        </div>
+      </fieldset>
+      <fieldset class="rounded-lg border border-border p-4">
+        <legend class="px-1 text-sm font-medium">Wetter</legend>
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <?php entity_field('weather_radiation', 'Strahlung, optional', (string) $m['weather_radiation'], 'Aktueller Messwert. Die Prognose kommt aus der DWD-Datei.'); ?>
+          <?php entity_field('weather_cloud', 'Bewölkung, optional', (string) $m['weather_cloud'], 'Aktueller Messwert.'); ?>
+          <?php entity_field('weather_sunshine', 'Sonnenschein, optional', (string) $m['weather_sunshine'], 'Aktueller Messwert.'); ?>
+          <?php entity_field('weather_temp', 'Temperatur, optional', (string) $m['weather_temp'], 'Aktueller Messwert.'); ?>
+          <label class="block text-sm">Wetterstation für die Beschriftung
+            <select class="field mt-1" name="weather_station">
+              <?php foreach (['soonwald' => 'Soonwald West', 'hahn' => 'Flugplatz Hahn', 'kreuznach' => 'Bad Kreuznach'] as $value => $label): ?>
+                <option value="<?= e($value) ?>" <?= $m['weather_station'] === $value ? 'selected' : '' ?>><?= e($label) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+        </div>
+      </fieldset>
     </div>
-    <div class="grid gap-3 sm:grid-cols-2">
-      <label class="block text-sm">Speicherleistung
-        <select class="field mt-1" name="battery_mode">
-          <option value="split" <?= $m['battery_mode'] === 'split' ? 'selected' : '' ?>>Laden und Entladen getrennt</option>
-          <option value="signed" <?= $m['battery_mode'] === 'signed' ? 'selected' : '' ?>>Ein Sensor mit Vorzeichen</option>
-        </select>
-      </label>
-      <label class="block text-sm">Positives Vorzeichen beim Speicher
-        <select class="field mt-1" name="battery_sign">
-          <option value="positive_charge" <?= $m['battery_sign'] === 'positive_charge' ? 'selected' : '' ?>>Laden</option>
-          <option value="positive_discharge" <?= $m['battery_sign'] === 'positive_discharge' ? 'selected' : '' ?>>Entladen</option>
-        </select>
-      </label>
-      <label class="block text-sm">Netzleistung
-        <select class="field mt-1" name="grid_mode">
-          <option value="split" <?= $m['grid_mode'] === 'split' ? 'selected' : '' ?>>Bezug und Einspeisung getrennt</option>
-          <option value="signed" <?= $m['grid_mode'] === 'signed' ? 'selected' : '' ?>>Ein Sensor mit Vorzeichen</option>
-        </select>
-      </label>
-      <label class="block text-sm">Positives Vorzeichen beim Netz
-        <select class="field mt-1" name="grid_sign">
-          <option value="positive_import" <?= $m['grid_sign'] === 'positive_import' ? 'selected' : '' ?>>Bezug</option>
-          <option value="positive_export" <?= $m['grid_sign'] === 'positive_export' ? 'selected' : '' ?>>Einspeisung</option>
-        </select>
-      </label>
-      <label class="block text-sm">Wetterstation für die Beschriftung
-        <select class="field mt-1" name="weather_station">
-          <?php foreach (['soonwald' => 'Soonwald West', 'hahn' => 'Flugplatz Hahn', 'kreuznach' => 'Bad Kreuznach'] as $value => $label): ?>
-            <option value="<?= e($value) ?>" <?= $m['weather_station'] === $value ? 'selected' : '' ?>><?= e($label) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </label>
-    </div>
-    <input type="hidden" name="house_includes_wallbox" value="0">
-    <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="house_includes_wallbox" value="1" <?= !empty($m['house_includes_wallbox']) ? 'checked' : '' ?>> Der Hausverbrauch enthält die Wallbox</label>
     <button class="btn-primary" type="submit">Zuordnung speichern</button>
   </form>
   <section class="card space-y-3 p-5 text-sm">

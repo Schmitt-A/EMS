@@ -77,7 +77,7 @@ $showNav = !empty($showNav);
     <?php
       $short = ['/' => 'Start', '/batterie' => 'Speicher', '/laden' => 'Laden', '/statistik' => 'Statistik', '/prognose' => 'Prognose', '/einstellungen' => 'System'];
       foreach ($nav as $href => [$label, $glyph]): ?>
-      <a class="flex min-w-0 flex-col items-center gap-1 overflow-hidden px-0.5 py-2 text-[10px] leading-tight text-muted-foreground <?= $current === $href ? 'text-foreground' : '' ?>" href="<?= e(url($href)) ?>"><?= icon($glyph, 'h-4 w-4') ?><span class="w-full truncate text-center"><?= e($short[$href] ?? $label) ?></span></a>
+      <a class="flex min-w-0 flex-col items-center gap-1 px-0.5 py-2 text-[10px] leading-tight text-muted-foreground <?= $current === $href ? 'text-foreground' : '' ?>" href="<?= e(url($href)) ?>"><?= icon($glyph, 'h-4 w-4') ?><span class="w-full truncate text-center"><?= e($short[$href] ?? $label) ?></span></a>
     <?php endforeach; ?>
   </nav>
   <?php endif; ?>

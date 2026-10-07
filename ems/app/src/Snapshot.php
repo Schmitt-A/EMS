@@ -172,13 +172,18 @@ final class Snapshot
         $todayStart = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0)->getTimestamp();
         $hours = $feed->hours($todayStart, $now + 12 * 86400);
         $series = Forecast::fromRadiation($hours, $cfg['plant']);
+        if ($series) {
+            Forecast::rememberDays($this->store->pdo(), $series, $cfg['plant']);
+        }
         $actualToday = null;
         try {
             $actualToday = (new Series($this->store, $this->ha))->yieldToday($cfg['mapping']);
         } catch (Throwable) {
             $actualToday = null;
         }
-        $brief = $series ? Forecast::brief($series, $cfg['plant'], $now, $actualToday) : null;
+        $todayKey = (new DateTimeImmutable('@' . $todayStart))->setTimezone($tz)->format('Y-m-d');
+        $lockedToday = Forecast::locked($this->store->pdo(), $todayKey);
+        $brief = $series ? Forecast::brief($series, $cfg['plant'], $now, $actualToday, $lockedToday) : null;
         $sessions = new Sessions($this->store);
         $session = $sessions->open() ?: $sessions->latest();
         $base['balance'] = $balance;

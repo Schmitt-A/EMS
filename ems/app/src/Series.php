@@ -30,7 +30,7 @@ final class Series
 
     private function computeYield(int $start, int $end, array $mapping): ?float
     {
-        $energy = (string) ($mapping['pv_energy'] ?? '');
+        $energy = $this->energyEntity($mapping);
         if ($energy !== '' && $this->ha->configured()) {
             try {
                 $rows = $this->ha->statistics($energy, $start, $end, 'hour');
@@ -48,12 +48,7 @@ final class Series
                 $sum += max(0, (float) $row['change']);
             }
             if ($seen) {
-                $kwh = match ($unit) {
-                    'wh' => $sum / 1000,
-                    'mwh' => $sum * 1000,
-                    '' => $sum > 200 ? $sum / 1000 : $sum,
-                    default => $sum,
-                };
+                $kwh = $this->energyKwh($sum, $unit);
                 return $kwh > 0 ? $kwh : null;
             }
         }
@@ -97,8 +92,10 @@ final class Series
         $pvId = (string) ($mapping['pv_power'] ?? '');
         $actual = $this->points($pvId, $historyStart, $now, 'hour', $this->wattScale($pvId));
         $feed = new WeatherFeed($this->store);
-        $horizon = $feed->hours($today->getTimestamp(), $now + 12 * 86400);
+        $horizon = $feed->hours($today->modify('-1 day')->getTimestamp(), $now + 12 * 86400);
         $forecast = Forecast::fromRadiation($horizon, $plant);
+        Forecast::rememberDays($this->store->pdo(), $forecast, $plant);
+        $slices = Forecast::slices($forecast);
         $future = [];
         $radiation = [];
         $last = $now;
@@ -110,11 +107,51 @@ final class Series
             $future[] = ['x' => $point['t'] * 1000, 'y' => round($point['kw'], 3)];
             $radiation[] = ['x' => $point['t'] * 1000, 'y' => round($point['g'], 0)];
         }
-        $first = $actual[0]['x'] ?? ($today->getTimestamp() * 1000);
-        $span = max(1, (int) ceil(($last - (int) ($first / 1000)) / 86400));
+        $firstMs = $actual[0]['x'] ?? ($today->getTimestamp() * 1000);
+        $viewStart = $today->getTimestamp();
+        $viewEnd = $today->modify('+3 days')->getTimestamp();
+        $boundStart = (new DateTimeImmutable('@' . (int) floor($firstMs / 1000)))->setTimezone($tz)->setTime(0, 0)->getTimestamp();
+        $boundEnd = (new DateTimeImmutable('@' . $last))->setTimezone($tz)->modify('+1 day')->setTime(0, 0)->getTimestamp();
+        $boundStart = min($boundStart, $viewStart);
+        $boundEnd = max($boundEnd, $viewEnd);
+        $marks = [];
+        $cursor = (new DateTimeImmutable('@' . $boundStart))->setTimezone($tz)->setTime(0, 0);
+        $endMark = (new DateTimeImmutable('@' . $boundEnd))->setTimezone($tz);
+        while ($cursor < $endMark) {
+            $day = $cursor->format('Y-m-d');
+            $slice = $slices[$day] ?? null;
+            $kwh = null;
+            $peak = null;
+            $peakY = null;
+            if ($slice && $slice['covered'] && $slice['kwh'] > 0.05) {
+                $kwh = round(Forecast::dailyAdjusted($slice['kwh'], $plant), 1);
+            } else {
+                $stored = Forecast::locked($this->store->pdo(), $day);
+                if ($stored !== null) {
+                    $kwh = round($stored, 1);
+                }
+            }
+            if ($slice && $slice['peak_kw'] > 0.05 && $kwh !== null) {
+                $peak = $slice['peak_t'] * 1000;
+                $peakY = round($slice['peak_kw'], 3);
+            }
+            $marks[] = [
+                'start' => $cursor->getTimestamp() * 1000,
+                'x' => $cursor->modify('+12 hours')->getTimestamp() * 1000,
+                'label' => self::dayLabel($day),
+                'kwh' => $kwh,
+                'peak' => $peak,
+                'peak_y' => $peakY,
+            ];
+            $cursor = $cursor->modify('+1 day');
+        }
+        $span = max(1, (int) round(($boundEnd - $boundStart) / 86400));
         return $this->withNote([
             'days' => $span,
             'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
+            'view' => [$viewStart * 1000, $viewEnd * 1000],
+            'bounds' => [$boundStart * 1000, $boundEnd * 1000],
+            'marks' => $marks,
             'series' => [
                 ['key' => 'actual', 'label' => 'PV gemessen', 'color' => 'pv', 'axis' => 'y', 'data' => $actual],
                 ['key' => 'forecast', 'label' => 'Prognose', 'color' => 'export', 'axis' => 'y', 'data' => $future],
@@ -132,6 +169,7 @@ final class Series
         $feed = new WeatherFeed($this->store);
         $hours = $feed->hours($today->modify('-1 day')->getTimestamp(), $now + 12 * 86400);
         $series = Forecast::fromRadiation($hours, $plant);
+        Forecast::rememberDays($this->store->pdo(), $series, $plant);
         $byForecast = [];
         foreach (Forecast::dailyTotals($series, $plant) as $row) {
             $byForecast[$row['day']] = $row;
@@ -144,7 +182,7 @@ final class Series
             $actualToday = null;
         }
         if ($series) {
-            $brief = Forecast::brief($series, $plant, $now, $actualToday);
+            $brief = Forecast::brief($series, $plant, $now, $actualToday, Forecast::locked($this->store->pdo(), $todayKey));
             $byForecast[$todayKey] = [
                 'day' => $todayKey,
                 'start' => $today->getTimestamp(),
@@ -167,7 +205,8 @@ final class Series
         foreach ($days as $day) {
             $start = (new DateTimeImmutable($day . ' 00:00:00', $tz))->getTimestamp();
             $x = ($start + 43200) * 1000;
-            $forecast[] = ['x' => $x, 'y' => isset($byForecast[$day]) ? round((float) $byForecast[$day]['kwh'], 2) : null];
+            $value = $byForecast[$day]['kwh'] ?? null;
+            $forecast[] = ['x' => $x, 'y' => $value === null ? null : round((float) $value, 2)];
             $actual[] = ['x' => $x, 'y' => $stored[$day] ?? null];
         }
         return [
@@ -192,41 +231,71 @@ final class Series
             $plant = array_merge($plant, $stored);
         }
         $rows = $this->store->pdo()->query('SELECT day, actual_kwh, model_kwh FROM daily ORDER BY day ASC')->fetchAll() ?: [];
-        $actual = $model = $factor = $fitted = $regress = [];
-        $f = (float) $plant['factor'];
-        foreach ($rows as $row) {
-            $x = strtotime($row['day'] . ' 12:00:00 Europe/Berlin') * 1000;
-            $a = $row['actual_kwh'] !== null ? round((float) $row['actual_kwh'], 2) : null;
-            $m = $row['model_kwh'] !== null ? round((float) $row['model_kwh'], 2) : null;
-            $actual[] = ['x' => $x, 'y' => $a];
-            $model[] = ['x' => $x, 'y' => $m];
-            $factor[] = ['x' => $x, 'y' => ($a && $m) ? round($m / max(0.1, $a), 3) : null];
-            $fitted[] = ['x' => $x, 'y' => $m !== null ? round($m * $f, 2) : null];
-            $regress[] = ['x' => $x, 'y' => $m !== null ? round(max(0, (float) $plant['regress_a'] + (float) $plant['regress_b'] * $m), 2) : null];
-        }
         $tz = new DateTimeZone('Europe/Berlin');
         $today = (new DateTimeImmutable('now', $tz))->setTime(0, 0);
+        $todayKey = $today->format('Y-m-d');
+        $actualToday = null;
+        try {
+            $mapping = $this->store->all()['mapping'] ?? [];
+            $actualToday = $this->yieldToday(is_array($mapping) ? $mapping : []);
+        } catch (Throwable) {
+            $actualToday = null;
+        }
+        $lockedToday = Forecast::locked($this->store->pdo(), $todayKey);
+        $labels = $actual = $model = $gute = $raw = $fitted = $regress = [];
+        $seenToday = false;
+        foreach ($rows as $row) {
+            $day = (string) $row['day'];
+            $isToday = $day === $todayKey;
+            $seenToday = $seenToday || $isToday;
+            $a = $row['actual_kwh'] !== null ? round((float) $row['actual_kwh'], 2) : null;
+            $m = $row['model_kwh'] !== null ? (float) $row['model_kwh'] : null;
+            if ($isToday) {
+                $a = $actualToday !== null ? round($actualToday, 2) : $a;
+                $predicted = $lockedToday;
+            } else {
+                $predicted = $m !== null ? Forecast::predicted($m, $plant) : null;
+            }
+            $labels[] = self::dayLabel($day);
+            $actual[] = $a;
+            $model[] = $predicted !== null ? round($predicted, 2) : null;
+            $gute[] = ($a && $predicted) ? round($predicted / $a, 3) : null;
+            $raw[] = $m !== null ? round($m, 2) : null;
+            $fitted[] = $m !== null ? round($m * (float) $plant['factor'], 2) : null;
+            $regress[] = $m !== null ? round(max(0, (float) $plant['regress_a'] + (float) $plant['regress_b'] * $m), 2) : null;
+        }
+        if (!$seenToday) {
+            $labels[] = self::dayLabel($todayKey);
+            $actual[] = $actualToday !== null ? round($actualToday, 2) : null;
+            $model[] = $lockedToday !== null ? round($lockedToday, 2) : null;
+            $gute[] = ($actualToday && $lockedToday) ? round($lockedToday / $actualToday, 3) : null;
+            $raw[] = null;
+            $fitted[] = null;
+            $regress[] = null;
+        }
+        $ideal = array_fill(0, count($labels), 1);
         $frame = [
-            'days' => max(1, count($rows)),
+            'axis' => 'category',
+            'labels' => $labels,
+            'days' => max(1, count($labels)),
             'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
         ];
         $noted = $this->withNote(['series' => [
-            ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'data' => $actual],
+            ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'data' => array_map(fn ($y) => ['x' => 0, 'y' => $y], array_filter($actual, fn ($y) => $y !== null))],
         ]]);
         $error = $noted['error'] ?? null;
         $daily = $frame + [
             'series' => [
                 ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'type' => 'bar', 'data' => $actual],
-                ['key' => 'model', 'label' => 'Modell roh', 'color' => 'house', 'type' => 'bar', 'data' => $model],
-                ['key' => 'k', 'label' => 'Güte k', 'color' => 'wallbox', 'axis' => 'y1', 'data' => $factor],
-                ['key' => 'factor', 'label' => 'Eichfaktor', 'color' => 'export', 'axis' => 'y1', 'dash' => true, 'data' => $this->span($rows, $f)],
-                ['key' => 'ideal', 'label' => 'Ideal 1,0', 'color' => 'muted', 'axis' => 'y1', 'dash' => true, 'data' => $this->span($rows, 1)],
+                ['key' => 'model', 'label' => 'Modell', 'color' => 'export', 'type' => 'bar', 'data' => $model],
+                ['key' => 'k', 'label' => 'Güte', 'color' => 'wallbox', 'axis' => 'y1', 'data' => $gute],
+                ['key' => 'ideal', 'label' => 'Güte 1,0', 'color' => 'muted', 'axis' => 'y1', 'dash' => true, 'data' => $ideal],
             ],
         ];
         $compare = $frame + [
             'series' => [
                 ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'data' => $actual],
-                ['key' => 'model', 'label' => 'Modell roh', 'color' => 'muted', 'data' => $model],
+                ['key' => 'model', 'label' => 'Modell roh', 'color' => 'muted', 'data' => $raw],
                 ['key' => 'fitted', 'label' => 'Starrer Faktor', 'color' => 'house', 'data' => $fitted],
                 ['key' => 'regress', 'label' => 'Regression', 'color' => 'export', 'data' => $regress],
             ],
@@ -290,7 +359,8 @@ final class Series
         $locked = is_array($storedPlant) && !empty($storedPlant['factor_locked']);
         $factorNow = (float) (is_array($storedPlant) ? ($storedPlant['factor'] ?? 0.93) : 0.93);
         $needsReset = $paired < 5 && !$locked && abs($factorNow - 0.93) > 0.001;
-        if (!$force && $last === $today && !$needsReset) {
+        $version = '2';
+        if (!$force && $last === $today && !$needsReset && (string) $this->store->get('calibration_version', '') === $version) {
             return;
         }
         if (!$this->ha->configured()) {
@@ -303,9 +373,10 @@ final class Series
         if ($power === '') {
             return;
         }
-        $this->rememberActuals($power);
+        $this->rememberActuals($map);
         if ($radiation === '') {
             $this->store->put('last_calibration', $today);
+            $this->store->put('calibration_version', '2');
             return;
         }
         $n = max(3, (int) $plant['n_days']);
@@ -366,6 +437,7 @@ final class Series
         }
         $this->store->merge('plant', $patch);
         $this->store->put('last_calibration', $today);
+        $this->store->put('calibration_version', '2');
     }
 
     private function unitOf(string $entity): string
@@ -415,8 +487,14 @@ final class Series
         return 0.0;
     }
 
-    private function rememberActuals(string $power): void
+    private function rememberActuals(array $mapping): void
     {
+        $energy = $this->energyEntity($mapping);
+        if ($energy !== '') {
+            $this->rememberEnergy($energy);
+            return;
+        }
+        $power = (string) ($mapping['pv_power'] ?? '');
         $rows = $this->statisticRows($power, time() - 420 * 86400, time(), 'day');
         $unit = $this->unitOf($power);
         $tz = new DateTimeZone('Europe/Berlin');
@@ -432,6 +510,76 @@ final class Series
             }
             $stmt->execute([$day, round($this->meanKw($row['mean'], $unit) * 24, 3)]);
         }
+    }
+
+    private function rememberEnergy(string $energy): void
+    {
+        $rows = $this->statisticRows($energy, time() - 420 * 86400, time() + 3600, 'hour');
+        $unit = $this->unitOf($energy);
+        $tz = new DateTimeZone('Europe/Berlin');
+        $today = (new DateTimeImmutable('now', $tz))->format('Y-m-d');
+        $byDay = [];
+        foreach ($rows as $row) {
+            if ($row['change'] === null) {
+                continue;
+            }
+            $day = (new DateTimeImmutable('@' . $row['start']))->setTimezone($tz)->format('Y-m-d');
+            if ($day === $today) {
+                continue;
+            }
+            $byDay[$day] = ($byDay[$day] ?? 0) + $this->energyKwh(max(0, (float) $row['change']), $unit);
+        }
+        $stmt = $this->store->pdo()->prepare('INSERT INTO daily (day, actual_kwh) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET actual_kwh = excluded.actual_kwh');
+        foreach ($byDay as $day => $kwh) {
+            if ($kwh > 0) {
+                $stmt->execute([$day, round($kwh, 3)]);
+            }
+        }
+    }
+
+    private function energyEntity(array $mapping): string
+    {
+        $set = trim((string) ($mapping['pv_energy'] ?? ''));
+        if ($set !== '') {
+            return $set;
+        }
+        $candidate = 'sensor.daily_pv_generation_battery_discharge';
+        if (!$this->ha->configured()) {
+            return '';
+        }
+        try {
+            $row = $this->ha->index()[$candidate] ?? null;
+        } catch (Throwable) {
+            return '';
+        }
+        if (!is_array($row)) {
+            return '';
+        }
+        $attrs = is_array($row['attributes'] ?? null) ? $row['attributes'] : [];
+        $class = strtolower((string) ($attrs['device_class'] ?? ''));
+        $unit = strtolower(str_replace([' ', '·'], '', (string) ($attrs['unit_of_measurement'] ?? '')));
+        if ($class !== 'energy' && !in_array($unit, ['kwh', 'wh', 'mwh'], true)) {
+            return '';
+        }
+        $this->store->merge('mapping', ['pv_energy' => $candidate]);
+        return $candidate;
+    }
+
+    private function energyKwh(float $amount, string $unit): float
+    {
+        return match ($unit) {
+            'wh' => $amount / 1000,
+            'mwh' => $amount * 1000,
+            '' => $amount > 200 ? $amount / 1000 : $amount,
+            default => $amount,
+        };
+    }
+
+    private static function dayLabel(string $day): string
+    {
+        $dt = new DateTimeImmutable($day . ' 12:00:00', new DateTimeZone('Europe/Berlin'));
+        $names = ['Mon' => 'Mo', 'Tue' => 'Di', 'Wed' => 'Mi', 'Thu' => 'Do', 'Fri' => 'Fr', 'Sat' => 'Sa', 'Sun' => 'So'];
+        return ($names[$dt->format('D')] ?? $dt->format('D')) . ' ' . $dt->format('d.m.');
     }
 
     private function statisticRows(string $entity, int $start, int $end, string $period): array

@@ -68,8 +68,11 @@ $fit = Forecast::regression([10, 20, 30], [12, 22, 32]);
 check(abs($fit['a'] - 2) < 0.01 && abs($fit['b'] - 1) < 0.01, 'Regression');
 $west = Forecast::geometry(13, 270);
 check(abs($west - 1) < 0.02, 'Westdach nahe Faktor 1');
-$noon = Forecast::powerKw(1000, 13, ['kwp' => 10.03, 'factor' => 1, 'tilt' => 13, 'azimuth' => 270, 'inverter_kw' => 10]);
+$plantNoon = ['kwp' => 10.03, 'factor' => 1, 'tilt' => 13, 'azimuth' => 270, 'inverter_kw' => 10];
+$noon = Forecast::powerKw(1000, 13, $plantNoon);
+$morning = Forecast::powerKw(1000, 8, $plantNoon);
 check($noon > 4 && $noon <= 10, '1000 W/m² bleibt unter dem Limit, ist ' . $noon);
+check(abs($morning - $noon) < 0.001, 'die Stunde verändert die Leistung nicht');
 
 $latched = Energy::latch(['amps' => 10, 'phases' => 1], ['amps' => 0, 'phases' => 1], 1000, $charge);
 check($latched['latched_amps'] === 0 && $latched['wait_s'] === 60, 'Einschalten wartet 60 s');
@@ -114,7 +117,9 @@ $partial = [
     ['t' => strtotime('2026-10-07 17:00:00 Europe/Berlin'), 'kw' => 1.0],
 ];
 $brief = Forecast::brief($partial, $plant, $now, 6.5);
-check(abs($brief['remaining_kwh'] - 2.5) < 0.01 && abs($brief['today_kwh'] - 9.0) < 0.01, 'Rest plus bisheriger Ertrag');
+check($brief['today_kwh'] === null && abs($brief['remaining_kwh'] - 2.5) < 0.01, 'Ohne Morgenstunden bleibt die Tagessumme offen');
+$kept = Forecast::brief($partial, $plant, $now, 6.5, 28.0);
+check(abs((float) $kept['today_kwh'] - 28) < 0.01 && abs($kept['remaining_kwh'] - 2.5) < 0.01, 'Gespeicherte Tagessumme bleibt ohne Morgenstunden');
 $scaled = $plant;
 $scaled['factor'] = 0.5;
 $once = Forecast::brief($partial, $scaled, $now, 6.5);

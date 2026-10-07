@@ -33,8 +33,8 @@ final class Forecast
 
     public static function powerKw(float $radiation, int $hour, array $plant): float
     {
-        $shape = self::shape((float) $plant['azimuth'])[$hour] ?? 1;
-        $kw = $radiation * self::chain((float) $plant['kwp'], (float) $plant['factor']) * self::geometry((float) $plant['tilt'], (float) $plant['azimuth']) * $shape;
+        unset($hour);
+        $kw = $radiation * self::chain((float) $plant['kwp'], (float) $plant['factor']);
         return min((float) $plant['inverter_kw'], max(0, $kw));
     }
 
@@ -72,6 +72,15 @@ final class Forecast
     public static function methodLabel(array $plant): string
     {
         return ((int) ($plant['regress_days'] ?? 0) >= 5) ? 'Regression' : 'Eichfaktor';
+    }
+
+    /** Modellwert, den die Tagesansicht zeigt: Regression ab fünf Tagen, sonst Rohmodell mal Eichfaktor. */
+    public static function predicted(float $rawModel, array $plant): float
+    {
+        if ((int) ($plant['regress_days'] ?? 0) >= 5) {
+            return self::dailyAdjusted($rawModel, $plant);
+        }
+        return max(0, $rawModel * (float) ($plant['factor'] ?? 1));
     }
 
     /** @param array<int, array{t:int,v:float}> $points kW */
@@ -132,7 +141,7 @@ final class Forecast
         return $sum;
     }
 
-    public static function brief(array $series, array $plant, int $now, ?float $actualToday = null): array
+    public static function brief(array $series, array $plant, int $now, ?float $actualToday = null, ?float $lockedToday = null): array
     {
         $tz = new DateTimeZone('Europe/Berlin');
         $today = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0);
@@ -153,12 +162,12 @@ final class Forecast
             $remaining = $adjustedToday * ($futureModel / $modelToday);
             $total = $adjustedToday;
         } else {
-            // Die Stundenleistung enthält den Eichfaktor schon. Die Regression ersetzt ihn erst ab fünf Tagen.
+            // Die Stundenleistung enthält den Eichfaktor schon. Ohne die Morgenstunden bleibt die Tagessumme der zuletzt vollständige Wert.
             $remaining = max(0, $futureModel);
             if ((int) ($plant['regress_days'] ?? 0) >= 5) {
                 $remaining = max(0, $futureModel * (float) $plant['regress_b']);
             }
-            $total = ($actualToday ?? 0) + $remaining;
+            $total = $lockedToday;
         }
         return [
             'model_today_kwh' => $modelToday,
@@ -186,5 +195,70 @@ final class Forecast
             $out[] = ['day' => $day, 'start' => $start, 'kwh' => self::dailyAdjusted($model, $plant)];
         }
         return $out;
+    }
+
+    public static function ensureDays(PDO $pdo): void
+    {
+        $pdo->exec('CREATE TABLE IF NOT EXISTS forecast_days (day TEXT PRIMARY KEY, kwh REAL NOT NULL)');
+    }
+
+    /** @param array<int, array{t:int, kw:float}> $series */
+    public static function rememberDays(PDO $pdo, array $series, array $plant): void
+    {
+        self::ensureDays($pdo);
+        $stmt = $pdo->prepare('INSERT INTO forecast_days (day, kwh) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET kwh = excluded.kwh');
+        foreach (self::slices($series) as $day => $slice) {
+            if (!$slice['covered'] || $slice['kwh'] <= 0.05) {
+                continue;
+            }
+            $stmt->execute([$day, round(self::dailyAdjusted($slice['kwh'], $plant), 3)]);
+        }
+    }
+
+    public static function locked(PDO $pdo, string $day): ?float
+    {
+        self::ensureDays($pdo);
+        $stmt = $pdo->prepare('SELECT kwh FROM forecast_days WHERE day = ?');
+        $stmt->execute([$day]);
+        $row = $stmt->fetch();
+        return $row ? (float) $row['kwh'] : null;
+    }
+
+    /**
+     * @param array<int, array{t:int, kw:float}> $series
+     * @return array<string, array{start:int, kwh:float, earliest:int, peak_t:int, peak_kw:float, covered:bool}>
+     */
+    public static function slices(array $series): array
+    {
+        $tz = new DateTimeZone('Europe/Berlin');
+        $by = [];
+        foreach ($series as $point) {
+            if (!isset($point['t'])) {
+                continue;
+            }
+            $local = (new DateTimeImmutable('@' . (int) $point['t']))->setTimezone($tz);
+            $day = $local->format('Y-m-d');
+            $kw = max(0, (float) ($point['kw'] ?? 0));
+            if (!isset($by[$day])) {
+                $by[$day] = [
+                    'start' => $local->setTime(0, 0)->getTimestamp(),
+                    'kwh' => 0.0,
+                    'earliest' => (int) $point['t'],
+                    'peak_t' => (int) $point['t'],
+                    'peak_kw' => $kw,
+                ];
+            }
+            $by[$day]['kwh'] += $kw;
+            $by[$day]['earliest'] = min($by[$day]['earliest'], (int) $point['t']);
+            if ($kw >= $by[$day]['peak_kw']) {
+                $by[$day]['peak_kw'] = $kw;
+                $by[$day]['peak_t'] = (int) $point['t'];
+            }
+        }
+        foreach ($by as &$slice) {
+            $slice['covered'] = $slice['earliest'] <= $slice['start'] + 5400;
+        }
+        unset($slice);
+        return $by;
     }
 }

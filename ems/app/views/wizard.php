@@ -22,7 +22,7 @@ page_head('Einrichten', Actions::STEPS[$step] . ' · Schritt ' . (($index === fa
     <p class="text-sm <?= !empty($ping['ok']) ? 'text-export' : 'text-import' ?>"><?= !empty($ping['ok']) ? 'Erreichbar. Home Assistant ' . e((string) $ping['version']) : e((string) ($ping['error'] ?? '')) ?></p>
   <?php elseif ($step === 'photovoltaik'): ?>
     <?php entity_field('pv_power', 'PV-Leistung', (string) $mapping['pv_power'], 'Watt oder Kilowatt, die Einheit wird umgerechnet.', $suggest['pv_power'] ?? ''); ?>
-    <?php entity_field('pv_energy', 'Energiezähler, optional', (string) $mapping['pv_energy'], 'total_increasing in kWh. Sonst wird die Leistung aufintegriert.', ''); ?>
+    <?php entity_field('pv_energy', 'Energiezähler, optional', (string) $mapping['pv_energy'], 'total_increasing in kWh. Sonst wird die Leistung aufintegriert.', $suggest['pv_energy'] ?? ''); ?>
   <?php elseif ($step === 'speicher'): ?>
     <?php entity_field('battery_soc', 'Ladestand', (string) $mapping['battery_soc'], 'Prozent.', $suggest['battery_soc'] ?? ''); ?>
     <label class="block text-sm">Leistungsart

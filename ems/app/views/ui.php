@@ -33,13 +33,14 @@ function entity_field(string $name, string $label, string $value, string $hint, 
     echo '</label>';
 }
 
-function chart_box(string $endpoint, string $class = 'h-72', bool $scroll = false): void
+function chart_box(string $endpoint, string $class = 'h-72', string $mode = ''): void
 {
-    if ($scroll) {
+    if ($mode === 'scroll') {
         echo '<div class="overflow-x-auto">';
     }
-    echo '<div class="' . e($class) . '" data-chart' . ($scroll ? ' data-scroll="1"' : '') . ' data-url="' . e(url($endpoint)) . '"><canvas></canvas></div>';
-    if ($scroll) {
+    $attr = $mode === 'scroll' ? ' data-scroll="1"' : ($mode === 'pan' ? ' data-pan="1"' : '');
+    echo '<div class="' . e($class) . '" data-chart' . $attr . ' data-url="' . e(url($endpoint)) . '"><canvas></canvas></div>';
+    if ($mode === 'scroll') {
         echo '</div>';
     }
 }

@@ -140,15 +140,20 @@ if ($path === '/statistik') {
     page('stats', compact('live', 'month', 'months', 'rows', 'totals', 'tariffs') + ['title' => 'Statistik']);
 }
 if ($path === '/prognose') {
+    try {
+        (new Series(store(), ha()))->calibrate(cfg()['plant'], false);
+    } catch (Throwable) {
+        // Die Kacheln bleiben aus dem letzten Stand, das Diagramm meldet den Fehler selbst.
+    }
     $yield = safe_yield();
     $yesterday = yesterday_yield();
     $goodness = null;
-    $day = (new DateTimeImmutable('yesterday'))->format('Y-m-d');
+    $day = (new DateTimeImmutable('yesterday', new DateTimeZone('Europe/Berlin')))->format('Y-m-d');
     $stmt = store()->pdo()->prepare('SELECT actual_kwh, model_kwh FROM daily WHERE day = ?');
     $stmt->execute([$day]);
     $row = $stmt->fetch();
     if ($row && (float) $row['actual_kwh'] > 0 && $row['model_kwh'] !== null) {
-        $goodness = (float) $row['model_kwh'] / (float) $row['actual_kwh'];
+        $goodness = Forecast::predicted((float) $row['model_kwh'], cfg()['plant']) / (float) $row['actual_kwh'];
     }
     page('forecast', compact('snap', 'live', 'yield', 'yesterday', 'goodness') + ['title' => 'Prognose']);
 }

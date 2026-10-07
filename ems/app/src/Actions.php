@@ -16,6 +16,7 @@ final class Actions
 
     public const SUGGEST = [
         'pv_power' => 'sensor.total_dc_power',
+        'pv_energy' => 'sensor.daily_pv_generation_battery_discharge',
         'house_power' => 'sensor.sonnenbatterie_382994_state_consumption_current',
         'grid_import' => 'sensor.sonnenbatterie_382994_state_grid_in',
         'grid_export' => 'sensor.sonnenbatterie_382994_state_grid_out',
