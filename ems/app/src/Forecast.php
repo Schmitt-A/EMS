@@ -153,8 +153,11 @@ final class Forecast
             $remaining = $adjustedToday * ($futureModel / $modelToday);
             $total = $adjustedToday;
         } else {
-            $scale = ((int) ($plant['regress_days'] ?? 0) >= 5) ? (float) $plant['regress_b'] : (float) ($plant['factor'] ?? 1);
-            $remaining = max(0, $futureModel * $scale);
+            // Die Stundenleistung enthält den Eichfaktor schon. Die Regression ersetzt ihn erst ab fünf Tagen.
+            $remaining = max(0, $futureModel);
+            if ((int) ($plant['regress_days'] ?? 0) >= 5) {
+                $remaining = max(0, $futureModel * (float) $plant['regress_b']);
+            }
             $total = ($actualToday ?? 0) + $remaining;
         }
         return [

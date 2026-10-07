@@ -115,6 +115,10 @@ $partial = [
 ];
 $brief = Forecast::brief($partial, $plant, $now, 6.5);
 check(abs($brief['remaining_kwh'] - 2.5) < 0.01 && abs($brief['today_kwh'] - 9.0) < 0.01, 'Rest plus bisheriger Ertrag');
+$scaled = $plant;
+$scaled['factor'] = 0.5;
+$once = Forecast::brief($partial, $scaled, $now, 6.5);
+check(abs($once['remaining_kwh'] - 2.5) < 0.01, 'Eichfaktor wird nicht ein zweites Mal auf die Stunden gelegt');
 $full = [
     ['t' => strtotime('2026-10-07 00:00:00 Europe/Berlin'), 'kw' => 0.0],
     ['t' => strtotime('2026-10-07 12:00:00 Europe/Berlin'), 'kw' => 4.0],

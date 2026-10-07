@@ -126,22 +126,52 @@ final class Series
     public function outlook(array $plant): array
     {
         $tz = new DateTimeZone('Europe/Berlin');
+        $now = time();
         $today = (new DateTimeImmutable('now', $tz))->setTime(0, 0);
+        $todayKey = $today->format('Y-m-d');
         $feed = new WeatherFeed($this->store);
-        $hours = $feed->hours($today->modify('-1 day')->getTimestamp(), time() + 12 * 86400);
-        $totals = Forecast::dailyTotals(Forecast::fromRadiation($hours, $plant), $plant);
+        $hours = $feed->hours($today->modify('-1 day')->getTimestamp(), $now + 12 * 86400);
+        $series = Forecast::fromRadiation($hours, $plant);
+        $byForecast = [];
+        foreach (Forecast::dailyTotals($series, $plant) as $row) {
+            $byForecast[$row['day']] = $row;
+        }
+        $mapping = $this->store->all()['mapping'] ?? [];
+        $actualToday = null;
+        try {
+            $actualToday = $this->yieldToday(is_array($mapping) ? $mapping : []);
+        } catch (Throwable) {
+            $actualToday = null;
+        }
+        if ($series) {
+            $brief = Forecast::brief($series, $plant, $now, $actualToday);
+            $byForecast[$todayKey] = [
+                'day' => $todayKey,
+                'start' => $today->getTimestamp(),
+                'kwh' => $brief['today_kwh'],
+            ];
+        }
         $stored = [];
         foreach ($this->store->pdo()->query('SELECT day, actual_kwh FROM daily') ?: [] as $row) {
-            $stored[$row['day']] = $row['actual_kwh'] !== null ? round((float) $row['actual_kwh'], 2) : null;
+            if ($row['actual_kwh'] === null) {
+                continue;
+            }
+            $stored[(string) $row['day']] = round((float) $row['actual_kwh'], 2);
         }
+        if ($actualToday !== null) {
+            $stored[$todayKey] = round($actualToday, 2);
+        }
+        $days = array_keys($stored + $byForecast);
+        sort($days);
         $forecast = $actual = [];
-        foreach ($totals as $row) {
-            $x = ($row['start'] + 43200) * 1000;
-            $forecast[] = ['x' => $x, 'y' => round($row['kwh'], 2)];
-            $actual[] = ['x' => $x, 'y' => $stored[$row['day']] ?? null];
+        foreach ($days as $day) {
+            $start = (new DateTimeImmutable($day . ' 00:00:00', $tz))->getTimestamp();
+            $x = ($start + 43200) * 1000;
+            $forecast[] = ['x' => $x, 'y' => isset($byForecast[$day]) ? round((float) $byForecast[$day]['kwh'], 2) : null];
+            $actual[] = ['x' => $x, 'y' => $stored[$day] ?? null];
         }
         return [
-            'days' => max(1, count($totals)),
+            'days' => max(1, count($days)),
             'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
             'series' => [
                 ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'type' => 'bar', 'data' => $actual],
@@ -255,7 +285,12 @@ final class Series
     {
         $last = (string) $this->store->get('last_calibration', '');
         $today = (new DateTimeImmutable('now', new DateTimeZone('Europe/Berlin')))->format('Y-m-d');
-        if (!$force && $last === $today) {
+        $storedPlant = $this->store->get('plant', []);
+        $paired = (int) (is_array($storedPlant) ? ($storedPlant['regress_days'] ?? 0) : 0);
+        $locked = is_array($storedPlant) && !empty($storedPlant['factor_locked']);
+        $factorNow = (float) (is_array($storedPlant) ? ($storedPlant['factor'] ?? 0.93) : 0.93);
+        $needsReset = $paired < 5 && !$locked && abs($factorNow - 0.93) > 0.001;
+        if (!$force && $last === $today && !$needsReset) {
             return;
         }
         if (!$this->ha->configured()) {
@@ -317,13 +352,17 @@ final class Series
             }
         }
         $patch = ['regress_days' => count($xs)];
-        if ($ratios && empty($plant['factor_locked'])) {
-            $patch['factor'] = round(array_sum($ratios) / count($ratios), 3);
-        }
-        $fit = Forecast::regression($xs, $ys);
-        if ($fit['a'] !== null && empty($plant['regress_locked'])) {
-            $patch['regress_a'] = round($fit['a'], 3);
-            $patch['regress_b'] = round($fit['b'], 3);
+        if (count($xs) >= 5) {
+            if ($ratios && empty($plant['factor_locked'])) {
+                $patch['factor'] = round(array_sum($ratios) / count($ratios), 3);
+            }
+            $fit = Forecast::regression($xs, $ys);
+            if ($fit['a'] !== null && empty($plant['regress_locked'])) {
+                $patch['regress_a'] = round($fit['a'], 3);
+                $patch['regress_b'] = round($fit['b'], 3);
+            }
+        } elseif (empty($plant['factor_locked'])) {
+            $patch['factor'] = (float) ($this->store->defaults()['plant']['factor'] ?? 0.93);
         }
         $this->store->merge('plant', $patch);
         $this->store->put('last_calibration', $today);
