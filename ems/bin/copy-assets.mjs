@@ -18,8 +18,9 @@ for (const weight of [400, 500, 600]) {
 const chart = join(root, 'node_modules/chart.js/dist/chart.umd.js');
 copyFileSync(chart, join(js, 'chart.js'));
 
+// battery.svg is drawn by hand (filled cell). The Lucide outline must not replace it.
 const names = [
-  'sun', 'battery', 'battery-charging', 'house', 'utility-pole', 'car', 'zap',
+  'sun', 'battery-charging', 'house', 'utility-pole', 'car', 'zap',
   'settings', 'chart-column', 'chart-line', 'arrow-down', 'arrow-up',
   'circle-check', 'circle-alert', 'search', 'cloud-sun', 'gauge', 'timer',
   'sliders-horizontal', 'info', 'chevron-right', 'activity', 'compass',
