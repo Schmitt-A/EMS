@@ -1,0 +1,11 @@
+services:
+  ems:
+    build: ./ems
+    ports:
+      - "8099:8099"
+    env_file:
+      - .env
+    environment:
+      EMS_DATA: /data
+    volumes:
+      - ./data:/data

@@ -1,0 +1,150 @@
+<?php
+declare(strict_types=1);
+
+final class ConfigStore
+{
+    private \PDO $pdo;
+
+    public function __construct(string $path)
+    {
+        $this->pdo = new \PDO('sqlite:' . $path, null, null, [
+            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+        ]);
+        $this->pdo->exec('PRAGMA journal_mode=WAL');
+        $this->pdo->exec('PRAGMA busy_timeout=4000');
+        $this->pdo->exec('CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
+        $this->pdo->exec(
+            'CREATE TABLE IF NOT EXISTS sessions (
+                id INTEGER PRIMARY KEY,
+                started_at TEXT NOT NULL UNIQUE,
+                ended_at TEXT,
+                vehicle TEXT,
+                loadpoint TEXT,
+                energy_kwh REAL NOT NULL DEFAULT 0,
+                solar_kwh REAL NOT NULL DEFAULT 0,
+                grid_kwh REAL NOT NULL DEFAULT 0,
+                duration_s INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT "recorder"
+            )'
+        );
+        $this->pdo->exec(
+            'CREATE TABLE IF NOT EXISTS daily (
+                day TEXT PRIMARY KEY,
+                actual_kwh REAL,
+                model_kwh REAL
+            )'
+        );
+    }
+
+    public function defaults(): array
+    {
+        return [
+            'wizard_done' => false,
+            'mapping' => [
+                'pv_power' => '',
+                'pv_energy' => '',
+                'battery_soc' => '',
+                'battery_mode' => 'split',
+                'battery_charge' => '',
+                'battery_discharge' => '',
+                'battery_signed' => '',
+                'battery_sign' => 'positive_charge',
+                'battery_capacity' => '',
+                'grid_mode' => 'split',
+                'grid_import' => '',
+                'grid_export' => '',
+                'grid_signed' => '',
+                'grid_sign' => 'positive_import',
+                'house_power' => '',
+                'house_includes_wallbox' => true,
+                'wallbox_power' => '',
+                'wallbox_car' => '',
+                'wallbox_amps' => '',
+                'wallbox_amps_max' => '',
+                'wallbox_phases' => '',
+                'wallbox_force' => '',
+                'weather_radiation' => '',
+                'weather_cloud' => '',
+                'weather_sunshine' => '',
+                'weather_temp' => '',
+                'weather_station' => 'soonwald',
+            ],
+            'tariffs' => ['import_ct' => 34.7, 'export_ct' => 11.0],
+            'plant' => [
+                'kwp' => 10.03,
+                'inverter_kw' => 10.0,
+                'tilt' => 13.0,
+                'azimuth' => 270.0,
+                'n_days' => 7,
+                'factor' => 0.93,
+                'factor_locked' => false,
+                'regress_a' => 2.1,
+                'regress_b' => 0.86,
+                'regress_locked' => false,
+                'regress_days' => 0,
+            ],
+            'charge' => [
+                'mode' => 'smart',
+                'phase_mode' => 'auto',
+                'solar_share' => 100.0,
+                'reserve_w' => 200.0,
+                'min_a' => 6,
+                'max_a' => 16,
+                'switch_s' => 60,
+                'on_delay_s' => 60,
+                'off_delay_s' => 60,
+            ],
+            'battery_strategy' => ['priority_soc' => 80.0, 'reserve_soc' => 100.0],
+            'ui' => ['theme' => 'system'],
+        ];
+    }
+
+    public function get(string $key, mixed $default = null): mixed
+    {
+        $stmt = $this->pdo->prepare('SELECT v FROM kv WHERE k = ?');
+        $stmt->execute([$key]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return $default ?? ($this->defaults()[$key] ?? null);
+        }
+        return json_decode((string) $row['v'], true);
+    }
+
+    public function put(string $key, mixed $value): void
+    {
+        $stmt = $this->pdo->prepare('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v');
+        $stmt->execute([$key, json_encode($value, JSON_UNESCAPED_UNICODE)]);
+    }
+
+    public function merge(string $key, array $patch): array
+    {
+        $current = $this->get($key, []);
+        if (!is_array($current)) {
+            $current = [];
+        }
+        $defaults = $this->defaults()[$key] ?? [];
+        $next = array_merge(is_array($defaults) ? $defaults : [], $current, $patch);
+        $this->put($key, $next);
+        return $next;
+    }
+
+    public function all(): array
+    {
+        $out = $this->defaults();
+        foreach (array_keys($out) as $key) {
+            $value = $this->get($key, $out[$key]);
+            if (is_array($out[$key]) && is_array($value)) {
+                $out[$key] = array_merge($out[$key], $value);
+            } else {
+                $out[$key] = $value;
+            }
+        }
+        return $out;
+    }
+
+    public function pdo(): \PDO
+    {
+        return $this->pdo;
+    }
+}

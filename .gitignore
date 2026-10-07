@@ -1,0 +1,7 @@
+.env
+data/
+.DS_Store
+ems/node_modules/
+ems/app/public/assets/css/app.css
+ems/app/public/assets/fonts/
+ems/app/public/assets/js/chart.js

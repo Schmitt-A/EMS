@@ -1,0 +1,19 @@
+name: EMS
+version: "0.1.0"
+slug: ems
+description: Energiefluss, Speicher, Wallbox und PV-Prognose
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8099
+ingress_entry: /
+panel_icon: mdi:home-lightning-bolt
+panel_title: EMS
+panel_admin: false
+homeassistant_api: true
+options: {}
+schema: {}
