@@ -18,7 +18,7 @@ final class Series
     {
         $cache = $this->store->get('yield_cache', []);
         $entries = is_array($cache) && isset($cache['entries']) && is_array($cache['entries']) ? $cache['entries'] : [];
-        $key = $start . ':' . (int) floor($end / 60);
+        $key = $start . ':' . (int) floor($end / 60) . ':' . trim((string) ($mapping['pv_energy'] ?? ''));
         if (isset($entries[$key]) && (time() - (int) ($entries[$key]['t'] ?? 0)) < 60) {
             return $entries[$key]['kwh'];
         }
@@ -51,6 +51,7 @@ final class Series
                 $kwh = $this->energyKwh($sum, $unit);
                 return $kwh > 0 ? $kwh : null;
             }
+            return null;
         }
         $power = (string) ($mapping['pv_power'] ?? '');
         if ($power === '' || !$this->ha->configured()) {
@@ -359,7 +360,7 @@ final class Series
         $locked = is_array($storedPlant) && !empty($storedPlant['factor_locked']);
         $factorNow = (float) (is_array($storedPlant) ? ($storedPlant['factor'] ?? 0.93) : 0.93);
         $needsReset = $paired < 5 && !$locked && abs($factorNow - 0.93) > 0.001;
-        $version = '2';
+        $version = '3';
         if (!$force && $last === $today && !$needsReset && (string) $this->store->get('calibration_version', '') === $version) {
             return;
         }
@@ -376,23 +377,33 @@ final class Series
         $this->rememberActuals($map);
         if ($radiation === '') {
             $this->store->put('last_calibration', $today);
-            $this->store->put('calibration_version', '2');
+            $this->store->put('calibration_version', '3');
             return;
         }
         $n = max(3, (int) $plant['n_days']);
         $tz = new DateTimeZone('Europe/Berlin');
         $end = (new DateTimeImmutable('today', $tz))->getTimestamp();
         $start = $end - $n * 86400;
-        $actualRows = $this->statisticRows($power, $start, $end, 'hour');
+        $energy = $this->energyEntity($map);
         $modelRows = $this->statisticRows($radiation, $start, $end, 'hour');
         $byDay = [];
-        $powerUnit = $this->unitOf($power);
-        foreach ($actualRows as $row) {
-            if ($row['mean'] === null) {
-                continue;
+        if ($energy === '') {
+            $actualRows = $this->statisticRows($power, $start, $end, 'hour');
+            $powerUnit = $this->unitOf($power);
+            foreach ($actualRows as $row) {
+                if ($row['mean'] === null) {
+                    continue;
+                }
+                $day = (new DateTimeImmutable('@' . $row['start']))->setTimezone($tz)->format('Y-m-d');
+                $byDay[$day]['actual'] = ($byDay[$day]['actual'] ?? 0) + $this->meanKw($row['mean'], $powerUnit);
             }
-            $day = (new DateTimeImmutable('@' . $row['start']))->setTimezone($tz)->format('Y-m-d');
-            $byDay[$day]['actual'] = ($byDay[$day]['actual'] ?? 0) + $this->meanKw($row['mean'], $powerUnit);
+        } else {
+            foreach ($this->store->pdo()->query('SELECT day, actual_kwh FROM daily') ?: [] as $saved) {
+                if ($saved['actual_kwh'] === null) {
+                    continue;
+                }
+                $byDay[(string) $saved['day']]['actual'] = (float) $saved['actual_kwh'];
+            }
         }
         foreach ($modelRows as $row) {
             if ($row['mean'] === null) {
@@ -406,6 +417,7 @@ final class Series
             $byDay[$day]['model'] = ($byDay[$day]['model'] ?? 0) + $kw;
         }
         $stmt = $this->store->pdo()->prepare('INSERT INTO daily (day, actual_kwh, model_kwh) VALUES (?, ?, ?) ON CONFLICT(day) DO UPDATE SET actual_kwh = excluded.actual_kwh, model_kwh = excluded.model_kwh');
+        $stmtModel = $this->store->pdo()->prepare('INSERT INTO daily (day, model_kwh) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET model_kwh = excluded.model_kwh');
         $xs = [];
         $ys = [];
         $ratios = [];
@@ -415,7 +427,13 @@ final class Series
             }
             $actual = $row['actual'] ?? null;
             $model = $row['model'] ?? null;
-            $stmt->execute([$day, $actual, $model]);
+            if ($energy !== '') {
+                if ($model !== null) {
+                    $stmtModel->execute([$day, $model]);
+                }
+            } else {
+                $stmt->execute([$day, $actual, $model]);
+            }
             if ($actual !== null && $model !== null && $model > 1) {
                 $xs[] = $model;
                 $ys[] = $actual;
@@ -437,7 +455,7 @@ final class Series
         }
         $this->store->merge('plant', $patch);
         $this->store->put('last_calibration', $today);
-        $this->store->put('calibration_version', '2');
+        $this->store->put('calibration_version', '3');
     }
 
     private function unitOf(string $entity): string
