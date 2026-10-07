@@ -71,10 +71,23 @@ final class Sessions
     {
         $tz = new DateTimeZone('Europe/Berlin');
         $start = new DateTimeImmutable($month . '-01 00:00:00', $tz);
-        $end = $start->modify('+1 month');
+        return $this->between($start, $start->modify('+1 month'));
+    }
+
+    public function between(DateTimeImmutable $start, DateTimeImmutable $end): array
+    {
         $stmt = $this->store->pdo()->prepare('SELECT * FROM sessions WHERE started_at >= ? AND started_at < ? ORDER BY started_at DESC');
         $stmt->execute([$start->format('c'), $end->format('c')]);
         return $stmt->fetchAll() ?: [];
+    }
+
+    public function setOdometer(int $id, ?float $km): void
+    {
+        if ($id <= 0) {
+            return;
+        }
+        $stmt = $this->store->pdo()->prepare('UPDATE sessions SET odometer = ? WHERE id = ?');
+        $stmt->execute([$km, $id]);
     }
 
     public function import(HaClient $ha): array
@@ -85,8 +98,8 @@ final class Sessions
             return ['ok' => false, 'message' => 'Der Sensor sensor.ems_ladelog_historie hat keine Vorgänge.'];
         }
         $stmt = $this->store->pdo()->prepare(
-            'INSERT OR IGNORE INTO sessions (started_at, ended_at, vehicle, loadpoint, energy_kwh, solar_kwh, grid_kwh, duration_s, source)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, "import")'
+            'INSERT OR IGNORE INTO sessions (started_at, ended_at, vehicle, loadpoint, energy_kwh, solar_kwh, grid_kwh, duration_s, source, odometer, meter_start, meter_end)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, "import", ?, ?, ?)'
         );
         $count = 0;
         foreach ($sessions as $session) {
@@ -105,10 +118,21 @@ final class Sessions
                 (float) ($session['solarEnergy'] ?? 0),
                 (float) ($session['gridEnergy'] ?? 0),
                 $duration,
+                self::optionalNumber($session['odometer'] ?? $session['vehicleOdometer'] ?? null),
+                self::optionalNumber($session['meterStart'] ?? $session['meter_start'] ?? null),
+                self::optionalNumber($session['meterEnd'] ?? $session['meter_end'] ?? null),
             ]);
             $count += $stmt->rowCount();
         }
         return ['ok' => true, 'message' => $count . ' Vorgänge übernommen.'];
+    }
+
+    private static function optionalNumber(mixed $value): ?float
+    {
+        if ($value === null || $value === '' || !is_numeric($value)) {
+            return null;
+        }
+        return (float) $value;
     }
 
     public static function cost(array $row, array $tariffs): array

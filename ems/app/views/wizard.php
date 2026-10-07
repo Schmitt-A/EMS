@@ -70,18 +70,11 @@ page_head('Einrichten', Actions::STEPS[$step] . ' · Schritt ' . (($index === fa
     <?php entity_field('wallbox_phases', 'Gemeldete Phasen', (string) $mapping['wallbox_phases'], '1-phasig, 3-phasig oder automatisch.', $suggest['wallbox_phases'] ?? ''); ?>
     <?php entity_field('wallbox_force', 'Zwangszustand', (string) $mapping['wallbox_force'], 'Optional, nur Anzeige.', $suggest['wallbox_force'] ?? ''); ?>
   <?php elseif ($step === 'wetter'): ?>
-    <p class="text-sm text-muted-foreground">Die Prognose lädt die DWD-Datei. Diese Sensoren sind die aktuellen Messwerte und bleiben optional. Die Adresse der Datei stellst du in den Einstellungen ein.</p>
-    <label class="block text-sm">Station
-      <select class="field mt-1" name="weather_station">
-        <?php foreach (['soonwald' => 'Soonwald West', 'hahn' => 'Flugplatz Hahn', 'kreuznach' => 'Bad Kreuznach'] as $value => $label): ?>
-          <option value="<?= e($value) ?>" <?= $mapping['weather_station'] === $value ? 'selected' : '' ?>><?= e($label) ?></option>
-        <?php endforeach; ?>
-      </select>
+    <p class="text-sm text-muted-foreground">Strahlung, Bewölkung, Sonnenschein und Temperatur kommen nur aus der MOSMIX-Datei des Deutschen Wetterdienstes. Die App holt sie ungefähr alle 30 Minuten.</p>
+    <label class="block text-sm">KMZ-Adresse
+      <input class="field mt-1 font-mono text-xs" name="weather_url" value="<?= e((string) ($cfg['weather']['url'] ?? WeatherFeed::DEFAULT_URL)) ?>">
     </label>
-    <?php entity_field('weather_radiation', 'Globalstrahlung', (string) $mapping['weather_radiation'], 'Aktueller Messwert in W/m². Die Prognose kommt aus der DWD-Datei.', $suggest['weather_radiation'] ?? ''); ?>
-    <?php entity_field('weather_cloud', 'Bewölkung', (string) $mapping['weather_cloud'], 'Prozent.', $suggest['weather_cloud'] ?? ''); ?>
-    <?php entity_field('weather_sunshine', 'Sonnenschein', (string) $mapping['weather_sunshine'], 'Sekunden oder Minuten je Stunde.', $suggest['weather_sunshine'] ?? ''); ?>
-    <?php entity_field('weather_temp', 'Temperatur', (string) $mapping['weather_temp'], 'Grad Celsius.', $suggest['weather_temp'] ?? ''); ?>
+    <p class="text-xs text-muted-foreground">Die Adresse endet auf <span class="font-mono">MOSMIX_L_LATEST_….kmz</span> und beginnt mit https://opendata.dwd.de/. Soonwald West ist F9519. Den Ordner findest du in der Stationsliste MOSMIX_L.</p>
   <?php else: ?>
     <?php if ($missing): ?>
       <p class="text-sm text-import">Noch nötig: <?= e(implode(', ', $missing)) ?>.</p>

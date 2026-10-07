@@ -215,6 +215,19 @@ final class Forecast
         }
     }
 
+    /** @return array<int, array{day:string, kwh:float}> */
+    public static function lockedFrom(PDO $pdo, string $day): array
+    {
+        self::ensureDays($pdo);
+        $stmt = $pdo->prepare('SELECT day, kwh FROM forecast_days WHERE day >= ? ORDER BY day ASC');
+        $stmt->execute([$day]);
+        $out = [];
+        foreach ($stmt->fetchAll() ?: [] as $row) {
+            $out[] = ['day' => (string) $row['day'], 'kwh' => (float) $row['kwh']];
+        }
+        return $out;
+    }
+
     public static function locked(PDO $pdo, string $day): ?float
     {
         self::ensureDays($pdo);

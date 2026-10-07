@@ -23,12 +23,50 @@
   });
 
   document.querySelectorAll('input[type="range"]').forEach((input) => {
+    if (input.closest('[data-dual]')) return;
     const out = input.parentElement && input.parentElement.querySelector('[data-range-out]');
     if (!out) return;
     input.addEventListener('input', () => {
       const unit = (out.textContent.match(/[^\d,.\s-]+$/) || [''])[0];
       out.textContent = input.value + (unit ? ' ' + unit : '');
     });
+  });
+
+  document.querySelectorAll('[data-dual]').forEach((box) => {
+    const inputs = [...box.querySelectorAll('input[type="range"]')];
+    const fill = box.querySelector('[data-dual-fill]');
+    const out = box.querySelector('[data-dual-out]');
+    if (inputs.length < 2) return;
+    const minInput = inputs[0];
+    const maxInput = inputs[1];
+    const lo = Number(box.dataset.min || minInput.min);
+    const hi = Number(box.dataset.max || minInput.max);
+    const paint = () => {
+      let min = Number(minInput.value);
+      let max = Number(maxInput.value);
+      if (min > max) {
+        if (document.activeElement === minInput) {
+          maxInput.value = String(min);
+          max = min;
+        } else {
+          minInput.value = String(max);
+          min = max;
+        }
+      }
+      const span = Math.max(1, hi - lo);
+      if (fill) {
+        const start = (min - lo) / span;
+        const end = (max - lo) / span;
+        fill.style.left = 'calc(0.85rem + (100% - 1.7rem) * ' + start + ')';
+        fill.style.right = 'calc(0.85rem + (100% - 1.7rem) * ' + (1 - end) + ')';
+      }
+      if (out) out.textContent = min + '–' + max + ' A';
+      minInput.style.zIndex = min > hi - 1 ? '5' : '3';
+      maxInput.style.zIndex = '4';
+    };
+    minInput.addEventListener('input', paint);
+    maxInput.addEventListener('input', paint);
+    paint();
   });
 
   document.addEventListener('click', (event) => {
@@ -158,26 +196,58 @@
 
   function fitAxes(chart) {
     const scale = chart.options.scales.x;
+    const stacked = !!(scale && scale.stacked);
     let maxY = 0.2;
     let maxY1 = 0.2;
+    const buckets = {};
     chart.data.datasets.forEach((set) => {
       if (set.hidden) return;
-      (set.data || []).forEach((point) => {
-        if (!point || typeof point !== 'object') return;
-        const y = point.y;
-        if (point.x < scale.min || point.x > scale.max || y === null || Number.isNaN(y)) return;
-        if ((set.yAxisID || 'y') === 'y1') maxY1 = Math.max(maxY1, y);
-        else maxY = Math.max(maxY, y);
+      (set.data || []).forEach((point, index) => {
+        const x = point && typeof point === 'object' && point.x !== undefined ? point.x : index;
+        const y = point && typeof point === 'object' ? point.y : point;
+        if (y === null || y === undefined || Number.isNaN(Number(y))) return;
+        if (scale && scale.min !== undefined && x < scale.min) return;
+        if (scale && scale.max !== undefined && x > scale.max) return;
+        if ((set.yAxisID || 'y') === 'y1') {
+          maxY1 = Math.max(maxY1, Number(y));
+          return;
+        }
+        if (stacked) buckets[String(Math.round(x))] = (buckets[String(Math.round(x))] || 0) + Number(y);
+        else maxY = Math.max(maxY, Number(y));
       });
     });
+    Object.keys(buckets).forEach((key) => { maxY = Math.max(maxY, buckets[key]); });
     chart.options.scales.y.max = maxY * 1.28;
-    if (chart.options.scales.y1) chart.options.scales.y1.max = maxY1 * 1.12;
+    if (chart.options.scales.y1) chart.options.scales.y1.max = Math.max(1.2, maxY1 * 1.12);
   }
 
   function applyWindow(chart, payload, min, max) {
     const next = clampWindow(min, max, payload.bounds);
+    chart.$window = next;
     chart.options.scales.x.min = next[0];
     chart.options.scales.x.max = next[1];
+    fitAxes(chart);
+    chart.update('none');
+  }
+
+  function applyIndexWindow(chart, payload, min, max) {
+    const last = Math.max(0, (payload.labels || []).length - 1);
+    let lo = min;
+    let hi = max;
+    const span = Math.max(0, hi - lo);
+    if (span >= last) {
+      lo = 0;
+      hi = last;
+    } else if (lo < 0) {
+      hi -= lo;
+      lo = 0;
+    } else if (hi > last) {
+      lo -= hi - last;
+      hi = last;
+    }
+    chart.$window = [lo, hi];
+    chart.options.scales.x.min = lo - 0.5;
+    chart.options.scales.x.max = hi + 0.5;
     fitAxes(chart);
     chart.update('none');
   }
@@ -188,8 +258,8 @@
     let drag = null;
     box.addEventListener('pointerdown', (event) => {
       if (event.button !== 0 || !box._chart) return;
-      const scale = box._chart.scales.x;
-      drag = { id: event.pointerId, x: event.clientX, min: scale.min, max: scale.max };
+      const win = box._chart.$window || [box._chart.scales.x.min, box._chart.scales.x.max];
+      drag = { id: event.pointerId, x: event.clientX, min: win[0], max: win[1] };
     });
     box.addEventListener('pointermove', (event) => {
       if (!drag || event.pointerId !== drag.id || !box._chart) return;
@@ -200,7 +270,9 @@
       const area = box._chart.chartArea;
       const pixel = Math.max(1, area.right - area.left);
       const span = drag.max - drag.min;
-      applyWindow(box._chart, box._payload, drag.min - (dx / pixel) * span, drag.max - (dx / pixel) * span);
+      const nextMin = drag.min - (dx / pixel) * span;
+      if (box._payload && box._payload.pan === 'index') applyIndexWindow(box._chart, box._payload, nextMin, nextMin + span);
+      else applyWindow(box._chart, box._payload, nextMin, nextMin + span);
     });
     const end = (event) => {
       if (!drag || event.pointerId !== drag.id) return;
@@ -214,10 +286,11 @@
       event.preventDefault();
       const area = box._chart.chartArea;
       const pixel = Math.max(1, area.right - area.left);
-      const scale = box._chart.scales.x;
-      const span = scale.max - scale.min;
+      const win = box._chart.$window || [box._chart.scales.x.min, box._chart.scales.x.max];
+      const span = win[1] - win[0];
       const shift = (event.deltaX / pixel) * span;
-      applyWindow(box._chart, box._payload, scale.min + shift, scale.max + shift);
+      if (box._payload && box._payload.pan === 'index') applyIndexWindow(box._chart, box._payload, win[0] + shift, win[1] + shift);
+      else applyWindow(box._chart, box._payload, win[0] + shift, win[1] + shift);
     }, { passive: false });
   }
 
@@ -239,8 +312,9 @@
       borderDash: series.dash ? [5, 4] : undefined,
       pointRadius: 0,
       tension: 0.25,
+      stack: series.stack || undefined,
       borderWidth: series.type === 'bar' ? 0 : 2,
-      maxBarThickness: 18,
+      maxBarThickness: payload.stacked ? 36 : 18,
       borderRadius: series.type === 'bar' ? 4 : 0,
       spanGaps: true,
     }));
@@ -255,7 +329,8 @@
     box.style.minWidth = '';
     if (box.dataset.scroll === '1') {
       const parent = box.parentElement ? box.parentElement.clientWidth : 640;
-      box.style.minWidth = Math.max(parent, days * 88) + 'px';
+      const perDay = payload.stacked ? 32 : 88;
+      box.style.minWidth = Math.max(parent, days * perDay) + 'px';
     }
     const todayBand = {
       id: 'todayBand',
@@ -324,12 +399,23 @@
         ctx.restore();
       },
     };
+    const stacked = !!payload.stacked;
+    const indexPan = payload.pan === 'index';
+    const axisTitle = (text) => ({ display: Boolean(text), text: text || '', color: color('muted'), font: { size: 11 } });
     const xScale = category
-      ? { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }, grid: { display: false } }
+      ? {
+          min: indexPan && payload.view ? payload.view[0] - 0.5 : undefined,
+          max: indexPan && payload.view ? payload.view[1] + 0.5 : undefined,
+          stacked,
+          title: axisTitle(payload.xTitle),
+          ticks: { maxRotation: 0, autoSkip: !stacked && (payload.labels || []).length > 10, maxTicksLimit: stacked ? (payload.labels || []).length : 10 },
+          grid: { display: false },
+        }
       : {
           type: 'linear',
           min: box.dataset.pan === '1' && payload.view ? payload.view[0] : undefined,
           max: box.dataset.pan === '1' && payload.view ? payload.view[1] : undefined,
+          title: axisTitle(payload.xTitle),
           ticks: {
             maxTicksLimit: payload.marks ? 12 : (box.dataset.scroll === '1' ? Math.min(Math.max(days, 6), 16) : 6),
             maxRotation: 0,
@@ -354,15 +440,23 @@
         plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
         scales: {
           x: xScale,
-          y: { beginAtZero: true, ticks: { maxTicksLimit: 5 } },
-          y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, display: datasets.some((set) => set.yAxisID === 'y1') },
+          y: { beginAtZero: true, stacked, title: axisTitle(payload.yTitle), ticks: { maxTicksLimit: 5 } },
+          y1: { position: 'right', beginAtZero: true, title: axisTitle(payload.y1Title), grid: { drawOnChartArea: false }, display: datasets.some((set) => set.yAxisID === 'y1') },
         },
       },
     });
-    if (box.dataset.pan === '1') {
+    if (payload.pan === 'index') {
+      const view = payload.view || [0, 0];
+      applyIndexWindow(box._chart, payload, view[0], view[1]);
+      bindPan(box);
+    } else if (box.dataset.pan === '1') {
+      if (payload.view) box._chart.$window = payload.view.slice();
       fitAxes(box._chart);
       box._chart.update('none');
       bindPan(box);
+    } else if (payload.stacked) {
+      fitAxes(box._chart);
+      box._chart.update('none');
     }
   }
 
@@ -391,6 +485,42 @@
           chart.data.datasets.forEach((set) => { set.hidden = false; });
           bar.querySelectorAll('[data-series]').forEach((item) => item.setAttribute('aria-pressed', 'true'));
           applyWindow(chart, payload, next[0], next[1]);
+        }
+        return;
+      }
+      if (button.dataset.series) {
+        const set = chart.data.datasets.find((item) => item.emsKey === button.dataset.series);
+        if (!set) return;
+        set.hidden = !set.hidden;
+        button.setAttribute('aria-pressed', set.hidden ? 'false' : 'true');
+        fitAxes(chart);
+        chart.update();
+      }
+    });
+  });
+  document.querySelectorAll('[data-day-tools]').forEach((bar) => {
+    bar.addEventListener('click', (event) => {
+      const button = event.target.closest('button');
+      const box = bar.parentElement ? bar.parentElement.querySelector('[data-pan]') : null;
+      if (!button || !box || !box._chart || !box._payload) return;
+      const chart = box._chart;
+      const payload = box._payload;
+      const last = Math.max(0, (payload.labels || []).length - 1);
+      if (button.dataset.window) {
+        const name = button.dataset.window === 'reset' ? '3' : button.dataset.window;
+        let next = [0, Math.min(2, last)];
+        if (name === 'today') next = [0, 0];
+        if (name === '7') next = [0, Math.min(6, last)];
+        if (name === 'all') next = [0, last];
+        applyIndexWindow(chart, payload, next[0], next[1]);
+        bar.querySelectorAll('[data-window]').forEach((item) => {
+          if (item.dataset.window === 'reset') return;
+          item.setAttribute('aria-pressed', item.dataset.window === name ? 'true' : 'false');
+        });
+        if (button.dataset.window === 'reset') {
+          chart.data.datasets.forEach((set) => { set.hidden = false; });
+          bar.querySelectorAll('[data-series]').forEach((item) => item.setAttribute('aria-pressed', 'true'));
+          applyIndexWindow(chart, payload, next[0], next[1]);
         }
         return;
       }
@@ -460,6 +590,25 @@
       /* nächste Runde */
     }
   }
+
+  function toggleSession(row) {
+    const more = row.nextElementSibling;
+    if (!more || !more.hasAttribute('data-session-more')) return;
+    more.hidden = !more.hidden;
+    row.setAttribute('aria-expanded', more.hidden ? 'false' : 'true');
+  }
+  document.addEventListener('click', (event) => {
+    const row = event.target.closest('[data-session]');
+    if (!row || event.target.closest('a, button, input, form, label')) return;
+    toggleSession(row);
+  });
+  document.addEventListener('keydown', (event) => {
+    const row = event.target.closest('[data-session]');
+    if (!row || (event.key !== 'Enter' && event.key !== ' ')) return;
+    if (event.target.closest('input, textarea, select, button')) return;
+    event.preventDefault();
+    toggleSession(row);
+  });
 
   if (document.querySelector('[data-live]')) {
     tick();

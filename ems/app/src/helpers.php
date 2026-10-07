@@ -168,9 +168,40 @@ function icon(string $name, string $class = 'h-4 w-4'): string
     }
     $svg = (string) file_get_contents($file);
     $svg = preg_replace('/<!--.*?-->/s', '', $svg) ?? $svg;
-    $svg = preg_replace('/\s(?:width|height|class)="[^"]*"/', '', $svg) ?? $svg;
-    $svg = preg_replace('/<svg\b/', '<svg class="' . e($class) . ' overflow-visible" overflow="visible" aria-hidden="true"', $svg, 1) ?? $svg;
+    $svg = preg_replace_callback('/<svg\b([^>]*)>/', static function (array $match) use ($class): string {
+        $attrs = preg_replace('/\s(?:width|height|class)="[^"]*"/', '', $match[1]) ?? $match[1];
+        return '<svg' . $attrs . ' class="' . e($class) . ' overflow-visible" overflow="visible" aria-hidden="true">';
+    }, $svg, 1) ?? $svg;
     return $svg;
+}
+
+function day_label(string $day): string
+{
+    $dt = new DateTimeImmutable($day . ' 12:00:00', new DateTimeZone('Europe/Berlin'));
+    $names = ['Mon' => 'Mo', 'Tue' => 'Di', 'Wed' => 'Mi', 'Thu' => 'Do', 'Fri' => 'Fr', 'Sat' => 'Sa', 'Sun' => 'So'];
+    return ($names[$dt->format('D')] ?? $dt->format('D')) . ' ' . $dt->format('d.m.');
+}
+
+function long_when(string $iso): string
+{
+    try {
+        $dt = (new DateTimeImmutable($iso))->setTimezone(new DateTimeZone('Europe/Berlin'));
+    } catch (Throwable) {
+        return $iso;
+    }
+    $days = ['Mon' => 'Mo.', 'Tue' => 'Di.', 'Wed' => 'Mi.', 'Thu' => 'Do.', 'Fri' => 'Fr.', 'Sat' => 'Sa.', 'Sun' => 'So.'];
+    $months = [1 => 'Jan.', 2 => 'Feb.', 3 => 'März', 4 => 'Apr.', 5 => 'Mai', 6 => 'Juni', 7 => 'Juli', 8 => 'Aug.', 9 => 'Sep.', 10 => 'Okt.', 11 => 'Nov.', 12 => 'Dez.'];
+    $day = $days[$dt->format('D')] ?? $dt->format('D');
+    $month = $months[(int) $dt->format('n')] ?? $dt->format('m.');
+    return $day . ', ' . $dt->format('j') . '. ' . $month . ' ' . $dt->format('Y') . ', ' . $dt->format('H:i');
+}
+
+function duration_clock(int $seconds): string
+{
+    $seconds = max(0, $seconds);
+    $hours = intdiv($seconds, 3600);
+    $minutes = intdiv($seconds % 3600, 60);
+    return $hours . ':' . str_pad((string) $minutes, 2, '0', STR_PAD_LEFT) . ' h';
 }
 
 function is_entity_id(string $id): bool

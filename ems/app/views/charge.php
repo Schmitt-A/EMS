@@ -4,6 +4,8 @@ $v = $snap['values'];
 $b = $snap['balance'];
 $s = $snap['setpoint'];
 $c = $snap['cfg']['charge'];
+$c['min_a'] = min(16, max(6, (int) $c['min_a']));
+$c['max_a'] = min(16, max((int) $c['min_a'], (int) $c['max_a']));
 $tariffs = $snap['cfg']['tariffs'];
 page_head('Lademanagement', 'Der Vorschlag wird nur angezeigt. Die Wallbox wird von hier nicht gestellt.');
 ?>
@@ -62,10 +64,8 @@ page_head('Lademanagement', 'Der Vorschlag wird nur angezeigt. Die Wallbox wird 
   <input type="hidden" name="mode" value="<?= e($c['mode']) ?>">
   <?php
     $ranges = [
-        'solar_share' => ['Mindest-Sonnenanteil', '%', 0, 100, 1, ''],
+        'solar_share' => ['Mindest-Sonnenanteil', '%', 0, 100, 1, 'Mindestanteil der Ladeleistung, der aus der Sonne kommen soll. Bei 100 % bleibt die Sollleistung auf dem Überschuss. Bei 50 % darf sie bis zum Doppelten des Überschusses gehen, der Rest käme aus dem Netz. Bei 0 % gilt nur der Zählersollwert. Es gilt der kleinere Wert aus Zählersoll und dieser Grenze.'],
         'reserve_w' => ['Regelreserve', 'W', 0, 2000, 10, 'Watt, die am Zähler als Abstand zur Nulllinie bleiben. Das ist der Puffer der Sollleistung und etwas anderes als der Speicher-Vorrang.'],
-        'min_a' => ['Minimaler Strom', 'A', 6, 16, 1, ''],
-        'max_a' => ['Maximaler Strom', 'A', 6, 32, 1, ''],
         'switch_s' => ['Schütz-Schutzzeit', 's', 60, 600, 10, ''],
         'on_delay_s' => ['Einschaltverzögerung', 's', 60, 600, 10, ''],
         'off_delay_s' => ['Ausschaltverzögerung', 's', 60, 600, 10, ''],
@@ -76,6 +76,14 @@ page_head('Lademanagement', 'Der Vorschlag wird nur angezeigt. Die Wallbox wird 
       <input class="mt-2 w-full accent-primary" type="range" name="<?= e($name) ?>" min="<?= $min ?>" max="<?= $max ?>" step="<?= $step ?>" value="<?= e((string) $c[$name]) ?>">
     </label>
   <?php endforeach; ?>
+  <div class="dual-range block sm:col-span-2" data-dual data-min="6" data-max="16">
+    <span class="flex justify-between text-sm"><span class="inline-flex items-center gap-1">Ladestrom <?php tip('Untergrenze und Obergrenze in Ampere. Die Wallbox geht nicht über 16 A. 1-phasig sind das 1,38 bis 3,68 kW, 3-phasig 4,14 bis 11,04 kW.'); ?></span><span class="tabular-nums" data-dual-out><?= (int) $c['min_a'] ?>–<?= (int) $c['max_a'] ?> A</span></span>
+    <div class="dual-track mt-1">
+      <div class="dual-fill" data-dual-fill></div>
+      <input type="range" name="min_a" min="6" max="16" step="1" value="<?= e((string) $c['min_a']) ?>" aria-label="Minimaler Strom">
+      <input type="range" name="max_a" min="6" max="16" step="1" value="<?= e((string) $c['max_a']) ?>" aria-label="Maximaler Strom">
+    </div>
+  </div>
   <label class="block sm:col-span-2">
     <span class="mb-1 block text-sm font-medium">Phasenwunsch</span>
     <select class="field" name="phase_mode">

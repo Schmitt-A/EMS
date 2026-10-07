@@ -91,8 +91,6 @@ final class Snapshot
         $car = $read('wallbox_car');
         $amps = $read('wallbox_amps');
         $phases = $read('wallbox_phases');
-        $radiation = $read('weather_radiation');
-        $sunshine = $read('weather_sunshine');
 
         $values = [
             'pv_kw' => $pv[0],
@@ -109,12 +107,12 @@ final class Snapshot
             'wallbox_amps' => $amps['num'] ?? null,
             'wallbox_phases_raw' => $phases['state'] ?? null,
             'priority_soc' => (float) $cfg['battery_strategy']['priority_soc'],
-            'radiation' => $radiation['num'] ?? null,
-            'radiation_rows' => $radiation['attributes']['data'] ?? [],
-            'cloud' => ($read('weather_cloud')['num'] ?? null),
-            'sunshine' => is_array($sunshine) ? $sunshine['num'] : null,
-            'sunshine_unit' => is_array($sunshine) ? ($sunshine['unit'] ?? '') : '',
-            'temp' => ($read('weather_temp')['num'] ?? null),
+            'radiation' => null,
+            'radiation_rows' => [],
+            'cloud' => null,
+            'sunshine' => null,
+            'sunshine_unit' => '',
+            'temp' => null,
         ];
         $base['values'] = $values;
         $base['names'] = [
@@ -170,7 +168,7 @@ final class Snapshot
         }
         $tz = new DateTimeZone('Europe/Berlin');
         $todayStart = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0)->getTimestamp();
-        $hours = $feed->hours($todayStart, $now + 12 * 86400);
+        $hours = $feed->hours($todayStart - 14 * 86400, $now + 12 * 86400);
         $series = Forecast::fromRadiation($hours, $cfg['plant']);
         if ($series) {
             Forecast::rememberDays($this->store->pdo(), $series, $cfg['plant']);

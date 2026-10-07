@@ -35,7 +35,7 @@
   --muted-foreground: 240 4% 42%;
   --border: 240 6% 90%;
   --pv: 36 92% 44%;
-  --battery: 174 62% 28%;
+  --battery: 82 62% 28%;
   --house: 217 72% 46%;
   --import: 0 72% 48%;
   --export: 152 58% 32%;
@@ -64,7 +64,7 @@
   --muted-foreground: 240 5% 68%;
   --border: 240 5% 18%;
   --pv: 38 92% 58%;
-  --battery: 172 48% 48%;
+  --battery: 82 58% 62%;
   --house: 213 80% 68%;
   --import: 0 78% 66%;
   --export: 152 52% 52%;
@@ -94,7 +94,7 @@
   .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:opacity-50; }
   .btn-primary { @apply btn bg-primary text-primary-foreground hover:opacity-90; }
   .btn-ghost { @apply btn border border-border bg-card hover:bg-muted; }
-  .field { @apply w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none ring-primary/30 focus:ring-2; }
+  .field { @apply w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none ring-primary/30 focus:ring-2; min-h-11; }
   .chip { @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium tabular-nums; }
   button.chip { @apply cursor-pointer; }
   .chip[aria-pressed='true'] { @apply border-foreground bg-muted text-foreground; }
@@ -107,7 +107,78 @@
   .tip { @apply relative inline-flex; }
   .tip-btn { @apply inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-foreground; }
   .tip-body { @apply pointer-events-none invisible absolute left-1/2 top-6 z-30 w-64 -translate-x-1/2 rounded-lg border border-border bg-card p-3 text-left text-xs font-normal leading-relaxed text-foreground opacity-0 shadow-card; }
+  .tip-wide { width: min(22rem, calc(100vw - 2rem)); }
   .tip:hover .tip-body, .tip:focus-within .tip-body, .tip.open .tip-body { @apply visible opacity-100; }
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2.75rem;
+  background: transparent;
+  touch-action: none;
+}
+input[type='range']:focus { outline: none; }
+input[type='range']::-webkit-slider-runnable-track {
+  height: 0.4rem;
+  border-radius: 999px;
+  background: hsl(var(--border));
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-top: -0.68rem;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--card));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+}
+input[type='range']::-moz-range-track {
+  height: 0.4rem;
+  border-radius: 999px;
+  background: hsl(var(--border));
+}
+input[type='range']::-moz-range-thumb {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--card));
+}
+.dual-track { position: relative; height: 2.75rem; }
+.dual-track::before {
+  content: '';
+  position: absolute;
+  left: 0.85rem;
+  right: 0.85rem;
+  top: 50%;
+  height: 0.4rem;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: hsl(var(--border));
+}
+.dual-fill {
+  position: absolute;
+  top: 50%;
+  height: 0.4rem;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: hsl(var(--primary));
+}
+.dual-track input[type='range'] {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  margin: 0;
+  pointer-events: none;
+}
+.dual-track input[type='range']::-webkit-slider-runnable-track { background: transparent; }
+.dual-track input[type='range']::-moz-range-track { background: transparent; }
+.dual-track input[type='range']::-webkit-slider-thumb,
+.dual-track input[type='range']::-moz-range-thumb { pointer-events: auto; }
+@media (max-width: 767px) {
+  .field, select, textarea { font-size: 16px; }
 }
 
 .flow-move {

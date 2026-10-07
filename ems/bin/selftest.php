@@ -131,6 +131,18 @@ $full = [
 ];
 $covered = Forecast::brief($full, $plant, $now, 3.0);
 check(abs($covered['today_kwh'] - 5.0) < 0.01 && abs($covered['remaining_kwh'] - 1.0) < 0.01, 'Gesamtprognose wenn der Tag in der Datei steht');
+if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
+    $memory = new PDO('sqlite::memory:');
+    Forecast::rememberDays($memory, $full, $plant);
+    $storedDay = Forecast::locked($memory, '2026-10-07');
+    check($storedDay !== null && abs($storedDay - 5) < 0.01, 'voller Tag wird gespeichert');
+    Forecast::rememberDays($memory, $partial, $plant);
+    $keptDay = Forecast::locked($memory, '2026-10-07');
+    check($keptDay !== null && abs($keptDay - 5) < 0.01, 'gespeicherter Tag bleibt ohne Morgenstunden');
+    check(count(Forecast::lockedFrom($memory, '2026-10-07')) === 1, 'gespeicherte Tage lassen sich lesen');
+}
+$batteryIcon = icon('battery');
+check(str_contains($batteryIcon, 'width="16"') && str_contains($batteryIcon, 'width="9"'), 'Batterie-Icon behält die Flächen');
 
 $kmz = '/tmp/MOSMIX_L_LATEST_F9519.kmz';
 if (is_file($kmz)) {

@@ -16,10 +16,10 @@ function stat_card(string $label, string $value, string $live, string $tone = 'f
     echo '<p class="mt-1 text-2xl font-semibold tabular-nums" data-live="' . e($live) . '">' . $value . '</p></div>';
 }
 
-function tip(string $text): void
+function tip(string $text, bool $wide = false): void
 {
     echo '<span class="tip"><button type="button" class="tip-btn" aria-label="Erläuterung">' . icon('info', 'h-3.5 w-3.5') . '</button>';
-    echo '<span class="tip-body" role="tooltip">' . e($text) . '</span></span>';
+    echo '<span class="tip-body' . ($wide ? ' tip-wide' : '') . '" role="tooltip">' . e($text) . '</span></span>';
 }
 
 function entity_field(string $name, string $label, string $value, string $hint, string $suggest = ''): void

@@ -86,30 +86,9 @@ page_head('Einstellungen', 'Tarife, Dach und Strategie liegen hier. Die Messwert
           <?php entity_field('wallbox_force', 'Zwangszustand', (string) $m['wallbox_force'], 'Optional, nur Anzeige.'); ?>
         </div>
       </fieldset>
-      <fieldset class="rounded-lg border border-border p-4">
-        <legend class="px-1 text-sm font-medium">Wetter</legend>
-        <div class="mt-3 grid gap-4 sm:grid-cols-2">
-          <?php entity_field('weather_radiation', 'Strahlung, optional', (string) $m['weather_radiation'], 'Aktueller Messwert. Die Prognose kommt aus der DWD-Datei.'); ?>
-          <?php entity_field('weather_cloud', 'Bewölkung, optional', (string) $m['weather_cloud'], 'Aktueller Messwert.'); ?>
-          <?php entity_field('weather_sunshine', 'Sonnenschein, optional', (string) $m['weather_sunshine'], 'Aktueller Messwert.'); ?>
-          <?php entity_field('weather_temp', 'Temperatur, optional', (string) $m['weather_temp'], 'Aktueller Messwert.'); ?>
-          <label class="block text-sm">Wetterstation für die Beschriftung
-            <select class="field mt-1" name="weather_station">
-              <?php foreach (['soonwald' => 'Soonwald West', 'hahn' => 'Flugplatz Hahn', 'kreuznach' => 'Bad Kreuznach'] as $value => $label): ?>
-                <option value="<?= e($value) ?>" <?= $m['weather_station'] === $value ? 'selected' : '' ?>><?= e($label) ?></option>
-              <?php endforeach; ?>
-            </select>
-          </label>
-        </div>
-      </fieldset>
     </div>
     <button class="btn-primary" type="submit">Zuordnung speichern</button>
   </form>
-  <section class="card space-y-3 p-5 text-sm">
-    <h2 class="font-medium">Konfiguration als JSON</h2>
-    <p class="text-muted-foreground">Die Datei enthält Zuordnung, Tarife, Dach, Ladeparameter und die DWD-Adresse. Verbindung und Ladevorgänge bleiben draußen.</p>
-    <?php config_exchange('/einstellungen', '/einstellungen'); ?>
-  </section>
   <form method="post" class="card space-y-4 p-5">
     <?= csrf_field() ?><input type="hidden" name="section" value="tariffs">
     <h2 class="font-medium">Stromtarife</h2>
@@ -125,7 +104,7 @@ page_head('Einstellungen', 'Tarife, Dach und Strategie liegen hier. Die Messwert
     <div class="grid gap-3 sm:grid-cols-2">
       <?php foreach ([
         'kwp' => 'Generator (kWp)', 'inverter_kw' => 'Wechselrichter-Limit (kW)', 'tilt' => 'Neigung (°)',
-        'azimuth' => 'Ausrichtung (°)', 'n_days' => 'Mittelung (Tage)', 'factor' => 'Eichfaktor',
+        'azimuth' => 'Ausrichtung (°)', 'n_days' => 'Mittelung der Güte (Tage)', 'factor' => 'Eichfaktor',
         'regress_a' => 'Regression a', 'regress_b' => 'Regression b',
       ] as $name => $label): ?>
         <label class="text-sm"><?= e($label) ?><input class="field mt-1" name="<?= e($name) ?>" value="<?= e((string) $p[$name]) ?>"></label>
@@ -176,4 +155,9 @@ page_head('Einstellungen', 'Tarife, Dach und Strategie liegen hier. Die Messwert
     <button class="btn-primary" type="submit">Darstellung speichern</button>
   </form>
   <p class="text-xs text-muted-foreground">Seitenleiste und automatische Updates schaltest du auf der Home-Assistant-Seite dieser App, unter Einstellungen → Apps → EMS.</p>
+  <section class="card space-y-3 p-5 text-sm">
+    <h2 class="font-medium">Konfiguration als JSON</h2>
+    <p class="text-muted-foreground">Die Datei enthält die ganze Konfiguration: Zuordnung, Stromtarife, Anlage, Speicher, Ladeparameter, DWD-Adresse und Darstellung. Verbindung und Ladevorgänge bleiben draußen.</p>
+    <?php config_exchange('/einstellungen', '/einstellungen'); ?>
+  </section>
 </div>

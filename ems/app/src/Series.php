@@ -274,18 +274,32 @@ final class Series
             $fitted[] = null;
             $regress[] = null;
         }
-        $ideal = array_fill(0, count($labels), 1);
+        $labels = array_reverse($labels);
+        $actual = array_reverse($actual);
+        $model = array_reverse($model);
+        $gute = array_reverse($gute);
+        $raw = array_reverse($raw);
+        $fitted = array_reverse($fitted);
+        $regress = array_reverse($regress);
+        $count = count($labels);
+        $last = max(0, $count - 1);
+        $ideal = array_fill(0, $count, 1);
         $frame = [
             'axis' => 'category',
+            'pan' => 'index',
             'labels' => $labels,
-            'days' => max(1, count($labels)),
-            'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
+            'days' => max(1, $count),
+            'view' => [0, min(2, $last)],
+            'bounds' => [0, $last],
+            'xTitle' => 'Tag',
+            'yTitle' => 'Energie (kWh)',
         ];
         $noted = $this->withNote(['series' => [
             ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'data' => array_map(fn ($y) => ['x' => 0, 'y' => $y], array_filter($actual, fn ($y) => $y !== null))],
         ]]);
         $error = $noted['error'] ?? null;
         $daily = $frame + [
+            'y1Title' => 'Güte',
             'series' => [
                 ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'type' => 'bar', 'data' => $actual],
                 ['key' => 'model', 'label' => 'Modell', 'color' => 'export', 'type' => 'bar', 'data' => $model],
@@ -360,7 +374,7 @@ final class Series
         $locked = is_array($storedPlant) && !empty($storedPlant['factor_locked']);
         $factorNow = (float) (is_array($storedPlant) ? ($storedPlant['factor'] ?? 0.93) : 0.93);
         $needsReset = $paired < 5 && !$locked && abs($factorNow - 0.93) > 0.001;
-        $version = '3';
+        $version = '4';
         if (!$force && $last === $today && !$needsReset && (string) $this->store->get('calibration_version', '') === $version) {
             return;
         }
@@ -370,22 +384,15 @@ final class Series
         $cfg = $this->store->all();
         $map = $cfg['mapping'];
         $power = (string) ($map['pv_power'] ?? '');
-        $radiation = (string) ($map['weather_radiation'] ?? '');
-        if ($power === '') {
+        if ($power === '' && $this->energyEntity($map) === '') {
             return;
         }
         $this->rememberActuals($map);
-        if ($radiation === '') {
-            $this->store->put('last_calibration', $today);
-            $this->store->put('calibration_version', '3');
-            return;
-        }
         $n = max(3, (int) $plant['n_days']);
         $tz = new DateTimeZone('Europe/Berlin');
         $end = (new DateTimeImmutable('today', $tz))->getTimestamp();
         $start = $end - $n * 86400;
         $energy = $this->energyEntity($map);
-        $modelRows = $this->statisticRows($radiation, $start, $end, 'hour');
         $byDay = [];
         if ($energy === '') {
             $actualRows = $this->statisticRows($power, $start, $end, 'hour');
@@ -405,15 +412,15 @@ final class Series
                 $byDay[(string) $saved['day']]['actual'] = (float) $saved['actual_kwh'];
             }
         }
-        foreach ($modelRows as $row) {
-            if ($row['mean'] === null) {
+        $rawPlant = $plant;
+        $rawPlant['factor'] = 1;
+        foreach ((new WeatherFeed($this->store))->hours($start, $end) as $row) {
+            if ($row['radiation'] === null) {
                 continue;
             }
-            $local = (new DateTimeImmutable('@' . $row['start']))->setTimezone($tz);
+            $local = (new DateTimeImmutable('@' . $row['t']))->setTimezone($tz);
             $day = $local->format('Y-m-d');
-            $rawPlant = $plant;
-            $rawPlant['factor'] = 1;
-            $kw = Forecast::powerKw(max(0, $row['mean']), (int) $local->format('G'), $rawPlant);
+            $kw = Forecast::powerKw(max(0, (float) $row['radiation']), (int) $local->format('G'), $rawPlant);
             $byDay[$day]['model'] = ($byDay[$day]['model'] ?? 0) + $kw;
         }
         $stmt = $this->store->pdo()->prepare('INSERT INTO daily (day, actual_kwh, model_kwh) VALUES (?, ?, ?) ON CONFLICT(day) DO UPDATE SET actual_kwh = excluded.actual_kwh, model_kwh = excluded.model_kwh');
@@ -455,7 +462,35 @@ final class Series
         }
         $this->store->merge('plant', $patch);
         $this->store->put('last_calibration', $today);
-        $this->store->put('calibration_version', '3');
+        $this->store->put('calibration_version', '4');
+    }
+
+    /** @return array{ratio:?float, days:int, n:int} */
+    public function goodness(array $plant): array
+    {
+        $n = max(3, min(30, (int) ($plant['n_days'] ?? 7)));
+        $today = (new DateTimeImmutable('now', new DateTimeZone('Europe/Berlin')))->format('Y-m-d');
+        $rows = $this->store->pdo()->query('SELECT day, actual_kwh, model_kwh FROM daily WHERE actual_kwh IS NOT NULL AND model_kwh IS NOT NULL ORDER BY day DESC')->fetchAll() ?: [];
+        $sumActual = 0.0;
+        $sumModel = 0.0;
+        $count = 0;
+        foreach ($rows as $row) {
+            if ((string) $row['day'] === $today || $count >= $n) {
+                continue;
+            }
+            $actual = (float) $row['actual_kwh'];
+            if ($actual <= 0) {
+                continue;
+            }
+            $sumActual += $actual;
+            $sumModel += Forecast::predicted((float) $row['model_kwh'], $plant);
+            $count++;
+        }
+        return [
+            'ratio' => $sumActual > 0 ? $sumModel / $sumActual : null,
+            'days' => $count,
+            'n' => $n,
+        ];
     }
 
     private function unitOf(string $entity): string
@@ -595,9 +630,7 @@ final class Series
 
     private static function dayLabel(string $day): string
     {
-        $dt = new DateTimeImmutable($day . ' 12:00:00', new DateTimeZone('Europe/Berlin'));
-        $names = ['Mon' => 'Mo', 'Tue' => 'Di', 'Wed' => 'Mi', 'Thu' => 'Do', 'Fri' => 'Fr', 'Sat' => 'Sa', 'Sun' => 'So'];
-        return ($names[$dt->format('D')] ?? $dt->format('D')) . ' ' . $dt->format('d.m.');
+        return day_label($day);
     }
 
     private function statisticRows(string $entity, int $start, int $end, string $period): array

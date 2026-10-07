@@ -106,8 +106,8 @@ final class Energy
     {
         $mode = (string) ($charge['mode'] ?? 'smart');
         $phaseMode = (string) ($charge['phase_mode'] ?? 'auto');
-        $minA = max(6, (int) ($charge['min_a'] ?? 6));
-        $maxA = max($minA, (int) ($charge['max_a'] ?? 16));
+        $minA = min(16, max(6, (int) ($charge['min_a'] ?? 6)));
+        $maxA = min(16, max($minA, (int) ($charge['max_a'] ?? 16)));
         $share = clamp_float((float) ($charge['solar_share'] ?? 100), 0, 100) / 100;
         $reserve = max(0, (float) ($charge['reserve_w'] ?? 0)) / 1000;
         $wallboxRaw = $live['wallbox_kw'] ?? null;

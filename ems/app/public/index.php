@@ -52,7 +52,7 @@ if ($path === '/api/series') {
             json_out($series->weather($config['mapping']));
         }
         if ($chart === 'sessions') {
-            json_out(session_chart((string) ($_GET['month'] ?? date('Y-m'))));
+            json_out(session_chart((string) ($_GET['span'] ?? 'month'), (string) ($_GET['month'] ?? date('Y-m')), (int) ($_GET['year'] ?? date('Y'))));
         }
     } catch (Throwable $e) {
         json_out(['series' => [], 'error' => $e->getMessage()], 500);
@@ -84,9 +84,17 @@ if ($path === '/einstellungen' && $method === 'POST') {
 
 if ($path === '/statistik' && $method === 'POST') {
     csrf_check();
+    $back = stats_query();
+    if (($_POST['action'] ?? '') === 'odometer') {
+        $raw = str_replace(',', '.', trim((string) ($_POST['odometer'] ?? '')));
+        $km = $raw === '' || !is_numeric($raw) ? null : (float) $raw;
+        (new Sessions(store()))->setOdometer((int) ($_POST['id'] ?? 0), $km);
+        flash($km === null ? 'Kilometerstand bleibt leer.' : 'Kilometerstand gespeichert.');
+        redirect('/statistik' . $back);
+    }
     $result = (new Sessions(store()))->import(ha());
     flash($result['message']);
-    redirect('/statistik');
+    redirect('/statistik' . $back);
 }
 
 if ($path === '/batterie' && $method === 'POST') {
@@ -111,12 +119,43 @@ if ($path === '/laden') {
     page('charge', compact('snap', 'live', 'session') + ['title' => 'Laden']);
 }
 if ($path === '/statistik') {
+    $tz = new DateTimeZone('Europe/Berlin');
+    $span = (($_GET['span'] ?? 'month') === 'year') ? 'year' : 'month';
+    $year = (int) ($_GET['year'] ?? date('Y'));
+    if ($year < 2020 || $year > 2100) {
+        $year = (int) date('Y');
+    }
     $month = (string) ($_GET['month'] ?? date('Y-m'));
-    if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
-        $month = date('Y-m');
+    if (!preg_match('/^\d{4}-\d{2}$/', $month) || (int) substr($month, 0, 4) !== $year) {
+        $month = sprintf('%04d-%s', $year, date('m'));
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $month = sprintf('%04d-01', $year);
+        }
+    }
+    $sorts = [
+        'date_desc' => 'Datum absteigend',
+        'date_asc' => 'Datum aufsteigend',
+        'energy_desc' => 'Meist geladen',
+        'energy_asc' => 'Wenigsten geladen',
+        'solar_desc' => 'Meiste Sonne',
+        'solar_asc' => 'Wenigste Sonne',
+        'cost_desc' => 'Höchste Kosten',
+        'cost_asc' => 'Niedrigste Kosten',
+        'duration_desc' => 'Längste Dauer',
+        'duration_asc' => 'Kürzeste Dauer',
+    ];
+    $sort = (string) ($_GET['sort'] ?? 'date_desc');
+    if (!isset($sorts[$sort])) {
+        $sort = 'date_desc';
     }
     $tariffs = cfg()['tariffs'];
-    $rows = (new Sessions(store()))->month($month);
+    $sessions = new Sessions(store());
+    if ($span === 'year') {
+        $start = new DateTimeImmutable(sprintf('%04d-01-01 00:00:00', $year), $tz);
+        $rows = $sessions->between($start, $start->modify('+1 year'));
+    } else {
+        $rows = $sessions->month($month);
+    }
     $totals = ['energy' => 0.0, 'solar' => 0.0, 'grid' => 0.0, 'cost' => 0.0, 'reference' => 0.0, 'saved' => 0.0, 'duration' => 0, 'solar_pct' => 0.0, 'ct' => 0.0];
     foreach ($rows as &$row) {
         $row['costed'] = Sessions::cost($row, $tariffs);
@@ -129,15 +168,19 @@ if ($path === '/statistik') {
         $totals['duration'] += (int) $row['duration_s'];
     }
     unset($row);
+    usort($rows, static function (array $a, array $b) use ($sort): int {
+        $cmp = match ($sort) {
+            'date_asc', 'date_desc' => strcmp((string) $a['started_at'], (string) $b['started_at']),
+            'energy_asc', 'energy_desc' => ((float) $a['energy_kwh'] <=> (float) $b['energy_kwh']),
+            'solar_asc', 'solar_desc' => ((float) $a['costed']['solar_pct'] <=> (float) $b['costed']['solar_pct']),
+            'cost_asc', 'cost_desc' => ((float) $a['costed']['cost'] <=> (float) $b['costed']['cost']),
+            default => ((int) $a['duration_s'] <=> (int) $b['duration_s']),
+        };
+        return str_ends_with($sort, '_asc') ? $cmp : -$cmp;
+    });
     $totals['solar_pct'] = $totals['energy'] > 0 ? $totals['solar'] / $totals['energy'] * 100 : 0;
     $totals['ct'] = $totals['energy'] > 0 ? $totals['cost'] / $totals['energy'] * 100 : 0;
-    $months = [];
-    $cursor = new DateTimeImmutable('first day of this month');
-    for ($i = 0; $i < 12; $i++) {
-        $months[$cursor->format('Y-m')] = $cursor->format('m.Y');
-        $cursor = $cursor->modify('-1 month');
-    }
-    page('stats', compact('live', 'month', 'months', 'rows', 'totals', 'tariffs') + ['title' => 'Statistik']);
+    page('stats', compact('live', 'month', 'year', 'span', 'sort', 'sorts', 'rows', 'totals', 'tariffs') + ['title' => 'Statistik']);
 }
 if ($path === '/prognose') {
     try {
@@ -147,15 +190,13 @@ if ($path === '/prognose') {
     }
     $yield = safe_yield();
     $yesterday = yesterday_yield();
-    $goodness = null;
-    $day = (new DateTimeImmutable('yesterday', new DateTimeZone('Europe/Berlin')))->format('Y-m-d');
-    $stmt = store()->pdo()->prepare('SELECT actual_kwh, model_kwh FROM daily WHERE day = ?');
-    $stmt->execute([$day]);
-    $row = $stmt->fetch();
-    if ($row && (float) $row['actual_kwh'] > 0 && $row['model_kwh'] !== null) {
-        $goodness = Forecast::predicted((float) $row['model_kwh'], cfg()['plant']) / (float) $row['actual_kwh'];
-    }
-    page('forecast', compact('snap', 'live', 'yield', 'yesterday', 'goodness') + ['title' => 'Prognose']);
+    $score = (new Series(store(), ha()))->goodness(cfg()['plant']);
+    $goodness = $score['ratio'];
+    $goodnessDays = $score['days'];
+    $goodnessN = $score['n'];
+    $todayKey = (new DateTimeImmutable('today', new DateTimeZone('Europe/Berlin')))->format('Y-m-d');
+    $storedDays = Forecast::lockedFrom(store()->pdo(), $todayKey);
+    page('forecast', compact('snap', 'live', 'yield', 'yesterday', 'goodness', 'goodnessDays', 'goodnessN', 'storedDays') + ['title' => 'Prognose']);
 }
 if ($path === '/einstellungen') {
     $ping = ha()->ping();
@@ -241,7 +282,6 @@ function review_lines(array $mapping): array
         'grid_export' => 'Einspeisung',
         'house_power' => 'Haus',
         'wallbox_power' => 'Wallbox',
-        'weather_radiation' => 'Strahlung',
     ];
     $index = [];
     try {
@@ -269,29 +309,65 @@ function review_lines(array $mapping): array
     return $lines;
 }
 
-function session_chart(string $month): array
+function stats_query(): string
 {
+    $span = (($_POST['span'] ?? $_GET['span'] ?? 'month') === 'year') ? 'year' : 'month';
+    $year = (int) ($_POST['year'] ?? $_GET['year'] ?? date('Y'));
+    $month = (string) ($_POST['month'] ?? $_GET['month'] ?? date('Y-m'));
+    $sort = (string) ($_POST['sort'] ?? $_GET['sort'] ?? 'date_desc');
+    return '?' . http_build_query(['span' => $span, 'year' => $year, 'month' => $month, 'sort' => $sort]);
+}
+
+function session_chart(string $span, string $month, int $year): array
+{
+    $tz = new DateTimeZone('Europe/Berlin');
+    $span = $span === 'year' ? 'year' : 'month';
+    if ($year < 2020 || $year > 2100) {
+        $year = (int) date('Y');
+    }
     if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
         $month = date('Y-m');
     }
-    $rows = (new Sessions(store()))->month($month);
+    $sessions = new Sessions(store());
+    if ($span === 'year') {
+        $start = new DateTimeImmutable(sprintf('%04d-01-01 00:00:00', $year), $tz);
+        $end = $start->modify('+1 year');
+        $rows = $sessions->between($start, $end);
+        $count = (int) $start->diff($end)->days;
+        $xTitle = 'Tag im Jahr';
+    } else {
+        $start = new DateTimeImmutable($month . '-01 00:00:00', $tz);
+        $rows = $sessions->month($month);
+        $count = (int) $start->format('t');
+        $xTitle = 'Tag';
+    }
     $days = [];
     foreach ($rows as $row) {
-        $day = (int) (new DateTimeImmutable($row['started_at']))->format('j');
+        try {
+            $when = (new DateTimeImmutable((string) $row['started_at']))->setTimezone($tz);
+        } catch (Throwable) {
+            continue;
+        }
+        $day = $span === 'year' ? ((int) $when->format('z')) + 1 : (int) $when->format('j');
         $days[$day]['solar'] = ($days[$day]['solar'] ?? 0) + (float) $row['solar_kwh'];
         $days[$day]['grid'] = ($days[$day]['grid'] ?? 0) + (float) $row['grid_kwh'];
     }
-    $count = (int) (new DateTimeImmutable($month . '-01'))->format('t');
-    $solar = $grid = [];
+    $labels = $solar = $grid = [];
     for ($day = 1; $day <= $count; $day++) {
-        $solar[] = ['x' => $day, 'y' => round($days[$day]['solar'] ?? 0, 2)];
-        $grid[] = ['x' => $day, 'y' => round($days[$day]['grid'] ?? 0, 2)];
+        $labels[] = (string) $day;
+        $solar[] = round($days[$day]['solar'] ?? 0, 2);
+        $grid[] = round($days[$day]['grid'] ?? 0, 2);
     }
     return [
-        'axis' => 'day',
+        'axis' => 'category',
+        'stacked' => true,
+        'labels' => $labels,
+        'days' => max(1, $count),
+        'xTitle' => $xTitle,
+        'yTitle' => 'Energie (kWh)',
         'series' => [
-            ['key' => 'solar', 'label' => 'Sonne', 'color' => 'export', 'type' => 'bar', 'data' => $solar],
-            ['key' => 'grid', 'label' => 'Netz', 'color' => 'import', 'type' => 'bar', 'data' => $grid],
+            ['key' => 'solar', 'label' => 'Sonne', 'color' => 'export', 'type' => 'bar', 'stack' => 'energy', 'data' => $solar],
+            ['key' => 'grid', 'label' => 'Netz', 'color' => 'import', 'type' => 'bar', 'stack' => 'energy', 'data' => $grid],
         ],
     ];
 }

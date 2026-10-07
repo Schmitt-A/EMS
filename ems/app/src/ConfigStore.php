@@ -28,6 +28,15 @@ final class ConfigStore
                 source TEXT NOT NULL DEFAULT "recorder"
             )'
         );
+        $columns = [];
+        foreach ($this->pdo->query('PRAGMA table_info(sessions)') ?: [] as $column) {
+            $columns[] = (string) $column['name'];
+        }
+        foreach (['odometer' => 'REAL', 'meter_start' => 'REAL', 'meter_end' => 'REAL'] as $name => $type) {
+            if (!in_array($name, $columns, true)) {
+                $this->pdo->exec('ALTER TABLE sessions ADD COLUMN ' . $name . ' ' . $type);
+            }
+        }
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS daily (
                 day TEXT PRIMARY KEY,

@@ -30,10 +30,6 @@ final class Actions
         'wallbox_amps_max' => 'number.go_echarger_506181_ama',
         'wallbox_phases' => 'select.go_echarger_506181_psm',
         'wallbox_force' => 'select.go_echarger_506181_frc',
-        'weather_radiation' => 'sensor.soonwald_west_4_sonneneinstrahlung',
-        'weather_cloud' => 'sensor.soonwald_west_4_bewolkungsgrad',
-        'weather_sunshine' => 'sensor.soonwald_west_4_sonnenscheindauer',
-        'weather_temp' => 'sensor.soonwald_west_4_temperatur',
     ];
 
     public static function nextStep(string $step): string
@@ -87,9 +83,22 @@ final class Actions
             'netz' => ['grid_mode', 'grid_import', 'grid_export', 'grid_signed', 'grid_sign'],
             'haus' => ['house_power'],
             'wallbox' => ['wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'],
-            'wetter' => ['weather_station', 'weather_radiation', 'weather_cloud', 'weather_sunshine', 'weather_temp'],
             default => [],
         };
+        if ($step === 'wetter') {
+            $url = trim((string) ($_POST['weather_url'] ?? ''));
+            if ($url === '') {
+                $url = WeatherFeed::DEFAULT_URL;
+            }
+            try {
+                WeatherFeed::assertUrl($url);
+                store()->merge('weather', ['url' => $url]);
+            } catch (Throwable $e) {
+                flash($e->getMessage());
+                redirect('/einrichten/wetter');
+            }
+            redirect('/einrichten/' . self::nextStep($step));
+        }
         foreach ($keys as $key) {
             if (in_array($key, ['battery_mode', 'battery_sign', 'grid_mode', 'grid_sign', 'weather_station'], true)) {
                 $mapping[$key] = (string) ($_POST[$key] ?? $mapping[$key] ?? '');
@@ -154,8 +163,8 @@ final class Actions
                 'reserve_soc' => post_float('reserve_soc', 0, 100, 100),
             ]);
         } elseif ($section === 'charge') {
-            $min = post_int('min_a', 6, 32, 6);
-            $max = post_int('max_a', 6, 32, 16);
+            $min = post_int('min_a', 6, 16, 6);
+            $max = post_int('max_a', 6, 16, 16);
             if ($max < $min) {
                 $max = $min;
             }
@@ -190,7 +199,7 @@ final class Actions
                 'grid_sign' => ['positive_import', 'positive_export'],
                 'weather_station' => ['soonwald', 'hahn', 'kreuznach'],
             ];
-            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force', 'weather_radiation', 'weather_cloud', 'weather_sunshine', 'weather_temp'];
+            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'];
             foreach ($enums as $key => $allowed) {
                 $value = (string) ($_POST[$key] ?? ($mapping[$key] ?? ''));
                 $mapping[$key] = in_array($value, $allowed, true) ? $value : (string) ($mapping[$key] ?? $allowed[0]);
@@ -289,7 +298,7 @@ final class Actions
                 'grid_sign' => ['positive_import', 'positive_export'],
                 'weather_station' => ['soonwald', 'hahn', 'kreuznach'],
             ];
-            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force', 'weather_radiation', 'weather_cloud', 'weather_sunshine', 'weather_temp'];
+            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'];
             foreach ($enums as $key => $allowed) {
                 if (!array_key_exists($key, $data['mapping'])) {
                     continue;
@@ -341,8 +350,8 @@ final class Actions
                 'phase_mode' => in_array($phase, ['auto', '1p', '3p'], true) ? $phase : 'auto',
                 'solar_share' => self::clamped($charge['solar_share'] ?? null, 0, 100, 100),
                 'reserve_w' => self::clamped($charge['reserve_w'] ?? null, 0, 2000, 200),
-                'min_a' => (int) round(self::clamped($charge['min_a'] ?? null, 6, 32, 6)),
-                'max_a' => (int) round(self::clamped($charge['max_a'] ?? null, 6, 32, 16)),
+                'min_a' => (int) round(self::clamped($charge['min_a'] ?? null, 6, 16, 6)),
+                'max_a' => (int) round(self::clamped($charge['max_a'] ?? null, 6, 16, 16)),
                 'switch_s' => (int) round(self::clamped($charge['switch_s'] ?? null, 60, 600, 60)),
                 'on_delay_s' => (int) round(self::clamped($charge['on_delay_s'] ?? null, 60, 600, 60)),
                 'off_delay_s' => (int) round(self::clamped($charge['off_delay_s'] ?? null, 60, 600, 60)),

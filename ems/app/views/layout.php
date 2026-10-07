@@ -43,7 +43,7 @@ $showNav = !empty($showNav);
       </div>
       <nav class="flex flex-1 flex-col gap-1 px-3">
         <?php foreach ($nav as $href => [$label, $glyph]): ?>
-          <a class="nav-link" href="<?= e(url($href)) ?>" <?= $current === $href ? 'aria-current="page"' : '' ?>><?= icon($glyph) ?><span><?= e($label) ?></span></a>
+          <a class="nav-link" href="<?= e(url($href)) ?>" <?= $current === $href ? 'aria-current="page"' : '' ?>><?= icon($glyph, $href === '/batterie' ? 'h-4 w-4 text-battery' : 'h-4 w-4') ?><span><?= e($label) ?></span></a>
         <?php endforeach; ?>
       </nav>
     </aside>
@@ -56,7 +56,7 @@ $showNav = !empty($showNav);
           <span class="ml-auto flex flex-wrap items-center justify-end gap-2">
             <span class="chip"><span class="h-1.5 w-1.5 rounded-full <?= !empty($live['connected']) ? 'bg-export' : 'bg-import' ?>" data-live-dot></span><span data-live="connection"><?= !empty($live['connected']) ? 'verbunden' : 'getrennt' ?></span></span>
             <span class="chip text-pv"><?= icon('sun', 'h-3.5 w-3.5') ?><span data-live="pv"><?= e($live['pv'] ?? '—') ?></span></span>
-            <span class="chip hidden sm:inline-flex text-battery"><?= icon('battery', 'h-3.5 w-3.5') ?><span data-live="soc"><?= e($live['soc'] ?? '—') ?></span></span>
+            <span class="chip text-battery"><?= icon('battery', 'h-3.5 w-3.5 text-battery') ?><span data-live="soc"><?= e($live['soc'] ?? '—') ?></span></span>
             <span class="chip hidden lg:inline-flex text-house"><?= icon('house', 'h-3.5 w-3.5') ?><span data-live="house"><?= e($live['house'] ?? '—') ?></span></span>
             <span class="chip hidden xl:inline-flex"><span data-live="grid"><?= e($live['grid'] ?? '—') ?></span></span>
             <span class="chip text-wallbox"><?= icon('car', 'h-3.5 w-3.5') ?><span data-live="wallbox"><?= e($live['wallbox'] ?? '—') ?></span></span>
@@ -77,7 +77,7 @@ $showNav = !empty($showNav);
     <?php
       $short = ['/' => 'Start', '/batterie' => 'Speicher', '/laden' => 'Laden', '/statistik' => 'Statistik', '/prognose' => 'Prognose', '/einstellungen' => 'System'];
       foreach ($nav as $href => [$label, $glyph]): ?>
-      <a class="flex min-w-0 flex-col items-center gap-1 px-0.5 py-2 text-[10px] leading-tight text-muted-foreground <?= $current === $href ? 'text-foreground' : '' ?>" href="<?= e(url($href)) ?>"><?= icon($glyph, 'h-4 w-4') ?><span class="w-full truncate text-center"><?= e($short[$href] ?? $label) ?></span></a>
+      <a class="flex min-w-0 flex-col items-center gap-1 px-0.5 py-2 text-[10px] leading-tight text-muted-foreground <?= $current === $href ? 'text-foreground' : '' ?>" href="<?= e(url($href)) ?>"><?= icon($glyph, $href === '/batterie' ? 'h-5 w-5 text-battery' : 'h-4 w-4') ?><span class="w-full truncate text-center"><?= e($short[$href] ?? $label) ?></span></a>
     <?php endforeach; ?>
   </nav>
   <?php endif; ?>

@@ -72,6 +72,7 @@ final class WeatherFeed
             }
             $pdo->prepare('DELETE FROM weather_hours WHERE t < ?')->execute([time() - 14 * 86400]);
             $pdo->commit();
+            $this->rememberForecast();
             $meta = [
                 'ok' => true,
                 'fetched_at' => time(),
@@ -95,6 +96,19 @@ final class WeatherFeed
         }
         $this->store->put('weather_meta', $meta);
         return $meta;
+    }
+
+    private function rememberForecast(): void
+    {
+        $plant = $this->store->all()['plant'] ?? null;
+        if (!is_array($plant)) {
+            return;
+        }
+        $hours = $this->hours(time() - 14 * 86400, time() + 12 * 86400);
+        if (!$hours) {
+            return;
+        }
+        Forecast::rememberDays($this->store->pdo(), Forecast::fromRadiation($hours, $plant), $plant);
     }
 
     /** Rad1h ist die Stundensumme in kJ/m². W/m² = Wert / 3,6. */
