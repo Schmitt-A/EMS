@@ -218,7 +218,8 @@ if ($path === '/prognose') {
     usort($upcoming, static fn (array $a, array $b): int => strcmp((string) $a['day'], (string) $b['day']));
     usort($past, static fn (array $a, array $b): int => strcmp((string) $b['day'], (string) $a['day']));
     $modelRows = $pack['board'] ?? [];
-    page('forecast', compact('snap', 'live', 'yield', 'yesterday', 'scores', 'upcoming', 'past', 'modelRows', 'todayKey') + ['title' => 'Prognose']);
+    $lesson = $pack['lesson'] ?? null;
+    page('forecast', compact('snap', 'live', 'yield', 'yesterday', 'scores', 'upcoming', 'past', 'modelRows', 'todayKey', 'lesson') + ['title' => 'Prognose']);
 }
 if ($path === '/einstellungen') {
     $ping = ha()->ping();

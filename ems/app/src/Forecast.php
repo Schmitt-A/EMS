@@ -123,7 +123,7 @@ final class Forecast
      * @param array<int, array<string, mixed>> $daily
      * @param array<string, array{kwh:float, sd:?float, pinned?:bool}> $captions
      * @param array<string, array{mean?:float}> $stats
-     * @return array<int, array{day:string, today:bool, actual:?float, model:?float, gute:?float, raw:?float, fitted:?float, regress:?float}>
+     * @return array<int, array{day:string, today:bool, actual:?float, model:?float, sd:?float, gute:?float, raw:?float, fitted:?float, regress:?float}>
      */
     public static function modelBoard(
         string $today,
@@ -176,11 +176,13 @@ final class Forecast
             }
             $actual = $row['actual_kwh'] !== null && $row['actual_kwh'] !== '' ? round((float) $row['actual_kwh'], 2) : null;
             [$raw, $fitted, $regress] = ($mode === 'pin') ? [null, null, null] : self::factorParts($stored, $plant);
+            $caption = $captions[$day] ?? null;
             $past[] = [
                 'day' => $day,
                 'today' => false,
                 'actual' => $actual,
                 'model' => round($shown, 2),
+                'sd' => ($mode === 'pin' || !is_array($caption)) ? null : ($caption['sd'] ?? null),
                 'gute' => ($actual !== null && $actual > 0) ? round($shown / $actual, 3) : null,
                 'raw' => $raw,
                 'fitted' => $fitted,
@@ -196,7 +198,7 @@ final class Forecast
 
     /** @param array<string, array{kwh:float, sd:?float, pinned?:bool}> $captions
      *  @param array<string, array{mean?:float}> $stats
-     *  @return array{day:string, today:bool, actual:?float, model:?float, gute:?float, raw:?float, fitted:?float, regress:?float}
+     *  @return array{day:string, today:bool, actual:?float, model:?float, sd:?float, gute:?float, raw:?float, fitted:?float, regress:?float}
      */
     private static function forecastBoardRow(string $day, array $captions, array $stats, array $plant, ?float $actual, bool $today): array
     {
@@ -215,10 +217,69 @@ final class Forecast
             'today' => $today,
             'actual' => $actual !== null ? round($actual, 2) : null,
             'model' => $model,
+            'sd' => ($pinned || !is_array($caption)) ? null : ($caption['sd'] ?? null),
             'gute' => (!$today && $actual !== null && $actual > 0 && $model !== null) ? round($model / $actual, 3) : null,
             'raw' => $raw,
             'fitted' => $fitted,
             'regress' => $regress,
+        ];
+    }
+
+    /**
+     * Rechnung des laufenden Tages: Eichfaktor in der Formel, Abweichung der Läufe, Güte als nachträglicher Vergleich.
+     *
+     * @param array<string, array{mean?:float, sd?:?float, n?:int}> $stats
+     * @param array<string, array{kwh?:float, sd?:?float, pinned?:bool}> $captions
+     * @param array<string, array{actual:float, model:float}> $complete
+     * @param array<int, string> $windowDays
+     * @return array{day:string, raw:?float, sd_raw:?float, runs:int, pinned:bool, factor:float, factor_locked:bool, prognosis:?float, sd:?float, actual:?float, pairs:array<int, array{day:string, actual:float, model:float}>, sum_actual:float, sum_model:float, gute:?float, regress_days:int}
+     */
+    public static function lesson(string $today, array $stats, array $captions, ?float $actualToday, array $plant, array $complete, array $windowDays): array
+    {
+        $stat = $stats[$today] ?? null;
+        $caption = $captions[$today] ?? null;
+        $pinned = is_array($caption) && !empty($caption['pinned']);
+        $raw = is_array($stat) && isset($stat['mean']) ? (float) $stat['mean'] : null;
+        $sdRaw = is_array($stat) && isset($stat['sd']) && $stat['sd'] !== null ? (float) $stat['sd'] : null;
+        $prognosis = null;
+        if (is_array($caption) && isset($caption['kwh'])) {
+            $prognosis = (float) $caption['kwh'];
+        } elseif ($raw !== null) {
+            $prognosis = self::predicted($raw, $plant);
+        }
+        $days = $windowDays;
+        sort($days);
+        $pairs = [];
+        $sumActual = 0.0;
+        $sumModel = 0.0;
+        foreach ($days as $day) {
+            if (!isset($complete[$day])) {
+                continue;
+            }
+            $actual = (float) $complete[$day]['actual'];
+            $model = (float) $complete[$day]['model'];
+            $pairs[] = ['day' => $day, 'actual' => $actual, 'model' => $model];
+            $sumActual += $actual;
+            $sumModel += $model;
+        }
+        return [
+            'day' => $today,
+            'raw' => $pinned ? null : $raw,
+            'sd_raw' => $pinned ? null : $sdRaw,
+            'runs' => ($pinned || !is_array($stat)) ? 0 : (int) ($stat['n'] ?? 0),
+            'pinned' => $pinned,
+            'factor' => (float) ($plant['factor'] ?? 1),
+            'factor_locked' => !empty($plant['factor_locked']),
+            'prognosis' => $prognosis,
+            'sd' => ($pinned || !is_array($caption) || !isset($caption['sd']) || $caption['sd'] === null) ? null : (float) $caption['sd'],
+            'actual' => $actualToday !== null ? round($actualToday, 2) : null,
+            'pairs' => $pairs,
+            'sum_actual' => $sumActual,
+            'sum_model' => $sumModel,
+            'gute' => $sumActual > 0 ? $sumModel / $sumActual : null,
+            'regress_days' => (int) ($plant['regress_days'] ?? 0),
+            'regress_a' => (float) ($plant['regress_a'] ?? 0),
+            'regress_b' => (float) ($plant['regress_b'] ?? 1),
         ];
     }
 

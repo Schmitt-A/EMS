@@ -163,7 +163,16 @@ $board = Forecast::modelBoard('2026-10-08', [
 $boardDays = array_map(static fn (array $row): string => $row['day'], $board);
 check($boardDays === ['2026-10-10', '2026-10-09', '2026-10-08', '2026-10-07', '2026-10-06', '2026-10-05'], 'Modelltafel: kommende Tage, heute, vergangene Modelltage');
 $boardToday = $board[2];
-check($boardToday['today'] === true && $boardToday['gute'] === null && $boardToday['regress'] === null && abs((float) $boardToday['model'] - 5) < 0.01 && abs((float) $boardToday['raw'] - 10) < 0.01 && abs((float) $boardToday['fitted'] - 5) < 0.01, 'heutiger Tag hat Rohmodell und Faktor, die Güte und die Regression bleiben leer');
+check($boardToday['today'] === true && $boardToday['gute'] === null && $boardToday['regress'] === null && abs((float) $boardToday['model'] - 5) < 0.01 && abs((float) $boardToday['raw'] - 10) < 0.01 && abs((float) $boardToday['fitted'] - 5) < 0.01 && abs((float) $boardToday['sd'] - 0.1) < 0.001, 'heutiger Tag hat Rohmodell, Faktor und Abweichung, die Güte und die Regression bleiben leer');
+$lesson = Forecast::lesson('2026-10-08', [
+    '2026-10-08' => ['mean' => 10.0, 'sd' => 0.2, 'n' => 3],
+], [
+    '2026-10-08' => ['kwh' => 5.0, 'sd' => 0.1, 'pinned' => false],
+], 4.2, ['factor' => 0.5, 'regress_days' => 2], [
+    '2026-10-06' => ['actual' => 8.0, 'model' => 4.0],
+    '2026-10-07' => ['actual' => 10.0, 'model' => 6.0],
+], ['2026-10-07', '2026-10-06']);
+check(abs((float) $lesson['raw'] - 10) < 0.01 && abs((float) $lesson['raw'] * (float) $lesson['factor'] - 5) < 0.01 && abs((float) $lesson['gute'] - (10 / 18)) < 0.001 && abs((float) $lesson['sd_raw'] - 0.2) < 0.001 && count($lesson['pairs']) === 2, 'Rechenbeispiel trennt Eichfaktor, Abweichung und Güte');
 $readyPlant = $boardPlant;
 $readyPlant['regress_days'] = 5;
 $readyBoard = Forecast::modelBoard('2026-10-08', [

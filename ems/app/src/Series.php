@@ -347,7 +347,7 @@ final class Series
             'y1Title' => 'Güte',
             'series' => [
                 ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'type' => 'bar', 'data' => $dailyActual],
-                ['key' => 'model', 'label' => 'Modell', 'color' => 'export', 'type' => 'bar', 'data' => $dailyModel],
+                ['key' => 'model', 'label' => 'Prognose', 'color' => 'export', 'type' => 'bar', 'data' => $dailyModel],
                 ['key' => 'k', 'label' => 'Güte', 'color' => 'wallbox', 'axis' => 'y1', 'data' => $dailyGute],
                 ['key' => 'ideal', 'label' => 'Güte 1,0', 'color' => 'muted', 'axis' => 'y1', 'dash' => true, 'data' => array_fill(0, count($dailyKeys), 1)],
             ],
@@ -368,16 +368,19 @@ final class Series
                 'regress' => $regress[$i] ?? null,
             ];
         }
-        $board = Forecast::modelBoard(
+        $captions = Forecast::captions($this->store->pdo(), $plant);
+        $issueStats = Forecast::issueStats($this->store->pdo());
+        $board = Forecast::modelBoard($todayKey, $rows, $captions, $issueStats, $actualToday, $plant, $lockedToday);
+        $lesson = Forecast::lesson(
             $todayKey,
-            $rows,
-            Forecast::captions($this->store->pdo(), $plant),
-            Forecast::issueStats($this->store->pdo()),
+            $issueStats,
+            $captions,
             $actualToday,
             $plant,
-            $lockedToday
+            $complete,
+            Forecast::windowDays(array_keys($complete), $todayKey, '3')
         );
-        return ['daily' => $daily, 'compare' => $compare, 'table' => $table, 'board' => $board, 'goodness' => $scores];
+        return ['daily' => $daily, 'compare' => $compare, 'table' => $table, 'board' => $board, 'lesson' => $lesson, 'goodness' => $scores];
     }
 
     public function weather(array $mapping): array
