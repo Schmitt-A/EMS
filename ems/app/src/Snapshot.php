@@ -317,6 +317,10 @@ final class Snapshot
             'plan_priority_kwh' => $this->levelKwh(null, (float) ($v['priority_soc'] ?? 80), $snap['storage']['full_kwh'] ?? null, false),
             'plan_full_kwh' => $this->levelKwh(null, 100, $snap['storage']['full_kwh'] ?? null, false),
             'plan_buffer_kwh' => $this->levelKwh(null, (float) ($snap['car_buffer_soc'] ?? 100), $snap['storage']['full_kwh'] ?? null, false),
+            'car_soc_fill' => isset($v['car_soc']) ? (string) max(0, min(100, (int) round((float) $v['car_soc']))) : '',
+            'car_soc_label' => isset($v['car_soc']) ? pct((float) $v['car_soc'], 0) : '—',
+            'car_capacity_line' => $this->carCapacityLine(isset($v['car_soc']) ? (float) $v['car_soc'] : null, $v['car_capacity_kwh'] ?? null),
+            'car_flow' => !empty($snap['car_charging']) ? 'laden' : 'ruhe',
             'car_state' => $this->carState($v['car_soc'] ?? null, $v['car_capacity_kwh'] ?? null),
             'car_outlook' => !empty($snap['car_charging'])
                 ? 'Die Wallbox lädt gerade ein Auto. Die Zeiten gelten wieder, sobald sie pausiert. Angesetzt ist kein Ladestrom.'
@@ -357,6 +361,23 @@ final class Snapshot
             return num($soc, 0) . ' %';
         }
         return '—';
+    }
+
+    private function carCapacityLine(?float $soc, ?float $capacity): string
+    {
+        if ($soc !== null && $capacity !== null && $capacity > 0) {
+            $stored = $capacity * max(0, min(100, $soc)) / 100;
+
+            return num($stored, 1) . ' / ' . num($capacity, 1) . ' kWh';
+        }
+        if ($capacity !== null && $capacity > 0) {
+            return 'Kapazität ' . num($capacity, 1) . ' kWh. Der Ladestand fehlt noch.';
+        }
+        if ($soc !== null) {
+            return 'Der Ladestand ist da. Die Kapazität fehlt noch.';
+        }
+
+        return 'Kapazität folgt, sobald das Fahrzeug sie meldet.';
     }
 
     private function carState(?float $soc, ?float $capacity): string
@@ -419,21 +440,21 @@ final class Snapshot
     {
         $mark = num($buffer, 0) . ' %';
         if ($buffer >= 99.5 || empty($storage['buffer_open'])) {
-            return 'Auto aus dem Speicher ist bei ' . $mark . '. Der Hausspeicher bleibt fürs Haus.';
+            return 'Batteriegestütztes Laden ist bei ' . $mark . '. Der Hausspeicher bleibt fürs Haus.';
         }
         if (!empty($storage['buffer_reached'])) {
-            return 'Auto aus dem Speicher ab ' . $mark . ' ist erreicht.';
+            return 'Batteriegestütztes Laden ab ' . $mark . ' ist erreicht.';
         }
         if (!empty($storage['house_missing'])) {
-            return 'Auto aus dem Speicher ab ' . $mark . ' bleibt offen, bis der Hausverbrauch der letzten 30 Tage da ist.';
+            return 'Batteriegestütztes Laden ab ' . $mark . ' bleibt offen, bis der Hausverbrauch der letzten 30 Tage da ist.';
         }
         if (empty($storage['reachable'])) {
-            return 'Auto aus dem Speicher ab ' . $mark . ' braucht Ladestand und Kapazität.';
+            return 'Batteriegestütztes Laden ab ' . $mark . ' braucht Ladestand und Kapazität.';
         }
         if (empty($storage['buffer_at'])) {
-            return 'Auto aus dem Speicher ab ' . $mark . ' in den nächsten vier Tagen nicht erreicht.';
+            return 'Batteriegestütztes Laden ab ' . $mark . ' in den nächsten vier Tagen nicht erreicht.';
         }
-        return 'Auto aus dem Speicher ab ' . $mark . ' voraussichtlich ' . when_label((int) $storage['buffer_at']) . '.';
+        return 'Batteriegestütztes Laden ab ' . $mark . ' voraussichtlich ' . when_label((int) $storage['buffer_at']) . '.';
     }
 
     /** @param array{surplus_kwh?:?float, house_missing?:bool} $storage */

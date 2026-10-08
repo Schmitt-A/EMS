@@ -159,14 +159,29 @@ final class Actions
                 store()->put('last_calibration', '');
             }
         } elseif ($section === 'battery') {
-            $strategy = [
-                'priority_soc' => post_float('priority_soc', 0, 100, 80),
-                'reserve_soc' => post_float('reserve_soc', 0, 100, 100),
-            ];
-            if (array_key_exists('car_buffer_soc', $_POST)) {
-                $strategy['car_buffer_soc'] = post_float('car_buffer_soc', 0, 100, 100);
+            $current = store()->get('battery_strategy', []);
+            if (!is_array($current)) {
+                $current = [];
             }
-            store()->merge('battery_strategy', $strategy);
+            $patch = [];
+            if (array_key_exists('priority_soc', $_POST)) {
+                $patch['priority_soc'] = post_float('priority_soc', 0, 100, (float) ($current['priority_soc'] ?? 80));
+            }
+            if (array_key_exists('reserve_soc', $_POST)) {
+                $patch['reserve_soc'] = post_float('reserve_soc', 0, 100, (float) ($current['reserve_soc'] ?? 100));
+            }
+            if (array_key_exists('car_buffer_soc', $_POST)) {
+                $patch['car_buffer_soc'] = post_float('car_buffer_soc', 0, 100, (float) ($current['car_buffer_soc'] ?? 100));
+            }
+            if (array_key_exists('car_auto_soc', $_POST)) {
+                $patch['car_auto_soc'] = post_float('car_auto_soc', 0, 100, (float) ($current['car_auto_soc'] ?? 100));
+            }
+            if (isset($patch['priority_soc']) || isset($patch['car_buffer_soc']) || isset($patch['car_auto_soc'])) {
+                $patch = array_merge($patch, self::zonesFrom($current, $patch));
+            }
+            if ($patch) {
+                store()->merge('battery_strategy', $patch);
+            }
         } elseif ($section === 'car') {
             $mapping = store()->get('mapping', []);
             if (!is_array($mapping)) {
@@ -175,9 +190,20 @@ final class Actions
             $mapping['car_soc'] = post_entity('car_soc');
             $mapping['car_capacity'] = post_entity('car_capacity');
             store()->put('mapping', $mapping);
-            store()->merge('battery_strategy', [
-                'car_buffer_soc' => post_float('car_buffer_soc', 0, 100, 100),
-            ]);
+            $current = store()->get('battery_strategy', []);
+            if (!is_array($current)) {
+                $current = [];
+            }
+            $patch = [];
+            if (array_key_exists('car_buffer_soc', $_POST)) {
+                $patch['car_buffer_soc'] = post_float('car_buffer_soc', 0, 100, (float) ($current['car_buffer_soc'] ?? 100));
+            }
+            if (array_key_exists('car_auto_soc', $_POST)) {
+                $patch['car_auto_soc'] = post_float('car_auto_soc', 0, 100, (float) ($current['car_auto_soc'] ?? 100));
+            }
+            if ($patch) {
+                store()->merge('battery_strategy', array_merge($patch, self::zonesFrom($current, $patch)));
+            }
         } elseif ($section === 'charge') {
             $min = post_int('min_a', 6, 16, 6);
             $max = post_int('max_a', 6, 16, 16);
@@ -377,12 +403,23 @@ final class Actions
             ]);
         }
         if (isset($data['battery_strategy']) && is_array($data['battery_strategy'])) {
+            $incoming = $data['battery_strategy'];
             $strategy = [
-                'priority_soc' => self::clamped($data['battery_strategy']['priority_soc'] ?? null, 0, 100, 80),
-                'reserve_soc' => self::clamped($data['battery_strategy']['reserve_soc'] ?? null, 0, 100, 100),
+                'priority_soc' => self::clamped($incoming['priority_soc'] ?? null, 0, 100, 80),
+                'reserve_soc' => self::clamped($incoming['reserve_soc'] ?? null, 0, 100, 100),
             ];
-            if (array_key_exists('car_buffer_soc', $data['battery_strategy'])) {
-                $strategy['car_buffer_soc'] = self::clamped($data['battery_strategy']['car_buffer_soc'], 0, 100, 100);
+            if (array_key_exists('car_buffer_soc', $incoming)) {
+                $strategy['car_buffer_soc'] = self::clamped($incoming['car_buffer_soc'], 0, 100, 100);
+            }
+            if (array_key_exists('car_auto_soc', $incoming)) {
+                $strategy['car_auto_soc'] = self::clamped($incoming['car_auto_soc'], 0, 100, 100);
+            }
+            $current = store()->get('battery_strategy', []);
+            if (!is_array($current)) {
+                $current = [];
+            }
+            if (array_key_exists('priority_soc', $incoming) || array_key_exists('car_buffer_soc', $incoming) || array_key_exists('car_auto_soc', $incoming)) {
+                $strategy = array_merge($strategy, self::zonesFrom($current, $strategy));
             }
             store()->merge('battery_strategy', $strategy);
         }
@@ -401,6 +438,18 @@ final class Actions
                 store()->merge('ui', ['theme' => $theme]);
             }
         }
+    }
+
+    /** @param array<string, mixed> $current @param array<string, mixed> $overlay */
+    private static function zonesFrom(array $current, array $overlay): array
+    {
+        $merged = array_merge($current, $overlay);
+
+        return zone_thresholds(
+            (float) ($merged['priority_soc'] ?? 80),
+            (float) ($merged['car_buffer_soc'] ?? 100),
+            (float) ($merged['car_auto_soc'] ?? 100),
+        );
     }
 
     private static function clamped(mixed $value, float $min, float $max, float $fallback): float

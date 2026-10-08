@@ -113,7 +113,7 @@ function chart_box(string $endpoint, string $class = 'h-72', string $mode = ''):
         echo '<div class="touch-x min-w-0 max-w-full">';
     }
     $attr = $mode === 'scroll' ? ' data-scroll="1"' : ($mode === 'pan' ? ' data-pan="1"' : '');
-    echo '<div class="' . e($class) . '" data-chart' . $attr . ' data-url="' . e(url($endpoint)) . '"><canvas></canvas></div>';
+    echo '<div class="relative w-full min-w-0 max-w-full overflow-hidden ' . e($class) . '" data-chart' . $attr . ' data-url="' . e(url($endpoint)) . '"><canvas></canvas></div>';
     if ($mode === 'scroll') {
         echo '</div>';
     }

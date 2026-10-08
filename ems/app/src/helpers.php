@@ -240,6 +240,37 @@ function clamp_float(float $value, float $min, float $max): float
     return max($min, min($max, $value));
 }
 
+function snap_percent(float $value): float
+{
+    $step = round(clamp_float($value, 0, 100) / 5) * 5;
+
+    return max(0.0, min(100.0, $step));
+}
+
+/**
+ * Hausgrenze, Stützung und automatischer Start, auf 5 % gerastert und aufsteigend.
+ *
+ * @return array{priority_soc: float, car_buffer_soc: float, car_auto_soc: float}
+ */
+function zone_thresholds(float $priority, float $buffer, float $auto): array
+{
+    $priority = snap_percent($priority);
+    $buffer = snap_percent($buffer);
+    $auto = snap_percent($auto);
+    if ($buffer < $priority) {
+        $buffer = $priority;
+    }
+    if ($auto < $buffer) {
+        $auto = $buffer;
+    }
+
+    return [
+        'priority_soc' => $priority,
+        'car_buffer_soc' => $buffer,
+        'car_auto_soc' => $auto,
+    ];
+}
+
 function post_float(string $key, float $min, float $max, float $fallback): float
 {
     $raw = str_replace(',', '.', trim((string) ($_POST[$key] ?? '')));

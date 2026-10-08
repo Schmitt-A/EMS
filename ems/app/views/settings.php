@@ -126,17 +126,18 @@ page_head('Einstellungen', 'Tarife, Dach und Strategie liegen hier. Die Messwert
       <label class="text-sm">Vorrang (%)<input class="field mt-1" name="priority_soc" value="<?= e((string) $b['priority_soc']) ?>"></label>
       <label class="text-sm">Mindestreserve (%)<input class="field mt-1" name="reserve_soc" value="<?= e((string) $b['reserve_soc']) ?>"></label>
     </div>
-    <p class="text-xs text-muted-foreground">Der Vorrang bestimmt, bis wohin Sonnenstrom zuerst in den Hausspeicher geht. Die Mindestreserve markiert, was fürs Haus bleiben soll.</p>
+    <p class="text-xs text-muted-foreground">Der Vorrang ist die Hausgrenze auf der Batterieseite: bis dahin füllt Sonnenstrom zuerst den Hausspeicher. Die Mindestreserve markiert, was fürs Haus bleiben soll. Die Zonen dort rasten in Schritten von 5 %.</p>
     <button class="btn-primary" type="submit">Speicher speichern</button>
   </form>
   <form method="post" class="card space-y-4 p-5">
     <?= csrf_field() ?><input type="hidden" name="section" value="car"><input type="hidden" name="back" value="/einstellungen">
     <h2 class="font-medium">Auto</h2>
-    <p class="text-sm text-muted-foreground">Der Hausspeicher nimmt den Sonnenüberschuss zuerst, bis zum Speicher-Vorrang. Darüber lädt die Wallbox. Ab dem Puffer darf gespeicherte Energie das Auto stützen. Bei 100 % bleibt der Speicher fürs Haus. Die Sollleistung der Wallbox bleibt bei diesem Regler unverändert. Ladestand und Kapazität des Autos kommen dazu, sobald die Entitäten da sind.</p>
+    <p class="text-sm text-muted-foreground">Bis zur Hausgrenze fließt Sonnenstrom zuerst in den Hausspeicher. Darüber hat das Fahrzeug Vorrang. Ab der Stützung darf der Speicher mitladen, ab dem automatischen Start ist diese Marke erreicht. Bei 100 % bleibt der Speicher fürs Haus. Die Sollleistung der Wallbox ändern diese Marken nicht. Ladestand und Kapazität des Autos füllen die Anzeige, sobald die Entitäten da sind.</p>
     <div class="grid gap-4 sm:grid-cols-2">
       <?php entity_field('car_soc', 'Ladestand des Autos', (string) ($m['car_soc'] ?? ''), 'Prozent, sobald das Fahrzeug ihn meldet.'); ?>
       <?php entity_field('car_capacity', 'Kapazität des Autos', (string) ($m['car_capacity'] ?? ''), 'Wh oder kWh.'); ?>
-      <label class="text-sm sm:col-span-2">Auto aus dem Speicher (%)<input class="field mt-1" name="car_buffer_soc" value="<?= e((string) ($b['car_buffer_soc'] ?? 100)) ?>"></label>
+      <label class="text-sm">Stützung ab (%)<input class="field mt-1" name="car_buffer_soc" value="<?= e((string) ($b['car_buffer_soc'] ?? 100)) ?>"></label>
+      <label class="text-sm">Automatisch ab (%)<input class="field mt-1" name="car_auto_soc" value="<?= e((string) ($b['car_auto_soc'] ?? 100)) ?>"></label>
     </div>
     <button class="btn-primary" type="submit">Auto speichern</button>
   </form>

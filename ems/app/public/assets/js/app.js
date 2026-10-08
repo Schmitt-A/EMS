@@ -762,6 +762,98 @@
       button.addEventListener('click', () => dialog.close());
     });
   });
+
+  document.querySelectorAll('[data-zone-root]').forEach((root) => {
+    const fields = {
+      priority: root.querySelector('[data-zone="priority"]'),
+      buffer: root.querySelector('[data-zone="buffer"]'),
+      auto: root.querySelector('[data-zone="auto"]'),
+    };
+    if (!fields.priority || !fields.buffer || !fields.auto) return;
+    const snap = (value) => Math.max(0, Math.min(100, Math.round(Number(value) / 5) * 5));
+    const writeOut = (input) => {
+      const out = input.parentElement && input.parentElement.querySelector('[data-range-out]');
+      if (out) out.textContent = input.value + ' %';
+    };
+    const paint = (active) => {
+      let priority = snap(fields.priority.value);
+      let buffer = snap(fields.buffer.value);
+      let auto = snap(fields.auto.value);
+      if (active === 'buffer') {
+        if (buffer < priority) priority = buffer;
+        if (auto < buffer) auto = buffer;
+      } else if (active === 'auto') {
+        if (buffer > auto) buffer = auto;
+        if (priority > buffer) priority = buffer;
+      } else if (active === 'priority') {
+        if (buffer < priority) buffer = priority;
+        if (auto < buffer) auto = buffer;
+      } else {
+        if (buffer < priority) buffer = priority;
+        if (auto < buffer) auto = buffer;
+      }
+      const next = { priority, buffer, auto };
+      Object.keys(next).forEach((key) => {
+        fields[key].value = String(next[key]);
+        writeOut(fields[key]);
+        root.querySelectorAll('[data-zone-read="' + key + '"]').forEach((node) => {
+          node.textContent = String(next[key]);
+        });
+        root.querySelectorAll('[data-handle-value="' + key + '"]').forEach((node) => {
+          node.textContent = String(next[key]);
+        });
+        root.querySelectorAll('[data-handle="' + key + '"]').forEach((node) => {
+          node.setAttribute('aria-valuenow', String(next[key]));
+        });
+      });
+      root.querySelectorAll('[data-zone-mirror="priority"]').forEach((input) => {
+        input.value = String(priority);
+        writeOut(input);
+      });
+      root.style.setProperty('--house', priority + '%');
+      root.style.setProperty('--support', buffer + '%');
+      root.style.setProperty('--auto', auto + '%');
+    };
+    Object.keys(fields).forEach((key) => {
+      fields[key].addEventListener('input', () => paint(key));
+    });
+    root.querySelectorAll('[data-zone-mirror="priority"]').forEach((input) => {
+      input.addEventListener('input', () => {
+        fields.priority.value = input.value;
+        paint('priority');
+      });
+    });
+    const names = { priority: 'priority', buffer: 'buffer', auto: 'auto' };
+    root.querySelectorAll('[data-handle]').forEach((handle) => {
+      const key = names[handle.dataset.handle] ? handle.dataset.handle : '';
+      if (!key || !fields[key]) return;
+      const moveTo = (clientY) => {
+        const body = handle.closest('[data-zone-editor]')?.querySelector('[data-zone-body]');
+        if (!body) return;
+        const rect = body.getBoundingClientRect();
+        const ratio = rect.height > 0 ? (rect.bottom - clientY) / rect.height : 0;
+        fields[key].value = String(snap(ratio * 100));
+        paint(key);
+      };
+      handle.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        moveTo(event.clientY);
+      });
+      handle.addEventListener('pointermove', (event) => {
+        if (!handle.hasPointerCapture(event.pointerId)) return;
+        moveTo(event.clientY);
+      });
+      handle.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const delta = (event.key === 'ArrowUp' || event.key === 'ArrowRight') ? 5 : -5;
+        fields[key].value = String(snap(Number(fields[key].value) + delta));
+        paint(key);
+      });
+    });
+    paint('keep');
+  });
   document.querySelectorAll('[data-battery-tools]').forEach((bar) => {
     bar.addEventListener('click', (event) => {
       const button = event.target.closest('button');
@@ -865,6 +957,14 @@
         if (!host) return;
         host.style.setProperty('--soc', Math.max(0, Math.min(100, n)) + '%');
         if (data.battery_flow) host.dataset.flow = data.battery_flow;
+      });
+      document.querySelectorAll('[data-car-battery]').forEach((host) => {
+        const raw = data.car_soc_fill;
+        const known = raw !== undefined && raw !== null && String(raw) !== '';
+        host.dataset.carKnown = known ? '1' : '0';
+        const n = known ? Number(raw) : 0;
+        if (Number.isFinite(n)) host.style.setProperty('--soc', Math.max(0, Math.min(100, n)) + '%');
+        if (data.car_flow) host.dataset.flow = data.car_flow;
       });
       document.querySelectorAll('[data-live-hide]').forEach((node) => {
         const value = data[node.dataset.liveHide];
