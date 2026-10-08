@@ -229,8 +229,11 @@ final class Forecast
             return [null, null, null];
         }
         $factor = (float) ($plant['factor'] ?? 1);
-        $regress = max(0, (float) ($plant['regress_a'] ?? 0) + (float) ($plant['regress_b'] ?? 0) * $raw);
-        return [round($raw, 2), round($raw * $factor, 2), round($regress, 2)];
+        $regress = null;
+        if ((int) ($plant['regress_days'] ?? 0) >= 5) {
+            $regress = round(max(0, (float) ($plant['regress_a'] ?? 0) + (float) ($plant['regress_b'] ?? 0) * $raw), 2);
+        }
+        return [round($raw, 2), round($raw * $factor, 2), $regress];
     }
 
     /** @param array<int, string> $days

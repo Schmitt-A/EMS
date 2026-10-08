@@ -264,7 +264,9 @@ final class Series
             $pinned = $mode === 'pin';
             $raw[] = (!$pinned && $m !== null) ? round($m, 2) : null;
             $fitted[] = (!$pinned && $m !== null) ? round($m * (float) $plant['factor'], 2) : null;
-            $regress[] = (!$pinned && $m !== null) ? round(max(0, (float) $plant['regress_a'] + (float) $plant['regress_b'] * $m), 2) : null;
+            $regress[] = (!$pinned && $m !== null && (int) ($plant['regress_days'] ?? 0) >= 5)
+                ? round(max(0, (float) $plant['regress_a'] + (float) $plant['regress_b'] * $m), 2)
+                : null;
             if (!$isToday && $a !== null && $a > 0 && $shown !== null) {
                 $complete[$day] = ['actual' => $a, 'model' => $shown];
             }

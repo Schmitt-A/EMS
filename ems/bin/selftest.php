@@ -163,7 +163,17 @@ $board = Forecast::modelBoard('2026-10-08', [
 $boardDays = array_map(static fn (array $row): string => $row['day'], $board);
 check($boardDays === ['2026-10-10', '2026-10-09', '2026-10-08', '2026-10-07', '2026-10-06', '2026-10-05'], 'Modelltafel: kommende Tage, heute, vergangene Modelltage');
 $boardToday = $board[2];
-check($boardToday['today'] === true && $boardToday['gute'] === null && abs((float) $boardToday['model'] - 5) < 0.01 && abs((float) $boardToday['raw'] - 10) < 0.01 && abs((float) $boardToday['fitted'] - 5) < 0.01 && abs((float) $boardToday['regress'] - 9) < 0.01, 'heutiger Tag hat Rohmodell, Faktor und Regression, die Güte bleibt leer');
+check($boardToday['today'] === true && $boardToday['gute'] === null && $boardToday['regress'] === null && abs((float) $boardToday['model'] - 5) < 0.01 && abs((float) $boardToday['raw'] - 10) < 0.01 && abs((float) $boardToday['fitted'] - 5) < 0.01, 'heutiger Tag hat Rohmodell und Faktor, die Güte und die Regression bleiben leer');
+$readyPlant = $boardPlant;
+$readyPlant['regress_days'] = 5;
+$readyBoard = Forecast::modelBoard('2026-10-08', [
+    ['day' => '2026-10-05', 'actual_kwh' => 10, 'model_kwh' => 20, 'model_mode' => null],
+], [
+    '2026-10-08' => ['kwh' => 5.0, 'sd' => 0.1, 'pinned' => false],
+], [
+    '2026-10-08' => ['mean' => 10.0],
+], 4.2, $readyPlant, 5.0);
+check(isset($readyBoard[0]['regress']) && abs((float) $readyBoard[0]['regress'] - 9) < 0.01, 'ab fünf Tagen steht die Regression in der Zeile');
 $boardFuture = $board[0];
 check(abs((float) $boardFuture['model'] - 7) < 0.01 && abs((float) $boardFuture['raw'] - 14) < 0.01 && abs((float) $boardFuture['fitted'] - 7) < 0.01, 'kommender Tag übernimmt die Diagrammprognose');
 $boardPin = $board[3];
