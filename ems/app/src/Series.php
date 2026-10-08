@@ -243,7 +243,7 @@ final class Series
             $actualToday = null;
         }
         $lockedToday = Forecast::locked($this->store->pdo(), $todayKey);
-        $labels = $actual = $model = $gute = $raw = $fitted = $regress = [];
+        $labels = $keys = $actual = $model = $gute = $raw = $fitted = $regress = [];
         $seenToday = false;
         foreach ($rows as $row) {
             $day = (string) $row['day'];
@@ -258,6 +258,7 @@ final class Series
                 $predicted = $m !== null ? Forecast::predicted($m, $plant) : null;
             }
             $labels[] = self::dayLabel($day);
+            $keys[] = $day;
             $actual[] = $a;
             $model[] = $predicted !== null ? round($predicted, 2) : null;
             $gute[] = ($a && $predicted) ? round($predicted / $a, 3) : null;
@@ -267,6 +268,7 @@ final class Series
         }
         if (!$seenToday) {
             $labels[] = self::dayLabel($todayKey);
+            $keys[] = $todayKey;
             $actual[] = $actualToday !== null ? round($actualToday, 2) : null;
             $model[] = $lockedToday !== null ? round($lockedToday, 2) : null;
             $gute[] = ($actualToday && $lockedToday) ? round($lockedToday / $actualToday, 3) : null;
@@ -275,6 +277,7 @@ final class Series
             $regress[] = null;
         }
         $labels = array_reverse($labels);
+        $keys = array_reverse($keys);
         $actual = array_reverse($actual);
         $model = array_reverse($model);
         $gute = array_reverse($gute);
@@ -299,6 +302,7 @@ final class Series
         ]]);
         $error = $noted['error'] ?? null;
         $daily = $frame + [
+            'grouped' => true,
             'y1Title' => 'Güte',
             'series' => [
                 ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'type' => 'bar', 'data' => $actual],
@@ -319,7 +323,19 @@ final class Series
             $daily['error'] = $error;
             $compare['error'] = $error;
         }
-        return ['daily' => $daily, 'compare' => $compare];
+        $table = [];
+        foreach ($keys as $i => $day) {
+            $table[] = [
+                'day' => $day,
+                'actual' => $actual[$i] ?? null,
+                'model' => $model[$i] ?? null,
+                'gute' => $gute[$i] ?? null,
+                'raw' => $raw[$i] ?? null,
+                'fitted' => $fitted[$i] ?? null,
+                'regress' => $regress[$i] ?? null,
+            ];
+        }
+        return ['daily' => $daily, 'compare' => $compare, 'table' => $table];
     }
 
     public function weather(array $mapping): array

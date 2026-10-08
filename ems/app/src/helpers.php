@@ -175,6 +175,32 @@ function icon(string $name, string $class = 'h-4 w-4'): string
     return $svg;
 }
 
+function month_label(string $month): string
+{
+    $names = [1 => 'Januar', 2 => 'Februar', 3 => 'März', 4 => 'April', 5 => 'Mai', 6 => 'Juni', 7 => 'Juli', 8 => 'August', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Dezember'];
+    $stamp = new DateTimeImmutable($month . '-01', new DateTimeZone('Europe/Berlin'));
+    return ($names[(int) $stamp->format('n')] ?? $month) . ' ' . $stamp->format('Y');
+}
+
+function when_label(?int $ts): string
+{
+    if ($ts === null) {
+        return '—';
+    }
+    $tz = new DateTimeZone('Europe/Berlin');
+    $dt = (new DateTimeImmutable('@' . $ts))->setTimezone($tz);
+    $today = new DateTimeImmutable('today', $tz);
+    $day = $dt->format('Y-m-d');
+    $time = $dt->format('H:i');
+    if ($day === $today->format('Y-m-d')) {
+        return 'heute ' . $time;
+    }
+    if ($day === $today->modify('+1 day')->format('Y-m-d')) {
+        return 'morgen ' . $time;
+    }
+    return day_label($day) . ', ' . $time;
+}
+
 function day_label(string $day): string
 {
     $dt = new DateTimeImmutable($day . ' 12:00:00', new DateTimeZone('Europe/Berlin'));

@@ -2,26 +2,18 @@
 declare(strict_types=1);
 page_head('Ladestatistik', 'Sonnenanteil, Netzanteil und Kosten der Ladevorgänge. Neue Vorgänge legt der Recorder selbst an, solange die App läuft.');
 $import = (float) $tariffs['import_ct'];
-$names = [1 => 'Jan', 2 => 'Feb', 3 => 'Mär', 4 => 'Apr', 5 => 'Mai', 6 => 'Jun', 7 => 'Jul', 8 => 'Aug', 9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Dez'];
-$base = ['year' => $year, 'sort' => $sort];
 $chartQuery = http_build_query(['chart' => 'sessions', 'span' => $span, 'month' => $month, 'year' => $year]);
+$filters = [
+    'date' => ['Datum', 'calendar'],
+    'energy' => ['Geladen', 'zap'],
+    'solar' => ['Sonne', 'sun'],
+    'cost' => ['Kosten', 'scale'],
+    'duration' => ['Dauer', 'timer'],
+];
+$active = preg_replace('/_(asc|desc)$/', '', $sort) ?: 'date';
+$dir = str_ends_with($sort, '_asc') ? 'asc' : 'desc';
 ?>
-<section class="card p-4">
-  <div class="flex items-center justify-between gap-3">
-    <a class="btn-ghost min-h-11 min-w-11 px-0" href="<?= e(url('/statistik?' . http_build_query($base + ['span' => $span, 'year' => $year - 1, 'month' => ($year - 1) . substr($month, 4)]))) ?>" aria-label="Vorjahr">‹</a>
-    <p class="text-lg font-semibold tabular-nums"><?= (int) $year ?></p>
-    <a class="btn-ghost min-h-11 min-w-11 px-0" href="<?= e(url('/statistik?' . http_build_query($base + ['span' => $span, 'year' => $year + 1, 'month' => ($year + 1) . substr($month, 4)]))) ?>" aria-label="Folgejahr">›</a>
-  </div>
-  <div class="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
-    <?php for ($m = 1; $m <= 12; $m++):
-        $value = sprintf('%04d-%02d', $year, $m);
-        $on = $span === 'month' && $value === $month;
-    ?>
-      <a class="<?= $on ? 'btn-primary' : 'btn-ghost' ?> min-h-11" href="<?= e(url('/statistik?' . http_build_query($base + ['span' => 'month', 'month' => $value]))) ?>"><?= e($names[$m]) ?></a>
-    <?php endfor; ?>
-  </div>
-  <a class="<?= $span === 'year' ? 'btn-primary' : 'btn-ghost' ?> mt-2 min-h-11 w-full" href="<?= e(url('/statistik?' . http_build_query($base + ['span' => 'year', 'month' => $month]))) ?>">Ganzes Jahr</a>
-</section>
+<?php period_nav('/statistik', $year, $month, $span, ['sort' => $sort], ['month', 'year']); ?>
 <?php if (!$rows): ?>
   <div class="card mt-4 p-6 text-sm">
     <p>In diesem Zeitraum ist noch kein Ladevorgang gespeichert. Neue Vorgänge schreibt der Recorder, sobald die Wallbox lädt.</p>
@@ -46,12 +38,15 @@ $chartQuery = http_build_query(['chart' => 'sessions', 'span' => $span, 'month' 
   </div>
   <section class="card mt-4 p-4">
     <h2 class="mb-1 text-sm font-medium"><?= $span === 'year' ? 'Tage im Jahr' : 'Tage im Monat' ?></h2>
-    <p class="mb-3 text-xs text-muted-foreground">Jeder Balken ist ein Tag. Sonne und Netz liegen übereinander. Die Achse folgt der Auswahl oben.</p>
-    <?php chart_box('/api/series?' . $chartQuery, 'h-80', 'scroll'); ?>
+    <p class="mb-3 text-xs text-muted-foreground">Sonne orange, Netz blau, übereinander. Ziehen oder wischen verschiebt die Tage.</p>
+    <?php chart_box('/api/series?' . $chartQuery, 'h-80', 'pan'); ?>
   </section>
-  <div class="mt-4 flex gap-2 overflow-x-auto pb-1">
-    <?php foreach ($sorts as $key => $label): ?>
-      <a class="chip shrink-0 min-h-11" href="<?= e(url('/statistik?' . http_build_query(['span' => $span, 'year' => $year, 'month' => $month, 'sort' => $key]))) ?>" <?= $sort === $key ? 'aria-pressed="true"' : '' ?>><?= e($label) ?></a>
+  <div class="mt-4 flex flex-wrap gap-2">
+    <?php foreach ($filters as $key => [$label, $glyph]):
+        $on = $key === $active;
+        $next = $key . '_' . ($on && $dir === 'desc' ? 'asc' : 'desc');
+    ?>
+      <a class="chip min-h-11" href="<?= e(url('/statistik?' . http_build_query(['span' => $span, 'year' => $year, 'month' => $month, 'sort' => $next]))) ?>" aria-pressed="<?= $on ? 'true' : 'false' ?>"><?= icon($glyph, 'h-3.5 w-3.5') ?><span><?= e($label) ?></span><?php if ($on): ?><?= icon($dir === 'asc' ? 'arrow-up' : 'arrow-down', 'h-3.5 w-3.5') ?><?php endif; ?></a>
     <?php endforeach; ?>
   </div>
   <div class="card mt-3 overflow-hidden">

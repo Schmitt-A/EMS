@@ -2,7 +2,7 @@
   const base = window.EMS_BASE || '';
   const colorVar = {
     pv: '--c-pv', battery: '--c-battery', house: '--c-house', import: '--c-import',
-    export: '--c-export', wallbox: '--c-wallbox', muted: '--c-muted',
+    export: '--c-export', wallbox: '--c-wallbox', muted: '--c-muted', sun: '--c-sun', net: '--c-net',
   };
   const flowColor = { pv: '--c-pv', battery: '--c-battery', house: '--c-house', grid: '--c-import', wallbox: '--c-wallbox' };
 
@@ -314,10 +314,20 @@
       tension: 0.25,
       stack: series.stack || undefined,
       borderWidth: series.type === 'bar' ? 0 : 2,
-      maxBarThickness: payload.stacked ? 36 : 18,
-      borderRadius: series.type === 'bar' ? 4 : 0,
       spanGaps: true,
     }));
+    const grouped = !!payload.grouped;
+    datasets.forEach((set) => {
+      if (set.type !== 'bar') return;
+      if (grouped) {
+        set.barPercentage = 1;
+        set.categoryPercentage = 0.72;
+        set.borderRadius = 0;
+      } else {
+        set.maxBarThickness = payload.stacked ? 36 : 18;
+        set.borderRadius = 4;
+      }
+    });
     if (!datasets.length) {
       const note = document.createElement('p');
       note.className = 'px-2 py-6 text-sm text-muted-foreground';
@@ -586,6 +596,16 @@
         dot.classList.toggle('bg-import', !data.connected);
       }
       if (data.flows) applyFlows(data.flows);
+      document.querySelectorAll('[data-soc-fill]').forEach((node) => {
+        const raw = String(data.soc || '').replace('%', '').replace(',', '.').trim();
+        const n = Number(raw);
+        if (!Number.isFinite(n) || !node.parentElement) return;
+        node.parentElement.style.setProperty('--soc', Math.max(0, Math.min(100, n)) + '%');
+      });
+      document.querySelectorAll('[data-live-hide]').forEach((node) => {
+        const value = data[node.dataset.liveHide];
+        node.hidden = value === undefined || value === null || value === '';
+      });
     } catch (error) {
       /* nächste Runde */
     }
@@ -608,6 +628,49 @@
     if (event.target.closest('input, textarea, select, button')) return;
     event.preventDefault();
     toggleSession(row);
+  });
+
+  document.querySelectorAll('[data-tab]').forEach((link) => {
+    let start = null;
+    link.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'mouse') return;
+      start = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    });
+    link.addEventListener('pointerup', (event) => {
+      if (!start || event.pointerId !== start.id) return;
+      const dx = Math.abs(event.clientX - start.x);
+      const dy = Math.abs(event.clientY - start.y);
+      start = null;
+      if (dx > 14 || dy > 14) return;
+      event.preventDefault();
+      const target = new URL(link.href, window.location.href);
+      if (target.pathname !== window.location.pathname) window.location.assign(link.href);
+    });
+    link.addEventListener('pointercancel', () => { start = null; });
+  });
+
+  document.querySelectorAll('[data-colset]').forEach((box) => {
+    const key = 'ems-cols-' + box.dataset.colset;
+    let hidden = [];
+    try { hidden = JSON.parse(localStorage.getItem(key) || '[]'); } catch (error) { hidden = []; }
+    if (!Array.isArray(hidden)) hidden = [];
+    const applyCols = () => {
+      box.querySelectorAll('[data-col]').forEach((cell) => {
+        cell.classList.toggle('hidden', hidden.includes(cell.dataset.col));
+      });
+      box.querySelectorAll('[data-col-toggle]').forEach((button) => {
+        button.setAttribute('aria-pressed', hidden.includes(button.dataset.colToggle) ? 'false' : 'true');
+      });
+    };
+    applyCols();
+    box.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-col-toggle]');
+      if (!button) return;
+      const name = button.dataset.colToggle;
+      hidden = hidden.includes(name) ? hidden.filter((item) => item !== name) : hidden.concat([name]);
+      localStorage.setItem(key, JSON.stringify(hidden));
+      applyCols();
+    });
   });
 
   if (document.querySelector('[data-live]')) {

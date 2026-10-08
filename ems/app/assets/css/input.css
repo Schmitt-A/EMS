@@ -40,12 +40,16 @@
   --import: 0 72% 48%;
   --export: 152 58% 32%;
   --wallbox: 272 52% 48%;
+  --sun: 24 95% 48%;
+  --net: 217 91% 46%;
   --c-pv: hsl(var(--pv));
   --c-battery: hsl(var(--battery));
   --c-house: hsl(var(--house));
   --c-import: hsl(var(--import));
   --c-export: hsl(var(--export));
   --c-wallbox: hsl(var(--wallbox));
+  --c-sun: hsl(var(--sun));
+  --c-net: hsl(var(--net));
   --c-muted: hsl(var(--muted-foreground));
   --c-border: hsl(var(--border));
   --c-fg: hsl(var(--foreground));
@@ -69,12 +73,16 @@
   --import: 0 78% 66%;
   --export: 152 52% 52%;
   --wallbox: 270 70% 74%;
+  --sun: 28 96% 62%;
+  --net: 213 94% 72%;
   --c-pv: hsl(var(--pv));
   --c-battery: hsl(var(--battery));
   --c-house: hsl(var(--house));
   --c-import: hsl(var(--import));
   --c-export: hsl(var(--export));
   --c-wallbox: hsl(var(--wallbox));
+  --c-sun: hsl(var(--sun));
+  --c-net: hsl(var(--net));
   --c-muted: hsl(var(--muted-foreground));
   --c-border: hsl(var(--border));
   --c-fg: hsl(var(--foreground));
@@ -179,6 +187,55 @@ input[type='range']::-moz-range-thumb {
 .dual-track input[type='range']::-moz-range-thumb { pointer-events: auto; }
 @media (max-width: 767px) {
   .field, select, textarea { font-size: 16px; }
+}
+
+.tabbar {
+  position: fixed;
+  z-index: 40;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  border-top: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  padding-bottom: env(safe-area-inset-bottom);
+  touch-action: manipulation;
+}
+.tabbar a {
+  display: flex;
+  min-width: 0;
+  min-height: 3.5rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.4rem 0.1rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  line-height: 1.15;
+  text-decoration: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.tabbar a[aria-current='page'] { color: hsl(var(--foreground)); font-weight: 600; }
+.tabbar a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabbar svg { pointer-events: none; }
+@media (min-width: 768px) { .tabbar { display: none; } }
+.touch-x { min-width: 0; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.touch-x::-webkit-scrollbar { display: none; }
+.soc-card { position: relative; overflow: hidden; min-height: 16rem; }
+.soc-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--soc, 0%);
+  background: hsl(var(--battery));
+  opacity: 0.28;
+  pointer-events: none;
+  transition: height 0.45s ease;
 }
 
 .flow-move {

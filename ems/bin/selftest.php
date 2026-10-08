@@ -140,6 +140,27 @@ if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
     $keptDay = Forecast::locked($memory, '2026-10-07');
     check($keptDay !== null && abs($keptDay - 5) < 0.01, 'gespeicherter Tag bleibt ohne Morgenstunden');
     check(count(Forecast::lockedFrom($memory, '2026-10-07')) === 1, 'gespeicherte Tage lassen sich lesen');
+    $issueHours = static function (int $noon): array {
+        return [
+            ['t' => strtotime('2026-10-08 00:00:00 Europe/Berlin'), 'radiation' => 0, 'cloud' => 80, 'sunshine_s' => 0, 'temp_c' => 8],
+            ['t' => strtotime('2026-10-08 12:00:00 Europe/Berlin'), 'radiation' => $noon, 'cloud' => 20, 'sunshine_s' => 3600, 'temp_c' => 16],
+        ];
+    };
+    Forecast::rememberIssue($memory, $issueHours(1000), $plant, 1000);
+    Forecast::rememberIssue($memory, $issueHours(500), $plant, 2000);
+    Forecast::rememberIssue($memory, [
+        ['t' => strtotime('2026-10-08 18:00:00 Europe/Berlin'), 'radiation' => 900, 'cloud' => 10, 'sunshine_s' => 0, 'temp_c' => 12],
+    ], $plant, 3000);
+    $stats = Forecast::issueStats($memory);
+    check(($stats['2026-10-08']['n'] ?? 0) === 2 && $stats['2026-10-08']['sd'] > 0, 'Modellläufe bilden Mittelwert und Streuung, unvollständige Läufe bleiben draussen');
+    $rows = Forecast::archiveRows($memory, $plant, ['2026-10-08' => 4.2]);
+    check(count($rows) === 1 && abs((float) $rows[0]['actual'] - 4.2) < 0.01 && $rows[0]['mean'] > 0, 'Archiv verbindet Ertrag und Prognose');
+    $outlook = Forecast::storageOutlook([
+        ['t' => strtotime('2026-10-08 12:00:00 Europe/Berlin'), 'kw' => 3],
+        ['t' => strtotime('2026-10-08 13:00:00 Europe/Berlin'), 'kw' => 3],
+        ['t' => strtotime('2026-10-08 14:00:00 Europe/Berlin'), 'kw' => 3],
+    ], strtotime('2026-10-08 12:00:00 Europe/Berlin'), 50, 5, 0, 80);
+    check($outlook['reachable'] && $outlook['full_at'] !== null && $outlook['surplus_kwh'] > 0, 'Speicherfüllung aus dem Sonnenüberschuss');
 }
 $batteryIcon = icon('battery');
 check(str_contains($batteryIcon, 'width="16"') && str_contains($batteryIcon, 'width="9"'), 'Batterie-Icon behält die Flächen');

@@ -183,20 +183,45 @@ if ($path === '/statistik') {
     page('stats', compact('live', 'month', 'year', 'span', 'sort', 'sorts', 'rows', 'totals', 'tariffs') + ['title' => 'Statistik']);
 }
 if ($path === '/prognose') {
-    try {
-        (new Series(store(), ha()))->calibrate(cfg()['plant'], false);
-    } catch (Throwable) {
-        // Die Kacheln bleiben aus dem letzten Stand, das Diagramm meldet den Fehler selbst.
-    }
     $yield = safe_yield();
     $yesterday = yesterday_yield();
+    $pack = (new Series(store(), ha()))->days(cfg()['plant']);
     $score = (new Series(store(), ha()))->goodness(cfg()['plant']);
     $goodness = $score['ratio'];
     $goodnessDays = $score['days'];
     $goodnessN = $score['n'];
     $todayKey = (new DateTimeImmutable('today', new DateTimeZone('Europe/Berlin')))->format('Y-m-d');
-    $storedDays = Forecast::lockedFrom(store()->pdo(), $todayKey);
-    page('forecast', compact('snap', 'live', 'yield', 'yesterday', 'goodness', 'goodnessDays', 'goodnessN', 'storedDays') + ['title' => 'Prognose']);
+    $span = (($_GET['span'] ?? 'month') === 'all') ? 'all' : 'month';
+    $year = (int) ($_GET['year'] ?? date('Y'));
+    if ($year < 2020 || $year > 2100) {
+        $year = (int) date('Y');
+    }
+    $month = (string) ($_GET['month'] ?? date('Y-m'));
+    if (!preg_match('/^\d{4}-\d{2}$/', $month) || (int) substr($month, 0, 4) !== $year) {
+        $month = sprintf('%04d-%s', $year, date('m'));
+    }
+    $actual = [];
+    foreach (store()->pdo()->query('SELECT day, actual_kwh FROM daily') ?: [] as $row) {
+        if ($row['actual_kwh'] === null) {
+            continue;
+        }
+        $actual[(string) $row['day']] = (float) $row['actual_kwh'];
+    }
+    if ($yield !== null) {
+        $actual[$todayKey] = $yield;
+    }
+    $keepDay = static function (string $day) use ($span, $month): bool {
+        return $span === 'all' || str_starts_with($day, $month);
+    };
+    $archive = array_values(array_filter(
+        Forecast::archiveRows(store()->pdo(), cfg()['plant'], $actual),
+        static fn (array $row): bool => $keepDay((string) $row['day'])
+    ));
+    $modelRows = array_values(array_filter(
+        $pack['table'] ?? [],
+        static fn (array $row): bool => $keepDay((string) $row['day'])
+    ));
+    page('forecast', compact('snap', 'live', 'yield', 'yesterday', 'goodness', 'goodnessDays', 'goodnessN', 'archive', 'modelRows', 'span', 'year', 'month') + ['title' => 'Prognose']);
 }
 if ($path === '/einstellungen') {
     $ping = ha()->ping();
@@ -358,16 +383,32 @@ function session_chart(string $span, string $month, int $year): array
         $solar[] = round($days[$day]['solar'] ?? 0, 2);
         $grid[] = round($days[$day]['grid'] ?? 0, 2);
     }
+    $last = max(0, $count - 1);
+    $window = $span === 'year' ? 10 : 7;
+    $today = new DateTimeImmutable('now', $tz);
+    $focus = 0;
+    if ($span === 'year' && (int) $today->format('Y') === (int) $start->format('Y')) {
+        $focus = (int) $today->format('z');
+    } elseif ($span !== 'year' && $today->format('Y-m') === $start->format('Y-m')) {
+        $focus = (int) $today->format('j') - 1;
+    }
+    $focus = max(0, min($last, $focus));
+    $hi = min($last, $focus + intdiv($window, 2));
+    $lo = max(0, $hi - $window + 1);
+    $hi = min($last, $lo + $window - 1);
     return [
         'axis' => 'category',
         'stacked' => true,
+        'pan' => 'index',
         'labels' => $labels,
         'days' => max(1, $count),
+        'view' => [$lo, $hi],
+        'bounds' => [0, $last],
         'xTitle' => $xTitle,
         'yTitle' => 'Energie (kWh)',
         'series' => [
-            ['key' => 'solar', 'label' => 'Sonne', 'color' => 'export', 'type' => 'bar', 'stack' => 'energy', 'data' => $solar],
-            ['key' => 'grid', 'label' => 'Netz', 'color' => 'import', 'type' => 'bar', 'stack' => 'energy', 'data' => $grid],
+            ['key' => 'solar', 'label' => 'Sonne', 'color' => 'sun', 'type' => 'bar', 'stack' => 'energy', 'data' => $solar],
+            ['key' => 'grid', 'label' => 'Netz', 'color' => 'net', 'type' => 'bar', 'stack' => 'energy', 'data' => $grid],
         ],
     ];
 }

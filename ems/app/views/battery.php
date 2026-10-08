@@ -5,11 +5,18 @@ $strategy = $snap['cfg']['battery_strategy'];
 page_head('Batterie', 'Ladestand, nutzbare Energie und die Schwellen für das Auto.');
 ?>
 <div class="grid gap-4 lg:grid-cols-[220px_1fr]">
-  <section class="card flex flex-col items-center justify-center p-6 text-center">
-    <p class="text-xs font-medium text-muted-foreground">Ladestand</p>
-    <p class="mt-1 text-5xl font-semibold tabular-nums text-battery" data-live="soc"><?= e(pct(isset($v['battery_soc']) ? (float) $v['battery_soc'] : null)) ?></p>
-    <p class="mt-3 text-sm" data-live="activity"><?= e($snap['activity']) ?></p>
-    <p class="mt-1 text-sm tabular-nums text-muted-foreground" data-live="capacity"><?= e(kwh($v['battery_capacity_kwh'])) ?> nutzbar</p>
+  <?php $socFill = isset($v['battery_soc']) ? max(0, min(100, (float) $v['battery_soc'])) : 0; ?>
+  <section class="soc-card card flex flex-col justify-end p-6 text-center" style="--soc: <?= e(num($socFill, 0)) ?>%">
+    <div class="soc-fill" data-soc-fill></div>
+    <div class="relative">
+      <p class="text-xs font-medium text-muted-foreground">Ladestand</p>
+      <p class="mt-1 text-5xl font-semibold tabular-nums text-battery" data-live="soc"><?= e(pct(isset($v['battery_soc']) ? (float) $v['battery_soc'] : null)) ?></p>
+      <p class="mt-3 text-sm" data-live="activity"><?= e($snap['activity']) ?></p>
+      <p class="mt-1 text-sm tabular-nums text-muted-foreground" data-live="capacity"><?= e(kwh($v['battery_capacity_kwh'])) ?> nutzbar</p>
+      <p class="mt-4 text-sm" data-live="battery_full"><?= e($live['battery_full'] ?? '') ?></p>
+      <p class="mt-1 text-sm" data-live="battery_priority" data-live-hide="battery_priority" <?= empty($live['battery_priority']) ? 'hidden' : '' ?>><?= e($live['battery_priority'] ?? '') ?></p>
+      <p class="mt-1 text-sm text-muted-foreground" data-live="battery_surplus" data-live-hide="battery_surplus" <?= empty($live['battery_surplus']) ? 'hidden' : '' ?>><?= e($live['battery_surplus'] ?? '') ?></p>
+    </div>
   </section>
   <section class="card p-4 sm:p-5">
     <div class="mb-3 flex flex-wrap gap-2" data-ranges data-chart-base="<?= e(url('/api/series?chart=battery&range=')) ?>">

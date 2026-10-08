@@ -274,4 +274,255 @@ final class Forecast
         unset($slice);
         return $by;
     }
+
+    public static function ensureIssues(PDO $pdo): void
+    {
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS forecast_issues (
+                issue INTEGER NOT NULL,
+                day TEXT NOT NULL,
+                kwh REAL NOT NULL,
+                radiation REAL,
+                sunshine_s REAL,
+                cloud REAL,
+                temp_c REAL,
+                hours INTEGER NOT NULL,
+                PRIMARY KEY (issue, day)
+            )'
+        );
+    }
+
+    /** @param array<int, array{t:int, radiation?:?float, cloud?:?float, sunshine_s?:?float, temp_c?:?float}> $hours */
+    public static function rememberIssue(PDO $pdo, array $hours, array $plant, int $issue): void
+    {
+        if ($issue <= 0 || !$hours) {
+            return;
+        }
+        self::ensureIssues($pdo);
+        $raw = $plant;
+        $raw['factor'] = 1;
+        $tz = new DateTimeZone('Europe/Berlin');
+        $by = [];
+        foreach ($hours as $hour) {
+            if (!isset($hour['t'])) {
+                continue;
+            }
+            $t = (int) $hour['t'];
+            $local = (new DateTimeImmutable('@' . $t))->setTimezone($tz);
+            $day = $local->format('Y-m-d');
+            if (!isset($by[$day])) {
+                $by[$day] = [
+                    'start' => $local->setTime(0, 0)->getTimestamp(),
+                    'earliest' => $t,
+                    'kwh' => 0.0,
+                    'radiation' => 0.0,
+                    'rad_n' => 0,
+                    'sunshine' => 0.0,
+                    'sun_n' => 0,
+                    'cloud' => 0.0,
+                    'cloud_n' => 0,
+                    'temp' => 0.0,
+                    'temp_n' => 0,
+                    'hours' => 0,
+                ];
+            }
+            $by[$day]['earliest'] = min($by[$day]['earliest'], $t);
+            $by[$day]['hours']++;
+            if (array_key_exists('radiation', $hour) && $hour['radiation'] !== null) {
+                $g = max(0, (float) $hour['radiation']);
+                $by[$day]['radiation'] += $g;
+                $by[$day]['rad_n']++;
+                $by[$day]['kwh'] += self::powerKw($g, (int) $local->format('G'), $raw);
+            }
+            if (array_key_exists('sunshine_s', $hour) && $hour['sunshine_s'] !== null) {
+                $by[$day]['sunshine'] += (float) $hour['sunshine_s'];
+                $by[$day]['sun_n']++;
+            }
+            if (array_key_exists('cloud', $hour) && $hour['cloud'] !== null) {
+                $by[$day]['cloud'] += (float) $hour['cloud'];
+                $by[$day]['cloud_n']++;
+            }
+            if (array_key_exists('temp_c', $hour) && $hour['temp_c'] !== null) {
+                $by[$day]['temp'] += (float) $hour['temp_c'];
+                $by[$day]['temp_n']++;
+            }
+        }
+        $stmt = $pdo->prepare('INSERT INTO forecast_issues (issue, day, kwh, radiation, sunshine_s, cloud, temp_c, hours) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(issue, day) DO UPDATE SET kwh = excluded.kwh, radiation = excluded.radiation, sunshine_s = excluded.sunshine_s, cloud = excluded.cloud, temp_c = excluded.temp_c, hours = excluded.hours');
+        foreach ($by as $day => $slice) {
+            if ($slice['earliest'] > $slice['start'] + 5400 || $slice['kwh'] <= 0.05) {
+                continue;
+            }
+            $stmt->execute([
+                $issue,
+                $day,
+                round($slice['kwh'], 3),
+                $slice['rad_n'] ? round($slice['radiation'], 1) : null,
+                $slice['sun_n'] ? round($slice['sunshine'], 0) : null,
+                $slice['cloud_n'] ? round($slice['cloud'] / $slice['cloud_n'], 1) : null,
+                $slice['temp_n'] ? round($slice['temp'] / $slice['temp_n'], 2) : null,
+                $slice['hours'],
+            ]);
+        }
+    }
+
+    /** @return array<string, array{n:int, mean:float, sd:?float, radiation:?float, sunshine_s:?float, cloud:?float, temp_c:?float}> */
+    public static function issueStats(PDO $pdo): array
+    {
+        self::ensureIssues($pdo);
+        $grouped = [];
+        foreach ($pdo->query('SELECT day, kwh, radiation, sunshine_s, cloud, temp_c FROM forecast_issues') ?: [] as $row) {
+            $grouped[(string) $row['day']][] = $row;
+        }
+        $out = [];
+        foreach ($grouped as $day => $items) {
+            $values = array_map(static fn (array $row): float => (float) $row['kwh'], $items);
+            $n = count($values);
+            $mean = array_sum($values) / $n;
+            $sd = null;
+            if ($n >= 2) {
+                $acc = 0.0;
+                foreach ($values as $value) {
+                    $acc += ($value - $mean) ** 2;
+                }
+                $sd = sqrt($acc / ($n - 1));
+            }
+            $out[$day] = [
+                'n' => $n,
+                'mean' => $mean,
+                'sd' => $sd,
+                'radiation' => self::avgField($items, 'radiation'),
+                'sunshine_s' => self::avgField($items, 'sunshine_s'),
+                'cloud' => self::avgField($items, 'cloud'),
+                'temp_c' => self::avgField($items, 'temp_c'),
+            ];
+        }
+        return $out;
+    }
+
+    /** @param array<string, ?float> $actual
+     *  @return array<int, array{day:string, actual:?float, mean:?float, sd:?float, n:int, radiation:?float, sunshine_s:?float, cloud:?float, temp_c:?float}>
+     */
+    public static function archiveRows(PDO $pdo, array $plant, array $actual): array
+    {
+        $stats = self::issueStats($pdo);
+        $days = array_values(array_unique(array_merge(array_keys($stats), array_keys($actual))));
+        rsort($days);
+        $regress = (int) ($plant['regress_days'] ?? 0) >= 5;
+        $scale = $regress ? abs((float) ($plant['regress_b'] ?? 1)) : (float) ($plant['factor'] ?? 1);
+        $rows = [];
+        foreach ($days as $day) {
+            $stat = $stats[$day] ?? null;
+            $rows[] = [
+                'day' => $day,
+                'actual' => $actual[$day] ?? null,
+                'mean' => $stat ? self::predicted((float) $stat['mean'], $plant) : null,
+                'sd' => ($stat && $stat['sd'] !== null) ? $stat['sd'] * $scale : null,
+                'n' => $stat['n'] ?? 0,
+                'radiation' => $stat['radiation'] ?? null,
+                'sunshine_s' => $stat['sunshine_s'] ?? null,
+                'cloud' => $stat['cloud'] ?? null,
+                'temp_c' => $stat['temp_c'] ?? null,
+            ];
+        }
+        return $rows;
+    }
+
+    /**
+     * @param array<int, array{t:int, kw:float}> $series
+     * @return array{full_at:?int, priority_at:?int, priority_open:bool, priority_reached:bool, already_full:bool, surplus_kwh:?float, reachable:bool}
+     */
+    public static function storageOutlook(array $series, int $now, ?float $soc, ?float $storedKwh, ?float $houseKw, float $prioritySoc): array
+    {
+        $empty = [
+            'full_at' => null,
+            'priority_at' => null,
+            'priority_open' => $prioritySoc < 99.5,
+            'priority_reached' => false,
+            'already_full' => false,
+            'surplus_kwh' => null,
+            'reachable' => false,
+        ];
+        $soc = $soc === null ? null : max(0, min(100, $soc));
+        $fullKwh = null;
+        if ($soc !== null && $soc >= 99.5) {
+            $empty['already_full'] = true;
+            $empty['priority_reached'] = true;
+        } elseif ($soc !== null && $soc > 1 && $storedKwh !== null && $storedKwh > 0) {
+            $fullKwh = $storedKwh / ($soc / 100);
+        }
+        $needFull = $fullKwh === null ? null : max(0, $fullKwh - (float) $storedKwh);
+        $needPriority = null;
+        if ($fullKwh !== null && $prioritySoc < 99.5) {
+            $needPriority = max(0, $fullKwh * ($prioritySoc / 100) - (float) $storedKwh);
+            $empty['priority_reached'] = $needPriority <= 0.05;
+        }
+        if ($needFull !== null && $needFull <= 0.05) {
+            $empty['already_full'] = true;
+            $empty['priority_reached'] = true;
+        }
+        $tz = new DateTimeZone('Europe/Berlin');
+        $todayEnd = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0)->modify('+1 day')->getTimestamp();
+        $house = max(0, (float) ($houseKw ?? 0));
+        $acc = 0.0;
+        $surplus = 0.0;
+        $seen = false;
+        $fullAt = null;
+        $priorityAt = null;
+        foreach ($series as $point) {
+            if (!isset($point['t'])) {
+                continue;
+            }
+            $t = (int) $point['t'];
+            $end = $t + 3600;
+            if ($end <= $now || $t > $now + 4 * 86400) {
+                continue;
+            }
+            $from = max($t, $now);
+            $frac = ($end - $from) / 3600;
+            $gain = max(0, (float) ($point['kw'] ?? 0) * $frac - $house * $frac);
+            $seen = true;
+            if ($from < $todayEnd) {
+                $todayFrac = (min($end, $todayEnd) - $from) / 3600;
+                $surplus += max(0, (float) ($point['kw'] ?? 0) * $todayFrac - $house * $todayFrac);
+            }
+            $before = $acc;
+            $acc += $gain;
+            if ($needPriority !== null && $needPriority > 0.05 && $priorityAt === null && $acc >= $needPriority) {
+                $priorityAt = self::crossAt($from, $end, $before, $acc, $needPriority);
+            }
+            if ($needFull !== null && $needFull > 0.05 && $fullAt === null && $acc >= $needFull) {
+                $fullAt = self::crossAt($from, $end, $before, $acc, $needFull);
+            }
+        }
+        $empty['full_at'] = $empty['already_full'] ? $now : $fullAt;
+        $empty['priority_at'] = $empty['priority_reached'] ? $now : $priorityAt;
+        $empty['surplus_kwh'] = $seen ? $surplus : null;
+        $empty['reachable'] = $fullKwh !== null;
+        return $empty;
+    }
+
+    private static function crossAt(int $from, int $to, float $before, float $after, float $need): int
+    {
+        $gain = $after - $before;
+        if ($gain <= 0.000001) {
+            return $to;
+        }
+        $frac = max(0, min(1, ($need - $before) / $gain));
+        return $from + (int) round(($to - $from) * $frac);
+    }
+
+    /** @param array<int, array<string, mixed>> $items */
+    private static function avgField(array $items, string $field): ?float
+    {
+        $sum = 0.0;
+        $n = 0;
+        foreach ($items as $item) {
+            if (!isset($item[$field]) || $item[$field] === null) {
+                continue;
+            }
+            $sum += (float) $item[$field];
+            $n++;
+        }
+        return $n ? $sum / $n : null;
+    }
 }

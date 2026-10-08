@@ -33,10 +33,50 @@ function entity_field(string $name, string $label, string $value, string $hint, 
     echo '</label>';
 }
 
+function period_nav(string $path, int $year, string $month, string $span, array $keep, array $modes): void
+{
+    if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+        $month = sprintf('%04d-01', $year);
+    }
+    $current = new DateTimeImmutable($month . '-01', new DateTimeZone('Europe/Berlin'));
+    $prevM = $current->modify('-1 month');
+    $nextM = $current->modify('+1 month');
+    $query = static function (array $patch) use ($path, $keep): string {
+        return url($path . '?' . http_build_query($keep + $patch));
+    };
+    if ($span === 'year') {
+        $label = (string) $year;
+        $prev = $query(['span' => 'year', 'year' => $year - 1, 'month' => sprintf('%04d-%s', $year - 1, $current->format('m'))]);
+        $next = $query(['span' => 'year', 'year' => $year + 1, 'month' => sprintf('%04d-%s', $year + 1, $current->format('m'))]);
+    } elseif ($span === 'all') {
+        $label = 'Alle Tage';
+        $prev = '';
+        $next = '';
+    } else {
+        $label = month_label($current->format('Y-m'));
+        $prev = $query(['span' => 'month', 'year' => (int) $prevM->format('Y'), 'month' => $prevM->format('Y-m')]);
+        $next = $query(['span' => 'month', 'year' => (int) $nextM->format('Y'), 'month' => $nextM->format('Y-m')]);
+    }
+    $names = ['month' => 'Monat', 'year' => 'Jahr', 'all' => 'Alle'];
+    echo '<section class="card flex items-center gap-2 p-3">';
+    if ($prev !== '') {
+        echo '<a class="btn-ghost min-h-11 min-w-11 shrink-0 px-0" href="' . e($prev) . '" aria-label="Zurück">‹</a>';
+    }
+    echo '<p class="min-w-0 flex-1 truncate text-center text-base font-semibold">' . e($label) . '</p>';
+    if ($next !== '') {
+        echo '<a class="btn-ghost min-h-11 min-w-11 shrink-0 px-0" href="' . e($next) . '" aria-label="Weiter">›</a>';
+    }
+    foreach ($modes as $mode) {
+        $on = $mode === $span;
+        echo '<a class="' . ($on ? 'btn-primary' : 'btn-ghost') . ' min-h-11 shrink-0" href="' . e($query(['span' => $mode, 'year' => $year, 'month' => $month])) . '" aria-pressed="' . ($on ? 'true' : 'false') . '">' . e($names[$mode] ?? $mode) . '</a>';
+    }
+    echo '</section>';
+}
+
 function chart_box(string $endpoint, string $class = 'h-72', string $mode = ''): void
 {
     if ($mode === 'scroll') {
-        echo '<div class="overflow-x-auto">';
+        echo '<div class="touch-x min-w-0 max-w-full">';
     }
     $attr = $mode === 'scroll' ? ' data-scroll="1"' : ($mode === 'pan' ? ' data-pan="1"' : '');
     echo '<div class="' . e($class) . '" data-chart' . $attr . ' data-url="' . e(url($endpoint)) . '"><canvas></canvas></div>';

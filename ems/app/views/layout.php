@@ -30,7 +30,7 @@ $showNav = !empty($showNav);
     })();
   </script>
 </head>
-<body class="min-h-screen overflow-x-hidden bg-background text-foreground">
+<body class="min-h-screen bg-background text-foreground">
   <div class="md:flex md:min-h-screen">
     <?php if ($showNav): ?>
     <aside class="hidden md:flex md:w-60 md:flex-col md:border-r md:border-border md:bg-card">
@@ -64,7 +64,7 @@ $showNav = !empty($showNav);
         </div>
       </header>
       <?php endif; ?>
-      <main class="mx-auto w-full max-w-6xl px-4 py-6 pb-24 md:px-8 md:pb-10">
+      <main class="mx-auto w-full max-w-6xl px-4 py-6 pb-28 md:px-8 md:pb-10">
         <?php if (!empty($flash)): ?>
           <p class="mb-4 rounded-lg border border-border bg-muted px-3 py-2 text-sm"><?= e($flash) ?></p>
         <?php endif; ?>
@@ -73,11 +73,11 @@ $showNav = !empty($showNav);
     </div>
   </div>
   <?php if ($showNav): ?>
-  <nav class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t border-border bg-card md:hidden">
+  <nav class="tabbar" data-tabbar>
     <?php
       $short = ['/' => 'Start', '/batterie' => 'Speicher', '/laden' => 'Laden', '/statistik' => 'Statistik', '/prognose' => 'Prognose', '/einstellungen' => 'System'];
       foreach ($nav as $href => [$label, $glyph]): ?>
-      <a class="flex min-w-0 flex-col items-center gap-1 px-0.5 py-2 text-[10px] leading-tight text-muted-foreground <?= $current === $href ? 'text-foreground' : '' ?>" href="<?= e(url($href)) ?>"><?= icon($glyph, $href === '/batterie' ? 'h-5 w-5 text-battery' : 'h-4 w-4') ?><span class="w-full truncate text-center"><?= e($short[$href] ?? $label) ?></span></a>
+      <a data-tab href="<?= e(url($href)) ?>" <?= $current === $href ? 'aria-current="page"' : '' ?>><?= icon($glyph, $href === '/batterie' ? 'h-5 w-5 text-battery' : 'h-4 w-4') ?><span><?= e($short[$href] ?? $label) ?></span></a>
     <?php endforeach; ?>
   </nav>
   <?php endif; ?>
