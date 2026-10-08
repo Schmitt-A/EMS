@@ -224,6 +224,18 @@ input[type='range']::-moz-range-thumb {
 .tabbar svg { pointer-events: none; }
 @media (min-width: 768px) { .tabbar { display: none; } }
 .touch-x { min-width: 0; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+dialog.sheet {
+  width: min(42rem, calc(100vw - 1.5rem));
+  max-height: min(85vh, 40rem);
+  margin: auto;
+  padding: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  overflow: auto;
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+}
+dialog.sheet::backdrop { background: rgb(0 0 0 / 0.45); }
 .touch-x::-webkit-scrollbar { display: none; }
 .soc-card { position: relative; overflow: hidden; min-height: 16rem; }
 .soc-fill {

@@ -92,21 +92,25 @@ final class Series
         $historyStart = $today->modify('-45 days')->getTimestamp();
         $pvId = (string) ($mapping['pv_power'] ?? '');
         $actual = $this->points($pvId, $historyStart, $now, 'hour', $this->wattScale($pvId));
+        $this->repairKnownDays();
         $feed = new WeatherFeed($this->store);
         $horizon = $feed->hours($today->modify('-1 day')->getTimestamp(), $now + 12 * 86400);
         $forecast = Forecast::fromRadiation($horizon, $plant);
         Forecast::rememberDays($this->store->pdo(), $forecast, $plant);
-        $slices = Forecast::slices($forecast);
         $future = [];
-        $radiation = [];
         $last = $now;
+        $yMax = 0.0;
+        foreach ($actual as $point) {
+            $yMax = max($yMax, (float) $point['y']);
+        }
         foreach ($forecast as $point) {
             if ($point['t'] < $today->getTimestamp()) {
                 continue;
             }
             $last = max($last, $point['t']);
-            $future[] = ['x' => $point['t'] * 1000, 'y' => round($point['kw'], 3)];
-            $radiation[] = ['x' => $point['t'] * 1000, 'y' => round($point['g'], 0)];
+            $y = round($point['kw'], 3);
+            $yMax = max($yMax, $y);
+            $future[] = ['x' => $point['t'] * 1000, 'y' => $y];
         }
         $firstMs = $actual[0]['x'] ?? ($today->getTimestamp() * 1000);
         $viewStart = $today->getTimestamp();
@@ -115,34 +119,18 @@ final class Series
         $boundEnd = (new DateTimeImmutable('@' . $last))->setTimezone($tz)->modify('+1 day')->setTime(0, 0)->getTimestamp();
         $boundStart = min($boundStart, $viewStart);
         $boundEnd = max($boundEnd, $viewEnd);
+        $captions = Forecast::captions($this->store->pdo(), $plant);
         $marks = [];
         $cursor = (new DateTimeImmutable('@' . $boundStart))->setTimezone($tz)->setTime(0, 0);
         $endMark = (new DateTimeImmutable('@' . $boundEnd))->setTimezone($tz);
         while ($cursor < $endMark) {
             $day = $cursor->format('Y-m-d');
-            $slice = $slices[$day] ?? null;
-            $kwh = null;
-            $peak = null;
-            $peakY = null;
-            if ($slice && $slice['covered'] && $slice['kwh'] > 0.05) {
-                $kwh = round(Forecast::dailyAdjusted($slice['kwh'], $plant), 1);
-            } else {
-                $stored = Forecast::locked($this->store->pdo(), $day);
-                if ($stored !== null) {
-                    $kwh = round($stored, 1);
-                }
-            }
-            if ($slice && $slice['peak_kw'] > 0.05 && $kwh !== null) {
-                $peak = $slice['peak_t'] * 1000;
-                $peakY = round($slice['peak_kw'], 3);
-            }
+            $caption = $captions[$day] ?? null;
             $marks[] = [
                 'start' => $cursor->getTimestamp() * 1000,
                 'x' => $cursor->modify('+12 hours')->getTimestamp() * 1000,
                 'label' => self::dayLabel($day),
-                'kwh' => $kwh,
-                'peak' => $peak,
-                'peak_y' => $peakY,
+                'text' => $caption ? Forecast::captionText($caption['kwh'], $caption['sd']) : null,
             ];
             $cursor = $cursor->modify('+1 day');
         }
@@ -153,10 +141,12 @@ final class Series
             'view' => [$viewStart * 1000, $viewEnd * 1000],
             'bounds' => [$boundStart * 1000, $boundEnd * 1000],
             'marks' => $marks,
+            'yLock' => true,
+            'yMax' => $yMax > 0 ? round($yMax * 1.02, 3) : 1,
+            'yTitle' => 'Energie (kWh)',
             'series' => [
                 ['key' => 'actual', 'label' => 'PV gemessen', 'color' => 'pv', 'axis' => 'y', 'data' => $actual],
                 ['key' => 'forecast', 'label' => 'Prognose', 'color' => 'export', 'axis' => 'y', 'data' => $future],
-                ['key' => 'radiation', 'label' => 'Strahlung', 'color' => 'wallbox', 'axis' => 'y1', 'data' => $radiation],
             ],
         ]);
     }
@@ -231,7 +221,7 @@ final class Series
         if (is_array($stored)) {
             $plant = array_merge($plant, $stored);
         }
-        $rows = $this->store->pdo()->query('SELECT day, actual_kwh, model_kwh FROM daily ORDER BY day ASC')->fetchAll() ?: [];
+        $rows = $this->store->pdo()->query('SELECT day, actual_kwh, model_kwh, model_mode FROM daily ORDER BY day ASC')->fetchAll() ?: [];
         $tz = new DateTimeZone('Europe/Berlin');
         $today = (new DateTimeImmutable('now', $tz))->setTime(0, 0);
         $todayKey = $today->format('Y-m-d');
@@ -245,8 +235,13 @@ final class Series
         $lockedToday = Forecast::locked($this->store->pdo(), $todayKey);
         $labels = $keys = $actual = $model = $gute = $raw = $fitted = $regress = [];
         $seenToday = false;
+        $complete = [];
         foreach ($rows as $row) {
             $day = (string) $row['day'];
+            $mode = isset($row['model_mode']) && $row['model_mode'] !== null ? (string) $row['model_mode'] : null;
+            if ($mode === 'drop') {
+                continue;
+            }
             $isToday = $day === $todayKey;
             $seenToday = $seenToday || $isToday;
             $a = $row['actual_kwh'] !== null ? round((float) $row['actual_kwh'], 2) : null;
@@ -255,16 +250,21 @@ final class Series
                 $a = $actualToday !== null ? round($actualToday, 2) : $a;
                 $predicted = $lockedToday;
             } else {
-                $predicted = $m !== null ? Forecast::predicted($m, $plant) : null;
+                $predicted = Forecast::displayedModel($mode, $m, $plant);
             }
+            $shown = $predicted !== null ? round($predicted, 2) : null;
             $labels[] = self::dayLabel($day);
             $keys[] = $day;
             $actual[] = $a;
-            $model[] = $predicted !== null ? round($predicted, 2) : null;
+            $model[] = $shown;
             $gute[] = ($a && $predicted) ? round($predicted / $a, 3) : null;
-            $raw[] = $m !== null ? round($m, 2) : null;
-            $fitted[] = $m !== null ? round($m * (float) $plant['factor'], 2) : null;
-            $regress[] = $m !== null ? round(max(0, (float) $plant['regress_a'] + (float) $plant['regress_b'] * $m), 2) : null;
+            $pinned = $mode === 'pin';
+            $raw[] = (!$pinned && $m !== null) ? round($m, 2) : null;
+            $fitted[] = (!$pinned && $m !== null) ? round($m * (float) $plant['factor'], 2) : null;
+            $regress[] = (!$pinned && $m !== null) ? round(max(0, (float) $plant['regress_a'] + (float) $plant['regress_b'] * $m), 2) : null;
+            if (!$isToday && $a !== null && $a > 0 && $shown !== null) {
+                $complete[$day] = ['actual' => $a, 'model' => $shown];
+            }
         }
         if (!$seenToday) {
             $labels[] = self::dayLabel($todayKey);
@@ -286,7 +286,6 @@ final class Series
         $regress = array_reverse($regress);
         $count = count($labels);
         $last = max(0, $count - 1);
-        $ideal = array_fill(0, $count, 1);
         $frame = [
             'axis' => 'category',
             'pan' => 'index',
@@ -301,22 +300,51 @@ final class Series
             ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'data' => array_map(fn ($y) => ['x' => 0, 'y' => $y], array_filter($actual, fn ($y) => $y !== null))],
         ]]);
         $error = $noted['error'] ?? null;
-        $daily = $frame + [
-            'grouped' => true,
-            'y1Title' => 'Güte',
-            'series' => [
-                ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'type' => 'bar', 'data' => $actual],
-                ['key' => 'model', 'label' => 'Modell', 'color' => 'export', 'type' => 'bar', 'data' => $model],
-                ['key' => 'k', 'label' => 'Güte', 'color' => 'wallbox', 'axis' => 'y1', 'data' => $gute],
-                ['key' => 'ideal', 'label' => 'Güte 1,0', 'color' => 'muted', 'axis' => 'y1', 'dash' => true, 'data' => $ideal],
-            ],
-        ];
         $compare = $frame + [
             'series' => [
                 ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'data' => $actual],
                 ['key' => 'model', 'label' => 'Modell roh', 'color' => 'muted', 'data' => $raw],
                 ['key' => 'fitted', 'label' => 'Starrer Faktor', 'color' => 'house', 'data' => $fitted],
                 ['key' => 'regress', 'label' => 'Regression', 'color' => 'export', 'data' => $regress],
+            ],
+        ];
+        $dailyLabels = $dailyActual = $dailyModel = $dailyGute = $dailyKeys = [];
+        foreach ($keys as $i => $day) {
+            if (!isset($complete[$day])) {
+                continue;
+            }
+            $dailyKeys[] = $day;
+            $dailyLabels[] = self::dayLabel($day);
+            $dailyActual[] = $actual[$i];
+            $dailyModel[] = $model[$i];
+            $dailyGute[] = $gute[$i];
+        }
+        $windows = [];
+        $scores = [];
+        foreach (['3', '7', 'month', 'quarter'] as $name) {
+            $wanted = Forecast::windowDays($dailyKeys, $todayKey, $name);
+            $windows[$name] = $this->indexSpan($dailyKeys, $wanted);
+            $scores[$name] = $this->scoreDays($complete, $wanted);
+        }
+        $opening = $windows['3'] ?? [0, 0];
+        $daily = [
+            'axis' => 'category',
+            'pan' => 'index',
+            'grouped' => true,
+            'labels' => $dailyLabels,
+            'days' => max(1, count($dailyKeys)),
+            'view' => $opening,
+            'bounds' => $opening,
+            'windows' => $windows,
+            'goodness' => $scores,
+            'xTitle' => 'Tag',
+            'yTitle' => 'Energie (kWh)',
+            'y1Title' => 'Güte',
+            'series' => [
+                ['key' => 'actual', 'label' => 'Ist', 'color' => 'pv', 'type' => 'bar', 'data' => $dailyActual],
+                ['key' => 'model', 'label' => 'Modell', 'color' => 'export', 'type' => 'bar', 'data' => $dailyModel],
+                ['key' => 'k', 'label' => 'Güte', 'color' => 'wallbox', 'axis' => 'y1', 'data' => $dailyGute],
+                ['key' => 'ideal', 'label' => 'Güte 1,0', 'color' => 'muted', 'axis' => 'y1', 'dash' => true, 'data' => array_fill(0, count($dailyKeys), 1)],
             ],
         ];
         if ($error) {
@@ -335,7 +363,7 @@ final class Series
                 'regress' => $regress[$i] ?? null,
             ];
         }
-        return ['daily' => $daily, 'compare' => $compare, 'table' => $table];
+        return ['daily' => $daily, 'compare' => $compare, 'table' => $table, 'goodness' => $scores];
     }
 
     public function weather(array $mapping): array
@@ -361,10 +389,19 @@ final class Series
                 $radiation[] = ['x' => $x, 'y' => round($row['radiation'], 0)];
             }
         }
-        $span = max(1, (int) ceil(($last - $today->modify('-2 days')->getTimestamp()) / 86400));
+        $origin = $today->modify('-2 days')->getTimestamp();
+        $span = max(1, (int) ceil(($last - $origin) / 86400));
+        $viewStart = $today->getTimestamp();
+        $viewEnd = $today->modify('+3 days')->getTimestamp();
+        $boundStart = (new DateTimeImmutable('@' . min($origin, $rows[0]['t'] ?? $origin)))->setTimezone($tz)->setTime(0, 0)->getTimestamp();
+        $boundEnd = (new DateTimeImmutable('@' . max($last, $viewEnd)))->setTimezone($tz)->modify('+1 day')->setTime(0, 0)->getTimestamp();
         $payload = [
             'days' => $span,
             'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
+            'view' => [$viewStart * 1000, $viewEnd * 1000],
+            'bounds' => [min($boundStart, $viewStart) * 1000, max($boundEnd, $viewEnd) * 1000],
+            'yTitle' => 'Strahlung (W/m²), Temperatur (°C)',
+            'y1Title' => 'Sonnenschein (min), Bewölkung (%)',
             'series' => [
                 ['key' => 'radiation', 'label' => 'Strahlung', 'color' => 'pv', 'axis' => 'y', 'data' => $radiation],
                 ['key' => 'sun', 'label' => 'Sonnenschein', 'color' => 'export', 'axis' => 'y1', 'data' => $sun],
@@ -383,6 +420,7 @@ final class Series
 
     public function calibrate(array $plant, bool $force): void
     {
+        $this->repairKnownDays();
         $last = (string) $this->store->get('last_calibration', '');
         $today = (new DateTimeImmutable('now', new DateTimeZone('Europe/Berlin')))->format('Y-m-d');
         $storedPlant = $this->store->get('plant', []);
@@ -390,7 +428,7 @@ final class Series
         $locked = is_array($storedPlant) && !empty($storedPlant['factor_locked']);
         $factorNow = (float) (is_array($storedPlant) ? ($storedPlant['factor'] ?? 0.93) : 0.93);
         $needsReset = $paired < 5 && !$locked && abs($factorNow - 0.93) > 0.001;
-        $version = '4';
+        $version = '5';
         if (!$force && $last === $today && !$needsReset && (string) $this->store->get('calibration_version', '') === $version) {
             return;
         }
@@ -438,29 +476,50 @@ final class Series
             $day = $local->format('Y-m-d');
             $kw = Forecast::powerKw(max(0, (float) $row['radiation']), (int) $local->format('G'), $rawPlant);
             $byDay[$day]['model'] = ($byDay[$day]['model'] ?? 0) + $kw;
+            $t = (int) $row['t'];
+            $byDay[$day]['earliest'] = isset($byDay[$day]['earliest']) ? min($byDay[$day]['earliest'], $t) : $t;
+        }
+        $held = [];
+        foreach ($this->store->pdo()->query('SELECT day, model_mode FROM daily') ?: [] as $saved) {
+            if ($saved['model_mode'] !== null && $saved['model_mode'] !== '') {
+                $held[(string) $saved['day']] = (string) $saved['model_mode'];
+            }
         }
         $stmt = $this->store->pdo()->prepare('INSERT INTO daily (day, actual_kwh, model_kwh) VALUES (?, ?, ?) ON CONFLICT(day) DO UPDATE SET actual_kwh = excluded.actual_kwh, model_kwh = excluded.model_kwh');
         $stmtModel = $this->store->pdo()->prepare('INSERT INTO daily (day, model_kwh) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET model_kwh = excluded.model_kwh');
+        foreach ($byDay as $day => $row) {
+            if ($day === $today || isset($held[$day])) {
+                continue;
+            }
+            $model = $row['model'] ?? null;
+            $startOfDay = (new DateTimeImmutable($day . ' 00:00:00', $tz))->getTimestamp();
+            $covered = isset($row['earliest']) && $row['earliest'] <= $startOfDay + 5400 && $model !== null && $model > 0.05;
+            if (!$covered) {
+                continue;
+            }
+            if ($energy !== '') {
+                $stmtModel->execute([$day, $model]);
+            } else {
+                $stmt->execute([$day, $row['actual'] ?? null, $model]);
+            }
+        }
         $xs = [];
         $ys = [];
         $ratios = [];
-        foreach ($byDay as $day => $row) {
-            if ($day === $today) {
+        foreach ($this->store->pdo()->query('SELECT day, actual_kwh, model_kwh, model_mode FROM daily') ?: [] as $saved) {
+            if ((string) $saved['day'] === $today) {
                 continue;
             }
-            $actual = $row['actual'] ?? null;
-            $model = $row['model'] ?? null;
-            if ($energy !== '') {
-                if ($model !== null) {
-                    $stmtModel->execute([$day, $model]);
-                }
-            } else {
-                $stmt->execute([$day, $actual, $model]);
+            $mode = (string) ($saved['model_mode'] ?? '');
+            if ($mode === 'drop' || $mode === 'pin') {
+                continue;
             }
-            if ($actual !== null && $model !== null && $model > 1) {
-                $xs[] = $model;
-                $ys[] = $actual;
-                $ratios[] = $actual / $model;
+            $actual = $saved['actual_kwh'];
+            $model = $saved['model_kwh'];
+            if ($actual !== null && $model !== null && (float) $model > 1) {
+                $xs[] = (float) $model;
+                $ys[] = (float) $actual;
+                $ratios[] = (float) $actual / (float) $model;
             }
         }
         $patch = ['regress_days' => count($xs)];
@@ -478,34 +537,78 @@ final class Series
         }
         $this->store->merge('plant', $patch);
         $this->store->put('last_calibration', $today);
-        $this->store->put('calibration_version', '4');
+        $this->store->put('calibration_version', '5');
     }
 
-    /** @return array{ratio:?float, days:int, n:int} */
-    public function goodness(array $plant): array
+    /** Der 7.10.2026 fehlt in der DWD-Datei ab Mitternacht. Home Assistant hat den Tageswert um 00:01 Uhr festgehalten. */
+    private function repairKnownDays(): void
     {
-        $n = max(3, min(30, (int) ($plant['n_days'] ?? 7)));
-        $today = (new DateTimeImmutable('now', new DateTimeZone('Europe/Berlin')))->format('Y-m-d');
-        $rows = $this->store->pdo()->query('SELECT day, actual_kwh, model_kwh FROM daily WHERE actual_kwh IS NOT NULL AND model_kwh IS NOT NULL ORDER BY day DESC')->fetchAll() ?: [];
-        $sumActual = 0.0;
-        $sumModel = 0.0;
+        if ((string) $this->store->get('model_repair', '') === '2026-10') {
+            return;
+        }
+        $pdo = $this->store->pdo();
+        $names = [];
+        foreach ($pdo->query('PRAGMA table_info(daily)') ?: [] as $column) {
+            $names[] = (string) $column['name'];
+        }
+        if (!in_array('model_mode', $names, true)) {
+            $pdo->exec('ALTER TABLE daily ADD COLUMN model_mode TEXT');
+        }
+        $drop = $pdo->prepare("INSERT INTO daily (day, model_kwh, model_mode) VALUES (?, NULL, 'drop') ON CONFLICT(day) DO UPDATE SET model_kwh = NULL, model_mode = 'drop'");
+        foreach (['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04'] as $day) {
+            $drop->execute([$day]);
+        }
+        $current = $pdo->prepare('SELECT actual_kwh FROM daily WHERE day = ?');
+        $current->execute(['2026-10-07']);
+        $actual = $current->fetchColumn();
+        if ($actual === false || $actual === null) {
+            $actual = 25.7;
+        }
+        $pdo->prepare("INSERT INTO daily (day, actual_kwh, model_kwh, model_mode) VALUES (?, ?, 28.0, 'pin') ON CONFLICT(day) DO UPDATE SET actual_kwh = COALESCE(daily.actual_kwh, excluded.actual_kwh), model_kwh = 28.0, model_mode = 'pin'")->execute(['2026-10-07', $actual]);
+        $this->store->put('model_repair', '2026-10');
+    }
+
+    /** @param array<int, string> $ordered
+     *  @param array<int, string> $wanted
+     *  @return array{0:int, 1:int}
+     */
+    private function indexSpan(array $ordered, array $wanted): array
+    {
+        $lookup = array_flip($wanted);
+        $idx = [];
+        foreach ($ordered as $i => $day) {
+            if (isset($lookup[$day])) {
+                $idx[] = $i;
+            }
+        }
+        if (!$idx) {
+            return [0, 0];
+        }
+        return [min($idx), max($idx)];
+    }
+
+    /** @param array<string, array{actual:float, model:float}> $by
+     *  @param array<int, string> $days
+     *  @return array{ratio:?float, days:int, text:string}
+     */
+    private function scoreDays(array $by, array $days): array
+    {
+        $actual = 0.0;
+        $model = 0.0;
         $count = 0;
-        foreach ($rows as $row) {
-            if ((string) $row['day'] === $today || $count >= $n) {
+        foreach ($days as $day) {
+            if (!isset($by[$day])) {
                 continue;
             }
-            $actual = (float) $row['actual_kwh'];
-            if ($actual <= 0) {
-                continue;
-            }
-            $sumActual += $actual;
-            $sumModel += Forecast::predicted((float) $row['model_kwh'], $plant);
+            $actual += $by[$day]['actual'];
+            $model += $by[$day]['model'];
             $count++;
         }
+        $ratio = $actual > 0 ? $model / $actual : null;
         return [
-            'ratio' => $sumActual > 0 ? $sumModel / $sumActual : null,
+            'ratio' => $ratio,
             'days' => $count,
-            'n' => $n,
+            'text' => $ratio === null ? '—' : num($ratio, 2),
         ];
     }
 

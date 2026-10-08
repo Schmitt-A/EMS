@@ -131,6 +131,16 @@ $full = [
 ];
 $covered = Forecast::brief($full, $plant, $now, 3.0);
 check(abs($covered['today_kwh'] - 5.0) < 0.01 && abs($covered['remaining_kwh'] - 1.0) < 0.01, 'Gesamtprognose wenn der Tag in der Datei steht');
+check(Forecast::displayedModel('pin', 28.0, $scaled) === 28.0, 'festgehaltener Modelltag bleibt 28 kWh');
+check(Forecast::displayedModel('drop', 20.0, $plant) === null, 'verworfener Modelltag bleibt leer');
+check(abs((float) Forecast::displayedModel(null, 10.0, $scaled) - 5) < 0.01, 'normaler Modelltag nimmt den Eichfaktor');
+$three = Forecast::windowDays(['2026-10-05', '2026-10-06', '2026-10-07', '2026-09-30'], '2026-10-08', '3');
+sort($three);
+check($three === ['2026-10-05', '2026-10-06', '2026-10-07'], 'Gütefenster drei abgeschlossene Tage');
+check(Forecast::windowDays(['2026-10-05', '2026-09-30'], '2026-10-08', 'month') === ['2026-10-05'], 'Gütefenster Monat');
+check(Forecast::windowDays(['2026-10-05', '2026-09-30'], '2026-10-08', 'quarter') === ['2026-10-05'], 'Gütefenster Quartal');
+check(Forecast::captionText(10.47, 0.04) === '10,5 ± 0,0 kWh', 'Beschriftung rundet wie die Tabelle');
+check(Forecast::captionText(10.7, null) === '10,7 kWh', 'ohne Streuung nur der Prognosewert');
 if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
     $memory = new PDO('sqlite::memory:');
     Forecast::rememberDays($memory, $full, $plant);
@@ -155,6 +165,15 @@ if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
     check(($stats['2026-10-08']['n'] ?? 0) === 2 && $stats['2026-10-08']['sd'] > 0, 'Modellläufe bilden Mittelwert und Streuung, unvollständige Läufe bleiben draussen');
     $rows = Forecast::archiveRows($memory, $plant, ['2026-10-08' => 4.2]);
     check(count($rows) === 1 && abs((float) $rows[0]['actual'] - 4.2) < 0.01 && $rows[0]['mean'] > 0, 'Archiv verbindet Ertrag und Prognose');
+    $memory->exec('CREATE TABLE daily (day TEXT PRIMARY KEY, actual_kwh REAL, model_kwh REAL, model_mode TEXT)');
+    $memory->exec("INSERT INTO daily (day, actual_kwh, model_kwh, model_mode) VALUES ('2026-10-07', 25.7, 28.0, 'pin')");
+    $pinned = null;
+    foreach (Forecast::archiveRows($memory, $scaled, ['2026-10-07' => 25.7]) as $row) {
+        if ($row['day'] === '2026-10-07') {
+            $pinned = $row;
+        }
+    }
+    check($pinned && abs((float) $pinned['mean'] - 28) < 0.01 && $pinned['sd'] === null, 'ergänzter 7. Oktober bleibt 28 kWh');
     $outlook = Forecast::storageOutlook([
         ['t' => strtotime('2026-10-08 12:00:00 Europe/Berlin'), 'kw' => 3],
         ['t' => strtotime('2026-10-08 13:00:00 Europe/Berlin'), 'kw' => 3],

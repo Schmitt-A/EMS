@@ -186,10 +186,7 @@ if ($path === '/prognose') {
     $yield = safe_yield();
     $yesterday = yesterday_yield();
     $pack = (new Series(store(), ha()))->days(cfg()['plant']);
-    $score = (new Series(store(), ha()))->goodness(cfg()['plant']);
-    $goodness = $score['ratio'];
-    $goodnessDays = $score['days'];
-    $goodnessN = $score['n'];
+    $scores = $pack['goodness'] ?? [];
     $todayKey = (new DateTimeImmutable('today', new DateTimeZone('Europe/Berlin')))->format('Y-m-d');
     $span = (($_GET['span'] ?? 'month') === 'all') ? 'all' : 'month';
     $year = (int) ($_GET['year'] ?? date('Y'));
@@ -213,15 +210,26 @@ if ($path === '/prognose') {
     $keepDay = static function (string $day) use ($span, $month): bool {
         return $span === 'all' || str_starts_with($day, $month);
     };
-    $archive = array_values(array_filter(
-        Forecast::archiveRows(store()->pdo(), cfg()['plant'], $actual),
-        static fn (array $row): bool => $keepDay((string) $row['day'])
-    ));
+    $upcoming = [];
+    $past = [];
+    foreach (Forecast::archiveRows(store()->pdo(), cfg()['plant'], $actual) as $row) {
+        $day = (string) $row['day'];
+        if ($day >= $todayKey) {
+            $upcoming[] = $row;
+            continue;
+        }
+        if ($row['mean'] === null && (int) $row['n'] === 0) {
+            continue;
+        }
+        $past[] = $row;
+    }
+    usort($upcoming, static fn (array $a, array $b): int => strcmp((string) $a['day'], (string) $b['day']));
+    usort($past, static fn (array $a, array $b): int => strcmp((string) $b['day'], (string) $a['day']));
     $modelRows = array_values(array_filter(
         $pack['table'] ?? [],
         static fn (array $row): bool => $keepDay((string) $row['day'])
     ));
-    page('forecast', compact('snap', 'live', 'yield', 'yesterday', 'goodness', 'goodnessDays', 'goodnessN', 'archive', 'modelRows', 'span', 'year', 'month') + ['title' => 'Prognose']);
+    page('forecast', compact('snap', 'live', 'yield', 'yesterday', 'scores', 'upcoming', 'past', 'modelRows', 'span', 'year', 'month') + ['title' => 'Prognose']);
 }
 if ($path === '/einstellungen') {
     $ping = ha()->ping();

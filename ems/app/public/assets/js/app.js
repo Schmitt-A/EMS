@@ -180,10 +180,6 @@
     return new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
   }
 
-  function kwhText(value) {
-    return new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value) + ' kWh';
-  }
-
   function clampWindow(min, max, bounds) {
     if (!bounds || bounds.length < 2) return [min, max];
     const span = max - min;
@@ -195,6 +191,13 @@
   }
 
   function fitAxes(chart) {
+    const box = chart.canvas && chart.canvas.closest('[data-chart]');
+    const payload = box && box._payload;
+    if (payload && payload.yLock) {
+      const locked = Number(payload.yMax);
+      chart.options.scales.y.max = locked > 0 ? locked : 1;
+      return;
+    }
     const scale = chart.options.scales.x;
     const stacked = !!(scale && scale.stacked);
     let maxY = 0.2;
@@ -232,18 +235,22 @@
 
   function applyIndexWindow(chart, payload, min, max) {
     const last = Math.max(0, (payload.labels || []).length - 1);
+    const bounds = chart.$indexBounds || [0, last];
+    const loBound = bounds[0];
+    const hiBound = Math.min(last, bounds[1]);
     let lo = min;
     let hi = max;
     const span = Math.max(0, hi - lo);
-    if (span >= last) {
-      lo = 0;
-      hi = last;
-    } else if (lo < 0) {
-      hi -= lo;
-      lo = 0;
-    } else if (hi > last) {
-      lo -= hi - last;
-      hi = last;
+    const width = Math.max(0, hiBound - loBound);
+    if (span >= width) {
+      lo = loBound;
+      hi = hiBound;
+    } else if (lo < loBound) {
+      hi += loBound - lo;
+      lo = loBound;
+    } else if (hi > hiBound) {
+      lo -= hi - hiBound;
+      hi = hiBound;
     }
     chart.$window = [lo, hi];
     chart.options.scales.x.min = lo - 0.5;
@@ -386,12 +393,10 @@
         });
         ctx.restore();
       },
-      afterDatasetsDraw(chart) {
+      afterDraw(chart) {
         const scale = chart.scales.x;
-        const yScale = chart.scales.y;
         const area = chart.chartArea;
-        const forecast = chart.data.datasets.find((set) => set.emsKey === 'forecast' && !set.hidden);
-        if (!forecast || !scale || !yScale || !area) return;
+        if (!scale || !area) return;
         const ctx = chart.ctx;
         ctx.save();
         ctx.fillStyle = color('export');
@@ -399,12 +404,14 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
         (payload.marks || []).forEach((mark) => {
-          if (mark.kwh === null || mark.kwh === undefined || mark.peak === null) return;
-          if (mark.peak < scale.min || mark.peak > scale.max) return;
-          const x = scale.getPixelForValue(mark.peak);
-          const y = yScale.getPixelForValue(mark.peak_y || 0) - 4;
+          if (!mark.text) return;
+          const dayEnd = mark.start + 86400000;
+          const vis0 = Math.max(mark.start, scale.min);
+          const vis1 = Math.min(dayEnd, scale.max);
+          if (vis1 - vis0 < 3600000) return;
+          const x = scale.getPixelForValue((vis0 + vis1) / 2);
           if (x < area.left - 8 || x > area.right + 8) return;
-          ctx.fillText(kwhText(mark.kwh), x, Math.max(area.top + 12, y));
+          ctx.fillText(mark.text, x, area.top - 6);
         });
         ctx.restore();
       },
@@ -446,7 +453,7 @@
         responsive: true,
         maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
-        layout: { padding: { top: payload.marks ? 8 : 0 } },
+        layout: { padding: { top: payload.yLock ? 36 : (payload.marks ? 8 : 0) } },
         plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
         scales: {
           x: xScale,
@@ -457,6 +464,7 @@
     });
     if (payload.pan === 'index') {
       const view = payload.view || [0, 0];
+      if (payload.windows && payload.bounds) box._chart.$indexBounds = payload.bounds.slice();
       applyIndexWindow(box._chart, payload, view[0], view[1]);
       bindPan(box);
     } else if (box.dataset.pan === '1') {
@@ -542,6 +550,65 @@
         fitAxes(chart);
         chart.update();
       }
+    });
+  });
+  function showGoodness(payload, name) {
+    const score = payload && payload.goodness ? payload.goodness[name] : null;
+    const ratio = document.querySelector('[data-gute-ratio]');
+    const days = document.querySelector('[data-gute-days]');
+    if (!score || !ratio || !days) return;
+    ratio.textContent = score.text;
+    days.textContent = String(score.days);
+  }
+  document.querySelectorAll('[data-gute-tools]').forEach((bar) => {
+    bar.addEventListener('click', (event) => {
+      const button = event.target.closest('button');
+      const box = bar.parentElement ? bar.parentElement.querySelector('[data-pan]') : null;
+      if (!button || !box || !box._chart || !box._payload) return;
+      const chart = box._chart;
+      const payload = box._payload;
+      if (button.dataset.window) {
+        const name = button.dataset.window === 'reset' ? '3' : button.dataset.window;
+        const span = (payload.windows || {})[name];
+        if (!span) return;
+        chart.$indexBounds = span.slice();
+        const width = span[1] - span[0];
+        const viewHi = width > 9 ? span[0] + 6 : span[1];
+        applyIndexWindow(chart, payload, span[0], viewHi);
+        showGoodness(payload, name);
+        bar.querySelectorAll('[data-window]').forEach((item) => {
+          if (item.dataset.window === 'reset') return;
+          item.setAttribute('aria-pressed', item.dataset.window === name ? 'true' : 'false');
+        });
+        if (button.dataset.window === 'reset') {
+          chart.data.datasets.forEach((set) => { set.hidden = false; });
+          bar.querySelectorAll('[data-series]').forEach((item) => item.setAttribute('aria-pressed', 'true'));
+          applyIndexWindow(chart, payload, span[0], viewHi);
+        }
+        return;
+      }
+      if (button.dataset.series) {
+        const set = chart.data.datasets.find((item) => item.emsKey === button.dataset.series);
+        if (!set) return;
+        set.hidden = !set.hidden;
+        button.setAttribute('aria-pressed', set.hidden ? 'false' : 'true');
+        fitAxes(chart);
+        chart.update();
+      }
+    });
+  });
+  document.querySelectorAll('[data-open-dialog]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const dialog = document.getElementById(button.dataset.openDialog);
+      if (dialog && dialog.showModal) dialog.showModal();
+    });
+  });
+  document.querySelectorAll('dialog').forEach((dialog) => {
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+    dialog.querySelectorAll('[data-close-dialog]').forEach((button) => {
+      button.addEventListener('click', () => dialog.close());
     });
   });
   document.querySelectorAll('[data-ranges]').forEach((bar) => {

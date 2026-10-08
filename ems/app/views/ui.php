@@ -73,6 +73,27 @@ function period_nav(string $path, int $year, string $month, string $span, array 
     echo '</section>';
 }
 
+function forecast_archive_rows(array $rows, string $empty): void
+{
+    if (!$rows) {
+        echo '<tr><td class="px-4 py-4 text-muted-foreground" colspan="9">' . e($empty) . '</td></tr>';
+        return;
+    }
+    foreach ($rows as $row) {
+        echo '<tr class="border-t border-border">';
+        echo '<td class="whitespace-nowrap px-4 py-3">' . e(day_label((string) $row['day'])) . '</td>';
+        echo '<td class="py-3 tabular-nums" data-col="actual">' . e(kwh($row['actual'], 1)) . '</td>';
+        echo '<td class="py-3 tabular-nums" data-col="mean">' . e(kwh($row['mean'], 1)) . '</td>';
+        echo '<td class="py-3 tabular-nums" data-col="sd">' . ($row['sd'] === null ? '—' : '± ' . e(num((float) $row['sd'], 1)) . ' kWh') . '</td>';
+        echo '<td class="py-3 tabular-nums" data-col="radiation">' . ($row['radiation'] === null ? '—' : e(num((float) $row['radiation'] / 1000, 2)) . ' kWh/m²') . '</td>';
+        echo '<td class="py-3 tabular-nums" data-col="sun">' . ($row['sunshine_s'] === null ? '—' : e(num((float) $row['sunshine_s'] / 3600, 1)) . ' h') . '</td>';
+        echo '<td class="py-3 tabular-nums" data-col="cloud">' . ($row['cloud'] === null ? '—' : e(num((float) $row['cloud'], 0)) . ' %') . '</td>';
+        echo '<td class="py-3 tabular-nums" data-col="temp">' . ($row['temp_c'] === null ? '—' : e(num((float) $row['temp_c'], 1)) . ' °C') . '</td>';
+        echo '<td class="py-3 pr-4 tabular-nums" data-col="runs">' . (int) $row['n'] . '</td>';
+        echo '</tr>';
+    }
+}
+
 function chart_box(string $endpoint, string $class = 'h-72', string $mode = ''): void
 {
     if ($mode === 'scroll') {

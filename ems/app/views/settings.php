@@ -104,13 +104,13 @@ page_head('Einstellungen', 'Tarife, Dach und Strategie liegen hier. Die Messwert
     <div class="grid gap-3 sm:grid-cols-2">
       <?php foreach ([
         'kwp' => 'Generator (kWp)', 'inverter_kw' => 'Wechselrichter-Limit (kW)', 'tilt' => 'Neigung (°)',
-        'azimuth' => 'Ausrichtung (°)', 'n_days' => 'Mittelung der Güte (Tage)', 'factor' => 'Eichfaktor',
+        'azimuth' => 'Ausrichtung (°)', 'n_days' => 'Kalibrierung (Tage)', 'factor' => 'Eichfaktor',
         'regress_a' => 'Regression a', 'regress_b' => 'Regression b',
       ] as $name => $label): ?>
         <label class="text-sm"><?= e($label) ?><input class="field mt-1" name="<?= e($name) ?>" value="<?= e((string) $p[$name]) ?>"></label>
       <?php endforeach; ?>
     </div>
-    <p class="text-xs text-muted-foreground">Ein geänderter Eichfaktor oder eine geänderte Regression bleibt stehen, bis du sie wieder freigibst. Dann schätzt die nächste Eichung neu.</p>
+    <p class="text-xs text-muted-foreground">Die Kalibrierung schaut so viele abgeschlossene Tage zurück. Die Güte auf der Prognoseseite wählt ihr Fenster selbst: 3 Tage, 7 Tage, Monat oder Quartal. Ein geänderter Eichfaktor oder eine geänderte Regression bleibt stehen, bis du sie wieder freigibst.</p>
     <div class="flex flex-wrap gap-2">
       <button class="btn-primary" type="submit">Anlage speichern</button>
       <button class="btn-ghost" name="unlock_factor" value="1" type="submit">Eichfaktor freigeben</button>

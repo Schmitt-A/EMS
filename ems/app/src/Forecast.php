@@ -83,6 +83,51 @@ final class Forecast
         return max(0, $rawModel * (float) ($plant['factor'] ?? 1));
     }
 
+    /** pin zeigt den gespeicherten kWh-Wert selbst. drop bleibt leer. Sonst predicted(). */
+    public static function displayedModel(?string $mode, ?float $model, array $plant): ?float
+    {
+        if ($mode === 'drop' || $model === null) {
+            return null;
+        }
+        if ($mode === 'pin') {
+            return max(0, $model);
+        }
+        return self::predicted($model, $plant);
+    }
+
+    public static function captionText(?float $kwh, ?float $sd): ?string
+    {
+        if ($kwh === null) {
+            return null;
+        }
+        if ($sd === null) {
+            return kwh($kwh, 1);
+        }
+        return num($kwh, 1) . ' ± ' . num($sd, 1) . ' kWh';
+    }
+
+    /** @param array<int, string> $days
+     *  @return array<int, string>
+     */
+    public static function windowDays(array $days, string $today, string $window): array
+    {
+        $end = new DateTimeImmutable($today, new DateTimeZone('Europe/Berlin'));
+        if ($window === '3' || $window === '7') {
+            $n = $window === '3' ? 3 : 7;
+            $from = $end->modify('-' . $n . ' days')->format('Y-m-d');
+            $until = $end->modify('-1 day')->format('Y-m-d');
+            return array_values(array_filter($days, static fn (string $day): bool => $day >= $from && $day <= $until));
+        }
+        if ($window === 'month') {
+            $prefix = $end->format('Y-m');
+            return array_values(array_filter($days, static fn (string $day): bool => str_starts_with($day, $prefix) && $day < $today));
+        }
+        $month = (int) $end->format('n');
+        $startMonth = intdiv($month - 1, 3) * 3 + 1;
+        $from = sprintf('%04d-%02d-01', (int) $end->format('Y'), $startMonth);
+        return array_values(array_filter($days, static fn (string $day): bool => $day >= $from && $day < $today));
+    }
+
     /** @param array<int, array{t:int,v:float}> $points kW */
     public static function integrate(array $points): float
     {
@@ -399,25 +444,45 @@ final class Forecast
         return $out;
     }
 
+    /** @return array<string, array{kwh:float, sd:?float, pinned:bool}> */
+    public static function captions(PDO $pdo, array $plant): array
+    {
+        $stats = self::issueStats($pdo);
+        $regress = (int) ($plant['regress_days'] ?? 0) >= 5;
+        $scale = $regress ? abs((float) ($plant['regress_b'] ?? 1)) : (float) ($plant['factor'] ?? 1);
+        $out = [];
+        foreach ($stats as $day => $stat) {
+            $out[$day] = [
+                'kwh' => self::predicted((float) $stat['mean'], $plant),
+                'sd' => $stat['sd'] !== null ? (float) $stat['sd'] * $scale : null,
+                'pinned' => false,
+            ];
+        }
+        foreach (self::pinnedModels($pdo) as $day => $kwh) {
+            $out[$day] = ['kwh' => $kwh, 'sd' => null, 'pinned' => true];
+        }
+        return $out;
+    }
+
     /** @param array<string, ?float> $actual
      *  @return array<int, array{day:string, actual:?float, mean:?float, sd:?float, n:int, radiation:?float, sunshine_s:?float, cloud:?float, temp_c:?float}>
      */
     public static function archiveRows(PDO $pdo, array $plant, array $actual): array
     {
         $stats = self::issueStats($pdo);
-        $days = array_values(array_unique(array_merge(array_keys($stats), array_keys($actual))));
-        rsort($days);
-        $regress = (int) ($plant['regress_days'] ?? 0) >= 5;
-        $scale = $regress ? abs((float) ($plant['regress_b'] ?? 1)) : (float) ($plant['factor'] ?? 1);
+        $captions = self::captions($pdo, $plant);
+        $days = array_values(array_unique(array_merge(array_keys($stats), array_keys($captions), array_keys($actual))));
+        sort($days);
         $rows = [];
         foreach ($days as $day) {
             $stat = $stats[$day] ?? null;
+            $caption = $captions[$day] ?? null;
             $rows[] = [
                 'day' => $day,
                 'actual' => $actual[$day] ?? null,
-                'mean' => $stat ? self::predicted((float) $stat['mean'], $plant) : null,
-                'sd' => ($stat && $stat['sd'] !== null) ? $stat['sd'] * $scale : null,
-                'n' => $stat['n'] ?? 0,
+                'mean' => $caption['kwh'] ?? null,
+                'sd' => $caption['sd'] ?? null,
+                'n' => !empty($caption['pinned']) ? 1 : ($stat['n'] ?? 0),
                 'radiation' => $stat['radiation'] ?? null,
                 'sunshine_s' => $stat['sunshine_s'] ?? null,
                 'cloud' => $stat['cloud'] ?? null,
@@ -425,6 +490,23 @@ final class Forecast
             ];
         }
         return $rows;
+    }
+
+    /** @return array<string, float> */
+    private static function pinnedModels(PDO $pdo): array
+    {
+        $names = [];
+        foreach ($pdo->query('PRAGMA table_info(daily)') ?: [] as $column) {
+            $names[] = (string) $column['name'];
+        }
+        if (!in_array('model_mode', $names, true)) {
+            return [];
+        }
+        $out = [];
+        foreach ($pdo->query("SELECT day, model_kwh FROM daily WHERE model_mode = 'pin' AND model_kwh IS NOT NULL") ?: [] as $row) {
+            $out[(string) $row['day']] = (float) $row['model_kwh'];
+        }
+        return $out;
     }
 
     /**

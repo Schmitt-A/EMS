@@ -44,6 +44,13 @@ final class ConfigStore
                 model_kwh REAL
             )'
         );
+        $daily = [];
+        foreach ($this->pdo->query('PRAGMA table_info(daily)') ?: [] as $column) {
+            $daily[] = (string) $column['name'];
+        }
+        if (!in_array('model_mode', $daily, true)) {
+            $this->pdo->exec('ALTER TABLE daily ADD COLUMN model_mode TEXT');
+        }
     }
 
     public function defaults(): array
