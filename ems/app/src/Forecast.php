@@ -106,6 +106,133 @@ final class Forecast
         return num($kwh, 1) . ' ± ' . num($sd, 1) . ' kWh';
     }
 
+    /** Feste 0,5-kWh-Schritte. Zwei Schritte bleiben über dem höchsten Punkt frei, dort steht die Tageszahl. */
+    public static function energyScale(float $peak, float $step = 0.5): array
+    {
+        $step = $step > 0 ? $step : 0.5;
+        if ($peak <= 0) {
+            return ['step' => $step, 'dataMax' => $step, 'max' => round($step * 3, 3)];
+        }
+        $dataMax = round(ceil(($peak - 1e-9) / $step) * $step, 3);
+        return ['step' => $step, 'dataMax' => $dataMax, 'max' => round($dataMax + $step * 2, 3)];
+    }
+
+    /**
+     * Modelle-Tabelle: kommende Tage, der laufende Tag, dann vergangene Modelltage.
+     *
+     * @param array<int, array<string, mixed>> $daily
+     * @param array<string, array{kwh:float, sd:?float, pinned?:bool}> $captions
+     * @param array<string, array{mean?:float}> $stats
+     * @return array<int, array{day:string, today:bool, actual:?float, model:?float, gute:?float, raw:?float, fitted:?float, regress:?float}>
+     */
+    public static function modelBoard(
+        string $today,
+        array $daily,
+        array $captions,
+        array $stats,
+        ?float $actualToday,
+        array $plant,
+        ?float $lockedToday = null,
+        int $ahead = 5,
+        int $back = 5
+    ): array {
+        $tz = new DateTimeZone('Europe/Berlin');
+        $origin = new DateTimeImmutable($today, $tz);
+        $future = [];
+        for ($i = max(1, $ahead); $i >= 1; $i--) {
+            $day = $origin->modify('+' . $i . ' days')->format('Y-m-d');
+            if (!isset($captions[$day]) && !isset($stats[$day])) {
+                continue;
+            }
+            $future[] = self::forecastBoardRow($day, $captions, $stats, $plant, null, false);
+        }
+        $todayActual = $actualToday;
+        if ($todayActual === null) {
+            foreach ($daily as $row) {
+                if ((string) ($row['day'] ?? '') === $today && $row['actual_kwh'] !== null && $row['actual_kwh'] !== '') {
+                    $todayActual = (float) $row['actual_kwh'];
+                    break;
+                }
+            }
+        }
+        $todayRow = self::forecastBoardRow($today, $captions, $stats, $plant, $todayActual, true);
+        if ($todayRow['model'] === null && $lockedToday !== null) {
+            $todayRow['model'] = round($lockedToday, 2);
+        }
+        $past = [];
+        foreach ($daily as $row) {
+            $day = (string) ($row['day'] ?? '');
+            if ($day === '' || $day >= $today) {
+                continue;
+            }
+            $mode = isset($row['model_mode']) && $row['model_mode'] !== null && $row['model_mode'] !== '' ? (string) $row['model_mode'] : null;
+            if ($mode === 'drop') {
+                continue;
+            }
+            $stored = $row['model_kwh'] !== null && $row['model_kwh'] !== '' ? (float) $row['model_kwh'] : null;
+            $shown = self::displayedModel($mode, $stored, $plant);
+            if ($shown === null) {
+                continue;
+            }
+            $actual = $row['actual_kwh'] !== null && $row['actual_kwh'] !== '' ? round((float) $row['actual_kwh'], 2) : null;
+            [$raw, $fitted, $regress] = ($mode === 'pin') ? [null, null, null] : self::factorParts($stored, $plant);
+            $past[] = [
+                'day' => $day,
+                'today' => false,
+                'actual' => $actual,
+                'model' => round($shown, 2),
+                'gute' => ($actual !== null && $actual > 0) ? round($shown / $actual, 3) : null,
+                'raw' => $raw,
+                'fitted' => $fitted,
+                'regress' => $regress,
+            ];
+        }
+        usort($past, static fn (array $a, array $b): int => strcmp($b['day'], $a['day']));
+        if ($back > 0) {
+            $past = array_slice($past, 0, $back);
+        }
+        return array_merge($future, [$todayRow], $past);
+    }
+
+    /** @param array<string, array{kwh:float, sd:?float, pinned?:bool}> $captions
+     *  @param array<string, array{mean?:float}> $stats
+     *  @return array{day:string, today:bool, actual:?float, model:?float, gute:?float, raw:?float, fitted:?float, regress:?float}
+     */
+    private static function forecastBoardRow(string $day, array $captions, array $stats, array $plant, ?float $actual, bool $today): array
+    {
+        $caption = $captions[$day] ?? null;
+        $pinned = is_array($caption) && !empty($caption['pinned']);
+        $mean = isset($stats[$day]['mean']) ? (float) $stats[$day]['mean'] : null;
+        [$raw, $fitted, $regress] = ($pinned || $mean === null) ? [null, null, null] : self::factorParts($mean, $plant);
+        $model = null;
+        if (is_array($caption) && isset($caption['kwh'])) {
+            $model = round((float) $caption['kwh'], 2);
+        } elseif ($mean !== null) {
+            $model = round(self::predicted($mean, $plant), 2);
+        }
+        return [
+            'day' => $day,
+            'today' => $today,
+            'actual' => $actual !== null ? round($actual, 2) : null,
+            'model' => $model,
+            'gute' => (!$today && $actual !== null && $actual > 0 && $model !== null) ? round($model / $actual, 3) : null,
+            'raw' => $raw,
+            'fitted' => $fitted,
+            'regress' => $regress,
+        ];
+    }
+
+    /** @return array{0:?float, 1:?float, 2:?float} */
+    private static function factorParts(?float $raw, array $plant): array
+    {
+        if ($raw === null) {
+            return [null, null, null];
+        }
+        $factor = (float) ($plant['factor'] ?? 1);
+        $regress = max(0, (float) ($plant['regress_a'] ?? 0) + (float) ($plant['regress_b'] ?? 0) * $raw);
+        return [round($raw, 2), round($raw * $factor, 2), round($regress, 2)];
+    }
+
     /** @param array<int, string> $days
      *  @return array<int, string>
      */

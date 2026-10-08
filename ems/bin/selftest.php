@@ -141,6 +141,33 @@ check(Forecast::windowDays(['2026-10-05', '2026-09-30'], '2026-10-08', 'month') 
 check(Forecast::windowDays(['2026-10-05', '2026-09-30'], '2026-10-08', 'quarter') === ['2026-10-05'], 'Gütefenster Quartal');
 check(Forecast::captionText(10.47, 0.04) === '10,5 ± 0,0 kWh', 'Beschriftung rundet wie die Tabelle');
 check(Forecast::captionText(10.7, null) === '10,7 kWh', 'ohne Streuung nur der Prognosewert');
+$scale = Forecast::energyScale(5.248);
+check(abs($scale['dataMax'] - 5.5) < 0.001 && abs($scale['max'] - 6.5) < 0.001 && abs($scale['step'] - 0.5) < 0.001, 'Energieskala in 0,5-kWh-Schritten mit Platz über der Kurve');
+$exact = Forecast::energyScale(5.0);
+check(abs($exact['dataMax'] - 5) < 0.001 && abs($exact['max'] - 6) < 0.001, 'voller 0,5-Schritt bleibt auf dem Wert');
+$boardPlant = ['factor' => 0.5, 'regress_a' => 1, 'regress_b' => 0.8, 'regress_days' => 0];
+$board = Forecast::modelBoard('2026-10-08', [
+    ['day' => '2026-10-04', 'actual_kwh' => 9, 'model_kwh' => 9, 'model_mode' => 'drop'],
+    ['day' => '2026-10-05', 'actual_kwh' => 10, 'model_kwh' => 20, 'model_mode' => null],
+    ['day' => '2026-10-06', 'actual_kwh' => 8, 'model_kwh' => 16, 'model_mode' => null],
+    ['day' => '2026-10-07', 'actual_kwh' => 25.7, 'model_kwh' => 28, 'model_mode' => 'pin'],
+], [
+    '2026-10-08' => ['kwh' => 5.0, 'sd' => 0.1, 'pinned' => false],
+    '2026-10-09' => ['kwh' => 6.0, 'sd' => 0.2, 'pinned' => false],
+    '2026-10-10' => ['kwh' => 7.0, 'sd' => null, 'pinned' => false],
+], [
+    '2026-10-08' => ['mean' => 10.0],
+    '2026-10-09' => ['mean' => 12.0],
+    '2026-10-10' => ['mean' => 14.0],
+], 4.2, $boardPlant, 5.0);
+$boardDays = array_map(static fn (array $row): string => $row['day'], $board);
+check($boardDays === ['2026-10-10', '2026-10-09', '2026-10-08', '2026-10-07', '2026-10-06', '2026-10-05'], 'Modelltafel: kommende Tage, heute, vergangene Modelltage');
+$boardToday = $board[2];
+check($boardToday['today'] === true && $boardToday['gute'] === null && abs((float) $boardToday['model'] - 5) < 0.01 && abs((float) $boardToday['raw'] - 10) < 0.01 && abs((float) $boardToday['fitted'] - 5) < 0.01 && abs((float) $boardToday['regress'] - 9) < 0.01, 'heutiger Tag hat Rohmodell, Faktor und Regression, die Güte bleibt leer');
+$boardFuture = $board[0];
+check(abs((float) $boardFuture['model'] - 7) < 0.01 && abs((float) $boardFuture['raw'] - 14) < 0.01 && abs((float) $boardFuture['fitted'] - 7) < 0.01, 'kommender Tag übernimmt die Diagrammprognose');
+$boardPin = $board[3];
+check($boardPin['raw'] === null && abs((float) $boardPin['model'] - 28) < 0.01 && abs((float) $boardPin['gute'] - round(28 / 25.7, 3)) < 0.001, 'festgehaltener vergangener Tag bleibt 28 kWh');
 if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
     $memory = new PDO('sqlite::memory:');
     Forecast::rememberDays($memory, $full, $plant);

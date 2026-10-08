@@ -188,15 +188,7 @@ if ($path === '/prognose') {
     $pack = (new Series(store(), ha()))->days(cfg()['plant']);
     $scores = $pack['goodness'] ?? [];
     $todayKey = (new DateTimeImmutable('today', new DateTimeZone('Europe/Berlin')))->format('Y-m-d');
-    $span = (($_GET['span'] ?? 'month') === 'all') ? 'all' : 'month';
-    $year = (int) ($_GET['year'] ?? date('Y'));
-    if ($year < 2020 || $year > 2100) {
-        $year = (int) date('Y');
-    }
-    $month = (string) ($_GET['month'] ?? date('Y-m'));
-    if (!preg_match('/^\d{4}-\d{2}$/', $month) || (int) substr($month, 0, 4) !== $year) {
-        $month = sprintf('%04d-%s', $year, date('m'));
-    }
+    $horizon = (new DateTimeImmutable($todayKey, new DateTimeZone('Europe/Berlin')))->modify('+5 days')->format('Y-m-d');
     $actual = [];
     foreach (store()->pdo()->query('SELECT day, actual_kwh FROM daily') ?: [] as $row) {
         if ($row['actual_kwh'] === null) {
@@ -207,13 +199,13 @@ if ($path === '/prognose') {
     if ($yield !== null) {
         $actual[$todayKey] = $yield;
     }
-    $keepDay = static function (string $day) use ($span, $month): bool {
-        return $span === 'all' || str_starts_with($day, $month);
-    };
     $upcoming = [];
     $past = [];
     foreach (Forecast::archiveRows(store()->pdo(), cfg()['plant'], $actual) as $row) {
         $day = (string) $row['day'];
+        if ($day > $horizon) {
+            continue;
+        }
         if ($day >= $todayKey) {
             $upcoming[] = $row;
             continue;
@@ -225,11 +217,8 @@ if ($path === '/prognose') {
     }
     usort($upcoming, static fn (array $a, array $b): int => strcmp((string) $a['day'], (string) $b['day']));
     usort($past, static fn (array $a, array $b): int => strcmp((string) $b['day'], (string) $a['day']));
-    $modelRows = array_values(array_filter(
-        $pack['table'] ?? [],
-        static fn (array $row): bool => $keepDay((string) $row['day'])
-    ));
-    page('forecast', compact('snap', 'live', 'yield', 'yesterday', 'scores', 'upcoming', 'past', 'modelRows', 'span', 'year', 'month') + ['title' => 'Prognose']);
+    $modelRows = $pack['board'] ?? [];
+    page('forecast', compact('snap', 'live', 'yield', 'yesterday', 'scores', 'upcoming', 'past', 'modelRows', 'todayKey') + ['title' => 'Prognose']);
 }
 if ($path === '/einstellungen') {
     $ping = ha()->ping();

@@ -194,6 +194,16 @@ final class Snapshot
         $todayKey = (new DateTimeImmutable('@' . $todayStart))->setTimezone($tz)->format('Y-m-d');
         $lockedToday = Forecast::locked($this->store->pdo(), $todayKey);
         $brief = $series ? Forecast::brief($series, $cfg['plant'], $now, $actualToday, $lockedToday) : null;
+        if (is_array($brief)) {
+            $captions = Forecast::captions($this->store->pdo(), $cfg['plant']);
+            if (isset($captions[$todayKey]['kwh'])) {
+                $brief['today_kwh'] = round((float) $captions[$todayKey]['kwh'], 2);
+            }
+            $tomorrowKey = (new DateTimeImmutable('@' . $todayStart))->setTimezone($tz)->modify('+1 day')->format('Y-m-d');
+            if (isset($captions[$tomorrowKey]['kwh'])) {
+                $brief['tomorrow_kwh'] = round((float) $captions[$tomorrowKey]['kwh'], 2);
+            }
+        }
         $sessions = new Sessions($this->store);
         $session = $sessions->open() ?: $sessions->latest();
         $base['balance'] = $balance;

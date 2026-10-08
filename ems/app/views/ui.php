@@ -73,14 +73,15 @@ function period_nav(string $path, int $year, string $month, string $span, array 
     echo '</section>';
 }
 
-function forecast_archive_rows(array $rows, string $empty): void
+function forecast_archive_rows(array $rows, string $empty, string $today = ''): void
 {
     if (!$rows) {
         echo '<tr><td class="px-4 py-4 text-muted-foreground" colspan="9">' . e($empty) . '</td></tr>';
         return;
     }
     foreach ($rows as $row) {
-        echo '<tr class="border-t border-border">';
+        $mark = $today !== '' && (string) $row['day'] === $today;
+        echo '<tr class="border-t border-border' . ($mark ? ' row-today' : '') . '">';
         echo '<td class="whitespace-nowrap px-4 py-3">' . e(day_label((string) $row['day'])) . '</td>';
         echo '<td class="py-3 tabular-nums" data-col="actual">' . e(kwh($row['actual'], 1)) . '</td>';
         echo '<td class="py-3 tabular-nums" data-col="mean">' . e(kwh($row['mean'], 1)) . '</td>';

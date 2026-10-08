@@ -33,7 +33,7 @@ $weather = (new WeatherFeed(store()))->meta();
 <?php endif; ?>
 <section class="card mt-4 p-4">
   <h2 class="mb-1 text-sm font-medium">Energie</h2>
-  <p class="mb-3 text-xs text-muted-foreground">Start ist heute und die zwei folgenden Tage. Jeder Punkt ist die Energie dieser Stunde. Die Skala bleibt am höchsten Wert, damit die Tage beim Verschieben vergleichbar bleiben. Über dem Tag steht die Prognose mit Abweichung, dieselben Zahlen wie in der Tabelle.</p>
+  <p class="mb-3 text-xs text-muted-foreground">Start ist heute und die zwei folgenden Tage. Jeder Punkt ist die Energie dieser Stunde. Die Skala bleibt fest in Schritten von 0,5 kWh. Wischen verschiebt die Tage. Über der Kurve, in der Mitte des Tages, steht die Prognose mit Abweichung, dieselben Zahlen wie in der Tabelle.</p>
   <div class="mb-3 flex flex-wrap gap-2" data-power-tools>
     <button type="button" class="chip" data-window="today">Heute</button>
     <button type="button" class="chip" data-window="3" aria-pressed="true">3 Tage</button>
@@ -84,7 +84,7 @@ $weather = (new WeatherFeed(store()))->meta();
   </div>
   <div class="card overflow-hidden">
     <div class="flex flex-wrap items-center gap-2 px-4 pt-4">
-      <h2 class="mr-auto text-sm font-medium">Prognosedaten <?php tip('Oben steht der aktuelle Tag, darunter die kommenden. Prognose und Abweichung sind Mittelwert und Streuung der gespeicherten DWD-Läufe. Dieselbe Zahl steht über dem Energiediagramm. Vergangene Tage liegen im Dialog.', true); ?></h2>
+      <h2 class="mr-auto text-sm font-medium">Prognosedaten <?php tip('Oben steht der aktuelle Tag, darunter die fünf kommenden. Prognose und Abweichung sind Mittelwert und Streuung der gespeicherten DWD-Läufe. Dieselbe Zahl steht über der Kurve im Energiediagramm und in den Kacheln für heute und morgen. Vergangene Tage liegen im Dialog.', true); ?></h2>
       <?php if ($past): ?>
         <button type="button" class="chip min-h-11" data-open-dialog="forecast-past">Vergangene Tage</button>
       <?php endif; ?>
@@ -103,7 +103,7 @@ $weather = (new WeatherFeed(store()))->meta();
           <th class="py-3 pr-4 font-medium" data-col="runs">Läufe</th>
         </tr></thead>
         <tbody>
-          <?php forecast_archive_rows($upcoming, 'Für heute und die kommenden Tage liegt noch kein gespeicherter Modelllauf.'); ?>
+          <?php forecast_archive_rows($upcoming, 'Für heute und die kommenden Tage liegt noch kein gespeicherter Modelllauf.', $todayKey); ?>
         </tbody>
       </table>
     </div>
@@ -137,7 +137,8 @@ $weather = (new WeatherFeed(store()))->meta();
 </section>
 <section class="card mt-4 overflow-hidden" data-colset="model">
   <div class="flex flex-wrap items-center gap-2 px-4 pt-4">
-    <h2 class="mr-auto text-sm font-medium">Modelle <?php tip('Ist ist der Energiezähler. Modell ist die Prognose aus der gespeicherten Strahlung mit Eichfaktor, ab fünf Tagen mit der Regression. Güte ist Modell ÷ Ist. Rohmodell ist dieselbe Summe ohne Eichfaktor. Faktor ist Rohmodell × Eichfaktor. Regression ist a + b × Rohmodell.', true); ?></h2>
+    <h2 class="mr-auto text-sm font-medium">Modelle <?php tip('Über dem farbigen Tag stehen die fünf kommenden Prognosen, dieselben Werte wie im Energiediagramm, in den Kacheln für heute und morgen und in den Prognosedaten. Die farbige Zeile ist der laufende Tag. Seine Güte bleibt leer, bis der Tag vorbei ist. Rohmodell ist der Mittelwert der gespeicherten DWD-Läufe ohne Eichfaktor, Faktor ist Rohmodell × Eichfaktor, Regression ist a + b × Rohmodell. Die Regression ersetzt den Faktor erst ab fünf abgeschlossenen Tagen. Darunter stehen bis zu fünf vergangene Tage mit Ist und Modell. Aus diesem Vergleich wird der Eichfaktor, und ab fünf Tagen die Regression, damit die kommenden Tage möglichst gut geschätzt werden.', true); ?></h2>
+    <p class="mt-1 w-full text-xs text-muted-foreground">Fünf kommende Tage, der farbige laufende Tag, darunter fünf vergangene Modelltage.</p>
     <?php foreach (['actual' => ['Ist', 'zap'], 'model' => ['Modell', 'chart-column'], 'gute' => ['Güte', 'scale'], 'raw' => ['Rohmodell', 'sun'], 'fitted' => ['Faktor', 'sliders-horizontal'], 'regress' => ['Regression', 'chart-line']] as $col => [$label, $glyph]): ?>
       <button type="button" class="chip min-h-11" data-col-toggle="<?= e($col) ?>" aria-pressed="true"><?= icon($glyph, 'h-3.5 w-3.5') ?><span><?= e($label) ?></span></button>
     <?php endforeach; ?>
@@ -155,10 +156,10 @@ $weather = (new WeatherFeed(store()))->meta();
       </tr></thead>
       <tbody>
         <?php if (!$modelRows): ?>
-          <tr><td class="px-4 py-4 text-muted-foreground" colspan="7">In diesem Zeitraum liegen noch keine Modelltage.</td></tr>
+          <tr><td class="px-4 py-4 text-muted-foreground" colspan="7">Für die kommenden und vergangenen Tage liegt noch kein Modell.</td></tr>
         <?php endif; ?>
         <?php foreach ($modelRows as $row): ?>
-          <tr class="border-t border-border">
+          <tr class="border-t border-border<?= !empty($row['today']) ? ' row-today' : '' ?>">
             <td class="whitespace-nowrap px-4 py-3"><?= e(day_label((string) $row['day'])) ?></td>
             <td class="py-3 tabular-nums" data-col="actual"><?= e(kwh($row['actual'], 1)) ?></td>
             <td class="py-3 tabular-nums" data-col="model"><?= e(kwh($row['model'], 1)) ?></td>
@@ -194,7 +195,7 @@ $weather = (new WeatherFeed(store()))->meta();
     <p>Dach <?= e(num((float) $plant['tilt'], 0)) ?>°, Ausrichtung <?= e(num((float) $plant['azimuth'], 0)) ?>°, <?= e(num((float) $plant['kwp'], 2)) ?> kWp, Wechselrichter-Limit <?= e(num((float) $plant['inverter_kw'], 1)) ?> kW, Eichfaktor <?= e(num((float) $plant['factor'], 2)) ?>.</p>
     <p>P = min(Limit, Strahlung × (kWp × 1,04 × 0,90 × 0,975 / 1000) × Eichfaktor). Jede Stunde der DWD-Datei zählt einmal. Die Zahl über dem Tag ist der Mittelwert der gespeicherten Läufe.</p>
     <p>Die Übersicht benutzt <?= e(Forecast::methodLabel($plant)) ?>. Die Regression ist Ist = <?= e(num((float) $plant['regress_a'], 2)) ?> + <?= e(num((float) $plant['regress_b'], 2)) ?> × Rohmodell und greift ab fünf Tagen<?= (int) $plant['regress_days'] ? ' (' . (int) $plant['regress_days'] . ' bisher)' : '' ?>.</p>
-    <p>Der Ertrag kommt vom Energiezähler. Die Zahl über einem Tag im Energiediagramm ist der Mittelwert der gespeicherten DWD-Läufe mit seiner Abweichung, dieselbe Zahl wie in der Tabelle. Die Güte benutzt nur Tage, die schon vorbei sind und bei denen Ist und Modell vollständig sind.</p>
+    <p>Der Ertrag kommt vom Energiezähler. Die Zahl in der Mitte eines Tages, über der Kurve, ist der Mittelwert der gespeicherten DWD-Läufe mit seiner Abweichung, dieselbe Zahl wie in der Tabelle und in den Kacheln. Die Güte benutzt nur Tage, die schon vorbei sind und bei denen Ist und Modell vollständig sind. Die vergangenen Modelltage bestimmen Eichfaktor und Regression für die kommenden fünf Tage.</p>
     <p>Strahlung, Bewölkung, Sonnenschein und Temperatur kommen aus der DWD-Datei. Jeder Modelllauf bleibt gespeichert, sobald der Tag ab Mitternacht in der Datei steht.</p>
     <p>Im EMS-Dashboard wird die Tagessumme um 00:01 Uhr mit der festen Konstante 0,00893 festgeschrieben. Die Kurve hier folgt Generatorleistung, Verlustkette und Eichfaktor. Bei 10,03 kWp und Faktor 0,93 sind das 0,00851 kW je W/m².</p>
     <a class="inline-block font-medium text-primary" href="<?= e(url('/einstellungen')) ?>">Anlagenwerte ändern</a>

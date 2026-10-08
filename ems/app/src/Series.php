@@ -120,6 +120,7 @@ final class Series
         $boundStart = min($boundStart, $viewStart);
         $boundEnd = max($boundEnd, $viewEnd);
         $captions = Forecast::captions($this->store->pdo(), $plant);
+        $scale = Forecast::energyScale($yMax);
         $marks = [];
         $cursor = (new DateTimeImmutable('@' . $boundStart))->setTimezone($tz)->setTime(0, 0);
         $endMark = (new DateTimeImmutable('@' . $boundEnd))->setTimezone($tz);
@@ -142,7 +143,9 @@ final class Series
             'bounds' => [$boundStart * 1000, $boundEnd * 1000],
             'marks' => $marks,
             'yLock' => true,
-            'yMax' => $yMax > 0 ? round($yMax * 1.02, 3) : 1,
+            'yStep' => $scale['step'],
+            'yDataMax' => $scale['dataMax'],
+            'yMax' => $scale['max'],
             'yTitle' => 'Energie (kWh)',
             'series' => [
                 ['key' => 'actual', 'label' => 'PV gemessen', 'color' => 'pv', 'axis' => 'y', 'data' => $actual],
@@ -363,7 +366,16 @@ final class Series
                 'regress' => $regress[$i] ?? null,
             ];
         }
-        return ['daily' => $daily, 'compare' => $compare, 'table' => $table, 'goodness' => $scores];
+        $board = Forecast::modelBoard(
+            $todayKey,
+            $rows,
+            Forecast::captions($this->store->pdo(), $plant),
+            Forecast::issueStats($this->store->pdo()),
+            $actualToday,
+            $plant,
+            $lockedToday
+        );
+        return ['daily' => $daily, 'compare' => $compare, 'table' => $table, 'board' => $board, 'goodness' => $scores];
     }
 
     public function weather(array $mapping): array

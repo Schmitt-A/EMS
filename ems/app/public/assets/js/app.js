@@ -190,12 +190,19 @@
     return [min, max];
   }
 
+  function formatEnergyTick(value) {
+    return new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+  }
+
   function fitAxes(chart) {
     const box = chart.canvas && chart.canvas.closest('[data-chart]');
     const payload = box && box._payload;
     if (payload && payload.yLock) {
       const locked = Number(payload.yMax);
-      chart.options.scales.y.max = locked > 0 ? locked : 1;
+      const scale = chart.options.scales.y;
+      scale.min = 0;
+      scale.max = locked > 0 ? locked : 1;
+      if (payload.yStep) scale.ticks.stepSize = Number(payload.yStep);
       return;
     }
     const scale = chart.options.scales.x;
@@ -395,12 +402,15 @@
       },
       afterDraw(chart) {
         const scale = chart.scales.x;
+        const yScale = chart.scales.y;
         const area = chart.chartArea;
-        if (!scale || !area) return;
+        if (!scale || !yScale || !area) return;
         const ctx = chart.ctx;
         ctx.save();
+        ctx.beginPath();
+        ctx.rect(area.left, area.top, area.right - area.left, area.bottom - area.top);
+        ctx.clip();
         ctx.fillStyle = color('export');
-        ctx.font = '600 11px Inter, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
         (payload.marks || []).forEach((mark) => {
@@ -409,11 +419,63 @@
           const vis0 = Math.max(mark.start, scale.min);
           const vis1 = Math.min(dayEnd, scale.max);
           if (vis1 - vis0 < 3600000) return;
-          const x = scale.getPixelForValue((vis0 + vis1) / 2);
-          if (x < area.left - 8 || x > area.right + 8) return;
-          ctx.fillText(mark.text, x, area.top - 6);
+          const noon = mark.x;
+          const xValue = noon >= scale.min && noon <= scale.max ? noon : (vis0 + vis1) / 2;
+          const x = scale.getPixelForValue(xValue);
+          if (x < area.left + 4 || x > area.right - 4) return;
+          const dayPx = Math.abs(scale.getPixelForValue(dayEnd) - scale.getPixelForValue(mark.start));
+          const size = dayPx < 72 ? 10 : 11;
+          ctx.font = '600 ' + size + 'px Inter, sans-serif';
+          let lines = [mark.text];
+          if (ctx.measureText(mark.text).width > dayPx * 0.92) {
+            const parts = String(mark.text).split(' ± ');
+            if (parts.length === 2) lines = [parts[0] + ' kWh', '± ' + parts[1].replace(' kWh', '')];
+          }
+          const lineH = size + 2;
+          const block = lines.length * lineH;
+          let peak = null;
+          (chart.data.datasets || []).forEach((set) => {
+            if (set.hidden || (set.yAxisID || 'y') !== 'y') return;
+            (set.data || []).forEach((point) => {
+              if (!point || point.y === null || point.y === undefined || point.x === null || point.x === undefined) return;
+              if (point.x < mark.start || point.x >= dayEnd) return;
+              const y = Number(point.y);
+              if (!Number.isFinite(y)) return;
+              peak = peak === null ? y : Math.max(peak, y);
+            });
+          });
+          const cap = Number(payload.yDataMax);
+          const top = Number(payload.yMax);
+          let bottom;
+          if (peak === null && Number.isFinite(cap) && Number.isFinite(top)) {
+            bottom = yScale.getPixelForValue((cap + top) / 2) + block / 2;
+          } else {
+            bottom = yScale.getPixelForValue(peak === null ? 0 : peak) - 8;
+          }
+          if (bottom - block < area.top + 1) bottom = area.top + 1 + block;
+          if (bottom > area.bottom - 2) bottom = area.bottom - 2;
+          lines.forEach((line, index) => {
+            ctx.fillText(line, x, bottom - (lines.length - 1 - index) * lineH);
+          });
         });
         ctx.restore();
+      },
+    };
+    const energyAxis = {
+      id: 'energyAxis',
+      afterBuildTicks(chart, args) {
+        const scale = args && args.scale;
+        if (!scale || scale.axis !== 'y' || !payload.yLock) return;
+        const step = Number(payload.yStep) || 0.5;
+        const cap = Number(payload.yDataMax);
+        if (!Number.isFinite(cap) || step <= 0) return;
+        const ticks = [];
+        for (let i = 0; i < 48; i += 1) {
+          const value = Math.round(i * step * 1000) / 1000;
+          if (value > cap + 0.001) break;
+          ticks.push({ value });
+        }
+        if (ticks.length) scale.ticks = ticks;
       },
     };
     const stacked = !!payload.stacked;
@@ -445,22 +507,39 @@
           },
         };
     box._payload = payload;
+    const chartPlugins = [todayBand];
+    if (payload.marks) chartPlugins.push(dayMarks);
+    if (payload.yLock) chartPlugins.push(energyAxis);
+    const chartOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      layout: { padding: { top: payload.marks && !payload.yLock ? 8 : 0 } },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 10 } },
+        tooltip: { enabled: !payload.yLock },
+      },
+      scales: {
+        x: xScale,
+        y: {
+          beginAtZero: true,
+          min: payload.yLock ? 0 : undefined,
+          max: payload.yLock ? Number(payload.yMax) : undefined,
+          stacked,
+          title: axisTitle(payload.yTitle),
+          ticks: payload.yStep
+            ? { maxTicksLimit: 24, stepSize: Number(payload.yStep), callback: (value) => formatEnergyTick(value) }
+            : { maxTicksLimit: 5 },
+        },
+        y1: { position: 'right', beginAtZero: true, title: axisTitle(payload.y1Title), grid: { drawOnChartArea: false }, display: datasets.some((set) => set.yAxisID === 'y1') },
+      },
+    };
+    if (payload.yLock) chartOptions.events = [];
     box._chart = new Chart(canvas, {
       type: category ? 'bar' : 'line',
-      plugins: payload.marks ? [todayBand, dayMarks] : [todayBand],
+      plugins: chartPlugins,
       data: category ? { labels: payload.labels || [], datasets } : { datasets },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        layout: { padding: { top: payload.yLock ? 36 : (payload.marks ? 8 : 0) } },
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
-        scales: {
-          x: xScale,
-          y: { beginAtZero: true, stacked, title: axisTitle(payload.yTitle), ticks: { maxTicksLimit: 5 } },
-          y1: { position: 'right', beginAtZero: true, title: axisTitle(payload.y1Title), grid: { drawOnChartArea: false }, display: datasets.some((set) => set.yAxisID === 'y1') },
-        },
-      },
+      options: chartOptions,
     });
     if (payload.pan === 'index') {
       const view = payload.view || [0, 0];
