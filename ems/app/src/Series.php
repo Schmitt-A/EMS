@@ -66,22 +66,182 @@ final class Series
         return $sum > 0 ? $sum : null;
     }
 
-    public function battery(int $hours, array $mapping, array $strategy): array
+    public function battery(array $mapping): array
     {
-        $end = time();
-        $start = $end - $hours * 3600;
-        $period = $hours <= 48 ? '5minute' : 'hour';
-        $soc = $this->points((string) ($mapping['battery_soc'] ?? ''), $start, $end, $period, 1);
+        $mapping = $this->adoptBatteryTotal($mapping);
+        $tz = new DateTimeZone('Europe/Berlin');
+        $now = time();
+        $fineStart = $now - 2 * 86400;
+        $historyStart = $now - 62 * 86400;
+        $socId = (string) ($mapping['battery_soc'] ?? '');
         $capId = (string) ($mapping['battery_capacity'] ?? '');
-        $cap = $this->points($capId, $start, $end, $period, $this->energyScale($capId));
+        [$soc, $socExt] = $this->spanSeries($socId, $historyStart, $fineStart, $now, 1);
+        [$cap, $capExt] = $this->spanSeries($capId, $historyStart, $fineStart, $now, $this->energyScale($capId));
+        $total = $this->stateEnergyKwh((string) ($mapping['battery_total'] ?? ''));
+        $dataMax = 0.0;
+        foreach ($cap as $point) {
+            $dataMax = max($dataMax, (float) $point['y']);
+        }
+        $capAxis = self::capacityAxis($total, $dataMax);
+        $socAxis = [
+            'yTitle' => 'Ladestand (%)',
+            'yMax' => 100,
+            'yStep' => 20,
+            'yDataMax' => 100,
+            'yDecimals' => 0,
+        ];
+        $nowMs = $now * 1000;
+        $view = [$nowMs - 86400000, $nowMs];
+        $first = $soc[0]['x'] ?? ($cap[0]['x'] ?? $view[0]);
+        $boundStart = min((int) $first, $view[0]);
+        $today = (new DateTimeImmutable('now', $tz))->setTime(0, 0);
+        $marks = [];
+        $cursor = (new DateTimeImmutable('@' . (int) floor($boundStart / 1000)))->setTimezone($tz)->setTime(0, 0);
+        $endMark = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->modify('+1 day')->setTime(0, 0);
+        while ($cursor < $endMark) {
+            $marks[] = [
+                'start' => $cursor->getTimestamp() * 1000,
+                'x' => $cursor->modify('+12 hours')->getTimestamp() * 1000,
+                'label' => self::dayLabel($cursor->format('Y-m-d')),
+                'text' => null,
+            ];
+            $cursor = $cursor->modify('+1 day');
+        }
         return $this->withNote([
+            'now' => $nowMs,
+            'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
+            'view' => $view,
+            'bounds' => [$boundStart, $nowMs],
+            'marks' => $marks,
+            'extrema' => [
+                'soc' => self::dayExtrema($socExt),
+                'cap' => self::dayExtrema($capExt),
+            ],
+            'unit' => 'soc',
+            'keepEmpty' => true,
+            'legend' => false,
+            'tickSkip' => true,
+            'yLock' => true,
+            'yTitle' => $socAxis['yTitle'],
+            'yStep' => $socAxis['yStep'],
+            'yDataMax' => $socAxis['yDataMax'],
+            'yMax' => $socAxis['yMax'],
+            'yDecimals' => 0,
+            'axes' => ['soc' => $socAxis, 'cap' => $capAxis],
             'series' => [
-                ['key' => 'soc', 'label' => 'Ladestand', 'color' => 'pv', 'axis' => 'y', 'data' => $soc],
-                ['key' => 'cap', 'label' => 'Kapazität', 'color' => 'house', 'axis' => 'y1', 'data' => $cap],
-                ['key' => 'priority', 'label' => 'Speicher-Vorrang', 'color' => 'export', 'axis' => 'y', 'dash' => true, 'data' => $this->flat($soc, (float) $strategy['priority_soc'])],
-                ['key' => 'reserve', 'label' => 'Mindestreserve', 'color' => 'import', 'axis' => 'y', 'dash' => true, 'data' => $this->flat($soc, (float) $strategy['reserve_soc'])],
+                ['key' => 'soc', 'label' => 'Ladestand', 'color' => 'battery', 'axis' => 'y', 'data' => $soc],
+                ['key' => 'cap', 'label' => 'Kapazität', 'color' => 'battery', 'axis' => 'y', 'hidden' => true, 'data' => $cap],
             ],
         ]);
+    }
+
+    /** @param array<string, mixed> $mapping */
+    public function adoptBatteryTotal(array $mapping, ?array $index = null): array
+    {
+        $stored = $this->store->get('mapping', []);
+        if (is_array($stored) && array_key_exists('battery_total', $stored)) {
+            return $mapping;
+        }
+        $candidate = (string) (Actions::SUGGEST['battery_total'] ?? '');
+        if ($candidate === '' || !$this->ha->configured()) {
+            return $mapping;
+        }
+        if ($index === null) {
+            try {
+                $index = $this->ha->index();
+            } catch (Throwable) {
+                return $mapping;
+            }
+        }
+        if (!isset($index[$candidate]) || !is_array($index[$candidate])) {
+            return $mapping;
+        }
+        $mapping['battery_total'] = $candidate;
+        $this->store->merge('mapping', ['battery_total' => $candidate]);
+        return $mapping;
+    }
+
+    /** @param array<string, mixed> $mapping */
+    public function houseMean(array $mapping): ?float
+    {
+        $tz = new DateTimeZone('Europe/Berlin');
+        $day = (new DateTimeImmutable('now', $tz))->format('Y-m-d');
+        $houseId = trim((string) ($mapping['house_power'] ?? ''));
+        $wallId = trim((string) ($mapping['wallbox_power'] ?? ''));
+        $includes = (bool) ($mapping['house_includes_wallbox'] ?? true);
+        $key = $day . '|' . $houseId . '|' . $wallId . '|' . ($includes ? '1' : '0');
+        $cache = $this->store->get('house_mean', []);
+        if (is_array($cache) && ($cache['key'] ?? '') === $key && (int) ($cache['until'] ?? 0) > time() && array_key_exists('mean', $cache)) {
+            return $cache['mean'] === null ? null : (float) $cache['mean'];
+        }
+        $mean = $this->computeHouseMean($houseId, $wallId, $includes);
+        $this->store->put('house_mean', [
+            'key' => $key,
+            'mean' => $mean,
+            'until' => time() + ($mean === null ? 900 : 6 * 3600),
+        ]);
+        return $mean;
+    }
+
+    /** @return array{yTitle:string, yMax:float, yStep:float, yDataMax:float, yDecimals:int} */
+    public static function capacityAxis(?float $total, float $dataMax): array
+    {
+        $named = ($total !== null && $total > 0.05) ? $total : 0.0;
+        $top = max($named, $dataMax, 0.5);
+        $step = 10.0;
+        if ($top <= 8) {
+            $step = 0.5;
+        } elseif ($top <= 25) {
+            $step = 2.0;
+        } elseif ($top <= 50) {
+            $step = 5.0;
+        }
+        $top = round($top, 3);
+        return [
+            'yTitle' => 'Kapazität (kWh)',
+            'yMax' => $top,
+            'yStep' => $step,
+            'yDataMax' => $top,
+            'yDecimals' => $step < 1 ? 1 : 0,
+        ];
+    }
+
+    /**
+     * @param array<int, array{x?:int, y?:float, min?:float, max?:float}> $rows
+     * @return array<int, array{start:int, min:array{x:int, y:float}, max:array{x:int, y:float}}>
+     */
+    public static function dayExtrema(array $rows): array
+    {
+        $tz = new DateTimeZone('Europe/Berlin');
+        $days = [];
+        foreach ($rows as $row) {
+            if (!isset($row['x'])) {
+                continue;
+            }
+            $x = (int) $row['x'];
+            $lo = isset($row['min']) ? (float) $row['min'] : (isset($row['y']) ? (float) $row['y'] : null);
+            $hi = isset($row['max']) ? (float) $row['max'] : (isset($row['y']) ? (float) $row['y'] : null);
+            if ($lo === null || $hi === null) {
+                continue;
+            }
+            $day = (new DateTimeImmutable('@' . (int) floor($x / 1000)))->setTimezone($tz)->format('Y-m-d');
+            if (!isset($days[$day])) {
+                $days[$day] = ['min' => ['x' => $x, 'y' => $lo], 'max' => ['x' => $x, 'y' => $hi]];
+                continue;
+            }
+            if ($lo < (float) $days[$day]['min']['y']) {
+                $days[$day]['min'] = ['x' => $x, 'y' => $lo];
+            }
+            if ($hi > (float) $days[$day]['max']['y']) {
+                $days[$day]['max'] = ['x' => $x, 'y' => $hi];
+            }
+        }
+        $out = [];
+        foreach ($days as $day => $pair) {
+            $start = (new DateTimeImmutable($day . ' 00:00:00', $tz))->getTimestamp() * 1000;
+            $out[] = ['start' => $start, 'min' => $pair['min'], 'max' => $pair['max']];
+        }
+        return $out;
     }
 
     public function power(array $mapping, array $plant): array
@@ -819,6 +979,94 @@ final class Series
             $out[] = ['start' => $t, 'mean' => array_sum($values) / count($values), 'change' => null];
         }
         return $out;
+    }
+
+    /** @return array{0:array<int, array{x:int, y:float}>, 1:array<int, array{x:int, min:float, max:float}>} */
+    private function spanSeries(string $entity, int $historyStart, int $fineStart, int $end, float $scale): array
+    {
+        [$coarse, $coarseExt] = $this->tracked($entity, $historyStart, $end, 'hour', $scale);
+        [$fine, $fineExt] = $this->tracked($entity, $fineStart, $end, '5minute', $scale);
+        if (!$fine) {
+            return [$coarse, $coarseExt];
+        }
+        $cut = $fineStart * 1000;
+        $coarse = array_values(array_filter($coarse, static fn (array $point): bool => $point['x'] < $cut));
+        $coarseExt = array_values(array_filter($coarseExt, static fn (array $point): bool => $point['x'] < $cut));
+        return [array_merge($coarse, $fine), array_merge($coarseExt, $fineExt)];
+    }
+
+    /** @return array{0:array<int, array{x:int, y:float}>, 1:array<int, array{x:int, min:float, max:float}>} */
+    private function tracked(string $entity, int $start, int $end, string $period, float $scale): array
+    {
+        $points = [];
+        $extrema = [];
+        foreach ($this->statisticRows($entity, $start, $end, $period) as $row) {
+            $x = (int) $row['start'] * 1000;
+            if ($x >= $end * 1000) {
+                continue;
+            }
+            $mean = $row['mean'] ?? null;
+            if ($mean !== null) {
+                $points[] = ['x' => $x, 'y' => round((float) $mean * $scale, 3)];
+            }
+            $lo = $row['min'] ?? $mean;
+            $hi = $row['max'] ?? $mean;
+            if ($lo === null || $hi === null) {
+                continue;
+            }
+            $extrema[] = [
+                'x' => $x,
+                'min' => round((float) $lo * $scale, 3),
+                'max' => round((float) $hi * $scale, 3),
+            ];
+        }
+        return [$points, $extrema];
+    }
+
+    private function stateEnergyKwh(string $entity): ?float
+    {
+        if ($entity === '' || !$this->ha->configured()) {
+            return null;
+        }
+        try {
+            $row = $this->ha->index()[$entity] ?? null;
+        } catch (Throwable) {
+            return null;
+        }
+        if (!is_array($row) || !is_numeric($row['state'] ?? null)) {
+            return null;
+        }
+        $attrs = is_array($row['attributes'] ?? null) ? $row['attributes'] : [];
+        $unit = $attrs['unit_of_measurement'] ?? null;
+        return Energy::energyToKwh((float) $row['state'], is_string($unit) ? $unit : null)[0];
+    }
+
+    private function computeHouseMean(string $houseId, string $wallId, bool $includes): ?float
+    {
+        if ($houseId === '') {
+            return null;
+        }
+        $end = time();
+        $start = $end - 30 * 86400;
+        $houseUnit = $this->unitOf($houseId);
+        $house = [];
+        foreach ($this->statisticRows($houseId, $start, $end, 'hour') as $row) {
+            if ($row['mean'] === null) {
+                continue;
+            }
+            $house[] = ['start' => (int) $row['start'], 'kw' => $this->meanKw($row['mean'], $houseUnit)];
+        }
+        $wall = [];
+        if ($includes && $wallId !== '') {
+            $wallUnit = $this->unitOf($wallId);
+            foreach ($this->statisticRows($wallId, $start, $end, 'hour') as $row) {
+                if ($row['mean'] === null) {
+                    continue;
+                }
+                $wall[] = ['start' => (int) $row['start'], 'kw' => $this->meanKw($row['mean'], $wallUnit)];
+            }
+        }
+        return Energy::meanHouseBase($house, $wall, $includes);
     }
 
     private function points(string $entity, int $start, int $end, string $period, float $scale): array

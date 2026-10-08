@@ -315,10 +315,11 @@
     box.querySelectorAll('p').forEach((node) => node.remove());
     if (box._chart) box._chart.destroy();
     const category = payload.axis === 'category';
-    const datasets = (payload.series || []).filter((series) => series.data && series.data.length).map((series) => ({
+    const datasets = (payload.series || []).filter((series) => payload.keepEmpty ? Array.isArray(series.data) : (series.data && series.data.length)).map((series) => ({
       label: series.label,
       data: series.data,
       emsKey: series.key,
+      hidden: !!series.hidden,
       type: series.type || 'line',
       yAxisID: series.axis || 'y',
       borderColor: color(series.color),
@@ -342,7 +343,8 @@
         set.borderRadius = 4;
       }
     });
-    if (!datasets.length) {
+    const hasPoint = datasets.some((set) => set.data && set.data.length);
+    if (!datasets.length || !hasPoint) {
       const note = document.createElement('p');
       note.className = 'px-2 py-6 text-sm text-muted-foreground';
       note.textContent = payload.error || 'Noch keine Verlaufsdaten.';
@@ -379,7 +381,12 @@
         const scale = args && args.scale ? args.scale : chart.scales.x;
         const marks = payload.marks || [];
         if (!scale || scale.axis !== 'x' || !marks.length) return;
-        const ticks = marks.filter((mark) => mark.x >= scale.min && mark.x <= scale.max).map((mark) => ({ value: mark.x }));
+        let chosen = marks.filter((mark) => mark.x >= scale.min && mark.x <= scale.max);
+        if (payload.tickSkip && chosen.length > 8) {
+          const step = Math.ceil(chosen.length / 8);
+          chosen = chosen.filter((_, index) => index % step === 0);
+        }
+        const ticks = chosen.map((mark) => ({ value: mark.x }));
         if (ticks.length) scale.ticks = ticks;
       },
       beforeDatasetsDraw(chart) {
@@ -461,6 +468,61 @@
         ctx.restore();
       },
     };
+    function extremaLabel(value, unit) {
+      if (unit === 'soc') {
+        return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(value) + ' %';
+      }
+      return new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value) + ' kWh';
+    }
+    const extremaMarks = {
+      id: 'extremaMarks',
+      afterDraw(chart) {
+        const pack = payload.extrema;
+        if (!pack) return;
+        const unit = payload.unit || 'soc';
+        const rows = pack[unit] || [];
+        const xScale = chart.scales.x;
+        const yScale = chart.scales.y;
+        const area = chart.chartArea;
+        if (!xScale || !yScale || !area || !rows.length) return;
+        const ctx = chart.ctx;
+        const gap = unit === 'soc' ? 0.5 : 0.05;
+        ctx.save();
+        ctx.font = '600 11px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        rows.forEach((row) => {
+          if (!row.min || !row.max) return;
+          const same = Math.abs(row.min.y - row.max.y) < gap;
+          const items = same ? [{ point: row.max, kind: 'max' }] : [{ point: row.max, kind: 'max' }, { point: row.min, kind: 'min' }];
+          items.forEach((item) => {
+            const point = item.point;
+            if (point.x < xScale.min || point.x > xScale.max) return;
+            const x = xScale.getPixelForValue(point.x);
+            const y = yScale.getPixelForValue(point.y);
+            if (x < area.left + 2 || x > area.right - 2) return;
+            ctx.beginPath();
+            ctx.fillStyle = color('battery');
+            ctx.arc(x, Math.max(area.top, Math.min(area.bottom, y)), 3.5, 0, Math.PI * 2);
+            ctx.fill();
+            const text = (same ? '' : (item.kind === 'min' ? 'min ' : 'max ')) + extremaLabel(point.y, unit);
+            ctx.fillStyle = color('fg');
+            const below = item.kind === 'min' && !same;
+            ctx.textBaseline = below ? 'top' : 'bottom';
+            let ty = below ? y + 7 : y - 7;
+            if (ty < area.top + 12) {
+              ctx.textBaseline = 'top';
+              ty = Math.min(area.bottom - 2, y + 7);
+            }
+            if (ty > area.bottom - 2) {
+              ctx.textBaseline = 'bottom';
+              ty = Math.max(area.top + 12, y - 7);
+            }
+            ctx.fillText(text, x, ty);
+          });
+        });
+        ctx.restore();
+      },
+    };
     const energyAxis = {
       id: 'energyAxis',
       afterBuildTicks(chart, args) {
@@ -502,13 +564,16 @@
             callback: (value) => {
               if (!payload.marks) return formatX(value, payload.axis);
               const mark = payload.marks.find((item) => Math.abs(item.x - value) < 60000);
-              return mark ? mark.label.split(' ') : '';
+              if (!mark) return '';
+              if (payload.tickSkip) return mark.label.split(' ').slice(1).join(' ') || mark.label;
+              return mark.label.split(' ');
             },
           },
         };
     box._payload = payload;
     const chartPlugins = [todayBand];
     if (payload.marks) chartPlugins.push(dayMarks);
+    if (payload.extrema) chartPlugins.push(extremaMarks);
     if (payload.yLock) chartPlugins.push(energyAxis);
     const chartOptions = {
       responsive: true,
@@ -516,7 +581,7 @@
       interaction: { mode: 'index', intersect: false },
       layout: { padding: { top: payload.marks && !payload.yLock ? 8 : 0 } },
       plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 10 } },
+        legend: { display: payload.legend !== false, position: 'bottom', labels: { boxWidth: 10 } },
         tooltip: { enabled: !payload.yLock },
       },
       scales: {
@@ -528,7 +593,14 @@
           stacked,
           title: axisTitle(payload.yTitle),
           ticks: payload.yStep
-            ? { maxTicksLimit: 24, stepSize: Number(payload.yStep), callback: (value) => formatEnergyTick(value) }
+            ? {
+                maxTicksLimit: 24,
+                stepSize: Number(payload.yStep),
+                callback: (value) => {
+                  const digits = Number(payload.yDecimals ?? 1);
+                  return new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+                },
+              }
             : { maxTicksLimit: 5 },
         },
         y1: { position: 'right', beginAtZero: true, title: axisTitle(payload.y1Title), grid: { drawOnChartArea: false }, display: datasets.some((set) => set.yAxisID === 'y1') },
@@ -690,6 +762,49 @@
       button.addEventListener('click', () => dialog.close());
     });
   });
+  document.querySelectorAll('[data-battery-tools]').forEach((bar) => {
+    bar.addEventListener('click', (event) => {
+      const button = event.target.closest('button');
+      const box = bar.parentElement ? bar.parentElement.querySelector('[data-pan]') : null;
+      if (!button || !box || !box._chart || !box._payload) return;
+      const chart = box._chart;
+      const payload = box._payload;
+      if (button.dataset.window) {
+        const now = Number(payload.now);
+        const day = 86400000;
+        const spans = { 24: 1, 3: 3, 7: 7, 30: 30 };
+        const width = (spans[button.dataset.window] || 1) * day;
+        applyWindow(chart, payload, now - width, now);
+        bar.querySelectorAll('[data-window]').forEach((item) => {
+          item.setAttribute('aria-pressed', item.dataset.window === button.dataset.window ? 'true' : 'false');
+        });
+        return;
+      }
+      if (button.dataset.unit) {
+        const unit = button.dataset.unit;
+        const axis = payload.axes ? payload.axes[unit] : null;
+        if (!axis) return;
+        payload.unit = unit;
+        payload.yMax = axis.yMax;
+        payload.yStep = axis.yStep;
+        payload.yDataMax = axis.yDataMax;
+        payload.yDecimals = axis.yDecimals;
+        payload.yTitle = axis.yTitle;
+        chart.data.datasets.forEach((set) => { set.hidden = set.emsKey !== unit; });
+        const scale = chart.options.scales.y;
+        scale.title.text = axis.yTitle;
+        scale.title.display = true;
+        scale.min = 0;
+        scale.max = Number(axis.yMax);
+        if (scale.ticks) scale.ticks.stepSize = Number(axis.yStep);
+        bar.querySelectorAll('[data-unit]').forEach((item) => {
+          item.setAttribute('aria-pressed', item.dataset.unit === unit ? 'true' : 'false');
+        });
+        fitAxes(chart);
+        chart.update();
+      }
+    });
+  });
   document.querySelectorAll('[data-ranges]').forEach((bar) => {
     bar.addEventListener('click', (event) => {
       const button = event.target.closest('[data-range]');
@@ -745,8 +860,11 @@
       document.querySelectorAll('[data-soc-fill]').forEach((node) => {
         const raw = String(data.soc || '').replace('%', '').replace(',', '.').trim();
         const n = Number(raw);
-        if (!Number.isFinite(n) || !node.parentElement) return;
-        node.parentElement.style.setProperty('--soc', Math.max(0, Math.min(100, n)) + '%');
+        if (!Number.isFinite(n)) return;
+        const host = node.closest('[data-battery]') || node.parentElement;
+        if (!host) return;
+        host.style.setProperty('--soc', Math.max(0, Math.min(100, n)) + '%');
+        if (data.battery_flow) host.dataset.flow = data.battery_flow;
       });
       document.querySelectorAll('[data-live-hide]').forEach((node) => {
         const value = data[node.dataset.liveHide];

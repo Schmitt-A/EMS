@@ -268,8 +268,34 @@ if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
         ['t' => strtotime('2026-10-08 13:00:00 Europe/Berlin'), 'kw' => 3],
         ['t' => strtotime('2026-10-08 14:00:00 Europe/Berlin'), 'kw' => 3],
     ], strtotime('2026-10-08 12:00:00 Europe/Berlin'), 50, 5, 0, 80);
-    check($outlook['reachable'] && $outlook['full_at'] !== null && $outlook['surplus_kwh'] > 0, 'Speicherfüllung aus dem Sonnenüberschuss');
+    check($outlook['reachable'] && $outlook['full_at'] !== null && $outlook['surplus_kwh'] > 0 && abs((float) $outlook['full_kwh'] - 10) < 0.01, 'Speicherfüllung aus dem Sonnenüberschuss');
+    $withTotal = Forecast::storageOutlook([
+        ['t' => strtotime('2026-10-08 12:00:00 Europe/Berlin'), 'kw' => 4],
+    ], strtotime('2026-10-08 12:00:00 Europe/Berlin'), 50, 5, 1, 80, 20, 90);
+    check(abs((float) $withTotal['full_kwh'] - 20) < 0.01 && $withTotal['full_at'] === null && $withTotal['reachable'], 'Gesamtkapazität sticht die Restkapazität');
+    $bufferHit = Forecast::storageOutlook([
+        ['t' => strtotime('2026-10-08 12:00:00 Europe/Berlin'), 'kw' => 4],
+    ], strtotime('2026-10-08 12:00:00 Europe/Berlin'), 50, 10, 0, 80, 20, 60);
+    check($bufferHit['buffer_open'] && $bufferHit['buffer_at'] !== null && $bufferHit['priority_at'] === null, 'Auto-Puffer liegt vor dem Speicher-Vorrang');
 }
+$meanHouse = Energy::meanHouseBase(
+    [['start' => 1, 'kw' => 2.0], ['start' => 2, 'kw' => 1.0]],
+    [['start' => 1, 'kw' => 0.5], ['start' => 2, 'kw' => 0.0]],
+    true
+);
+check($meanHouse !== null && abs($meanHouse - 1.25) < 0.0001, 'Hausmittel ohne Wallbox');
+$axis = Series::capacityAxis(20.46, 16.5);
+check(abs($axis['yMax'] - 20.46) < 0.001 && abs($axis['yStep'] - 2) < 0.001 && $axis['yTitle'] === 'Kapazität (kWh)', 'Kapazitätsachse bleibt bei der Gesamtkapazität');
+$berlin = new DateTimeZone('Europe/Berlin');
+$morning = (new DateTimeImmutable('2026-10-08 08:00:00', $berlin))->getTimestamp() * 1000;
+$evening = (new DateTimeImmutable('2026-10-08 18:00:00', $berlin))->getTimestamp() * 1000;
+$nextNoon = (new DateTimeImmutable('2026-10-09 12:00:00', $berlin))->getTimestamp() * 1000;
+$extrema = Series::dayExtrema([
+    ['x' => $morning, 'y' => 40],
+    ['x' => $evening, 'min' => 30, 'max' => 70],
+    ['x' => $nextNoon, 'y' => 55],
+]);
+check(count($extrema) === 2 && abs($extrema[0]['min']['y'] - 30) < 0.01 && abs($extrema[0]['max']['y'] - 70) < 0.01 && abs($extrema[1]['min']['y'] - 55) < 0.01, 'Tagesminimum und Tagesmaximum');
 $batteryIcon = icon('battery');
 check(str_contains($batteryIcon, 'width="16"') && str_contains($batteryIcon, 'width="9"'), 'Batterie-Icon behält die Flächen');
 

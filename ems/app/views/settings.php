@@ -5,6 +5,7 @@ $p = $cfg['plant'];
 $t = $cfg['tariffs'];
 $b = $cfg['battery_strategy'];
 $m = $cfg['mapping'];
+$suggest = $suggest ?? [];
 page_head('Einstellungen', 'Tarife, Dach und Strategie liegen hier. Die Messwerte kommen aus Home Assistant.');
 ?>
 <div class="grid gap-4">
@@ -29,7 +30,8 @@ page_head('Einstellungen', 'Tarife, Dach und Strategie liegen hier. Die Messwert
         <legend class="px-1 text-sm font-medium">Speicher</legend>
         <div class="mt-3 grid gap-4 sm:grid-cols-2">
           <?php entity_field('battery_soc', 'Ladestand', (string) $m['battery_soc'], 'Prozent.'); ?>
-          <?php entity_field('battery_capacity', 'Restkapazität, optional', (string) $m['battery_capacity'], 'Wh oder kWh.'); ?>
+          <?php entity_field('battery_capacity', 'Restkapazität, optional', (string) $m['battery_capacity'], 'Wh oder kWh, der aktuell nutzbare Inhalt.'); ?>
+          <?php entity_field('battery_total', 'Gesamtkapazität', (string) ($m['battery_total'] ?? ''), 'Installierte nutzbare Kapazität, Wh oder kWh.', $suggest['battery_total'] ?? ''); ?>
           <?php entity_field('battery_charge', 'Speicher laden', (string) $m['battery_charge'], 'Leistung beim Laden.'); ?>
           <?php entity_field('battery_discharge', 'Speicher entladen', (string) $m['battery_discharge'], 'Leistung beim Entladen.'); ?>
           <?php entity_field('battery_signed', 'Speicher mit Vorzeichen', (string) $m['battery_signed'], 'Nur bei einem gemeinsamen Sensor.'); ?>
@@ -124,7 +126,19 @@ page_head('Einstellungen', 'Tarife, Dach und Strategie liegen hier. Die Messwert
       <label class="text-sm">Vorrang (%)<input class="field mt-1" name="priority_soc" value="<?= e((string) $b['priority_soc']) ?>"></label>
       <label class="text-sm">Mindestreserve (%)<input class="field mt-1" name="reserve_soc" value="<?= e((string) $b['reserve_soc']) ?>"></label>
     </div>
+    <p class="text-xs text-muted-foreground">Der Vorrang bestimmt, bis wohin Sonnenstrom zuerst in den Hausspeicher geht. Die Mindestreserve markiert, was fürs Haus bleiben soll.</p>
     <button class="btn-primary" type="submit">Speicher speichern</button>
+  </form>
+  <form method="post" class="card space-y-4 p-5">
+    <?= csrf_field() ?><input type="hidden" name="section" value="car"><input type="hidden" name="back" value="/einstellungen">
+    <h2 class="font-medium">Auto</h2>
+    <p class="text-sm text-muted-foreground">Der Hausspeicher nimmt den Sonnenüberschuss zuerst, bis zum Speicher-Vorrang. Darüber lädt die Wallbox. Ab dem Puffer darf gespeicherte Energie das Auto stützen. Bei 100 % bleibt der Speicher fürs Haus. Die Sollleistung der Wallbox bleibt bei diesem Regler unverändert. Ladestand und Kapazität des Autos kommen dazu, sobald die Entitäten da sind.</p>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <?php entity_field('car_soc', 'Ladestand des Autos', (string) ($m['car_soc'] ?? ''), 'Prozent, sobald das Fahrzeug ihn meldet.'); ?>
+      <?php entity_field('car_capacity', 'Kapazität des Autos', (string) ($m['car_capacity'] ?? ''), 'Wh oder kWh.'); ?>
+      <label class="text-sm sm:col-span-2">Auto aus dem Speicher (%)<input class="field mt-1" name="car_buffer_soc" value="<?= e((string) ($b['car_buffer_soc'] ?? 100)) ?>"></label>
+    </div>
+    <button class="btn-primary" type="submit">Auto speichern</button>
   </form>
   <form method="post" class="card space-y-4 p-5">
     <?= csrf_field() ?><input type="hidden" name="section" value="weather"><input type="hidden" name="back" value="/einstellungen">

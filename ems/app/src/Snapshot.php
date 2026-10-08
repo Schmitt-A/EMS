@@ -32,7 +32,9 @@ final class Snapshot
             return $this->finish($base, $cfg, $now, $persistLatch);
         }
         $base['connected'] = true;
-        $map = $cfg['mapping'];
+        $map = (new Series($this->store, $this->ha))->adoptBatteryTotal($cfg['mapping'], $index);
+        $cfg['mapping'] = $map;
+        $base['cfg'] = $cfg;
         $read = function (string $key) use ($index, $map, &$base): ?array {
             $id = (string) ($map[$key] ?? '');
             if ($id === '') {
@@ -88,6 +90,17 @@ final class Snapshot
         if ($cap[1]) {
             $base['warnings'][] = $cap[1];
         }
+        $totalRow = $read('battery_total');
+        $total = Energy::energyToKwh(is_array($totalRow) ? $totalRow['num'] : null, is_array($totalRow) ? ($totalRow['unit'] ?? null) : null);
+        if ($total[1]) {
+            $base['warnings'][] = $total[1];
+        }
+        $carSocRow = $read('car_soc');
+        $carCapRow = $read('car_capacity');
+        $carCap = Energy::energyToKwh(is_array($carCapRow) ? $carCapRow['num'] : null, is_array($carCapRow) ? ($carCapRow['unit'] ?? null) : null);
+        if ($carCap[1]) {
+            $base['warnings'][] = $carCap[1];
+        }
         $car = $read('wallbox_car');
         $amps = $read('wallbox_amps');
         $phases = $read('wallbox_phases');
@@ -98,6 +111,9 @@ final class Snapshot
             'battery_charge_kw' => $charge,
             'battery_discharge_kw' => $discharge,
             'battery_capacity_kwh' => $cap[0],
+            'battery_total_kwh' => $total[0],
+            'car_soc' => is_array($carSocRow) ? ($carSocRow['num'] ?? null) : null,
+            'car_capacity_kwh' => $carCap[0],
             'grid_import_kw' => $import,
             'grid_export_kw' => $export,
             'house_kw' => $house,
@@ -140,7 +156,8 @@ final class Snapshot
     {
         $values = array_merge([
             'pv_kw' => null, 'battery_soc' => null, 'battery_charge_kw' => null, 'battery_discharge_kw' => null,
-            'battery_capacity_kwh' => null, 'grid_import_kw' => null, 'grid_export_kw' => null, 'house_kw' => null,
+            'battery_capacity_kwh' => null, 'battery_total_kwh' => null, 'car_soc' => null, 'car_capacity_kwh' => null,
+            'grid_import_kw' => null, 'grid_export_kw' => null, 'house_kw' => null,
             'house_includes_wallbox' => true, 'wallbox_kw' => null, 'wallbox_amps' => null, 'wallbox_car_raw' => null,
             'wallbox_phases_raw' => null, 'priority_soc' => 80, 'radiation_rows' => [],
         ], $base['values'] ?: []);
@@ -177,14 +194,39 @@ final class Snapshot
         if ($series) {
             Forecast::rememberDays($this->store->pdo(), $series, $cfg['plant']);
         }
+        $mean = null;
+        try {
+            $mean = (new Series($this->store, $this->ha))->houseMean($cfg['mapping']);
+        } catch (Throwable) {
+            $mean = null;
+        }
+        $bufferSoc = (float) ($cfg['battery_strategy']['car_buffer_soc'] ?? 100);
         $outlook = Forecast::storageOutlook(
             $series,
             $now,
             isset($values['battery_soc']) ? (float) $values['battery_soc'] : null,
             isset($values['battery_capacity_kwh']) ? (float) $values['battery_capacity_kwh'] : null,
-            $balance['house_base_kw'] ?? null,
-            (float) ($values['priority_soc'] ?? 80)
+            $mean,
+            (float) ($values['priority_soc'] ?? 80),
+            isset($values['battery_total_kwh']) ? (float) $values['battery_total_kwh'] : null,
+            $bufferSoc
         );
+        if ($mean === null) {
+            $outlook['house_missing'] = true;
+            $outlook['surplus_kwh'] = null;
+            if (empty($outlook['already_full'])) {
+                $outlook['full_at'] = null;
+                $outlook['reachable'] = false;
+            }
+            if (empty($outlook['priority_reached'])) {
+                $outlook['priority_at'] = null;
+            }
+            if (empty($outlook['buffer_reached'])) {
+                $outlook['buffer_at'] = null;
+            }
+        }
+        $charging = ((float) ($values['wallbox_kw'] ?? 0) > 0.05)
+            || strtolower((string) ($values['wallbox_car_raw'] ?? '')) === 'charging';
         $actualToday = null;
         try {
             $actualToday = (new Series($this->store, $this->ha))->yieldToday($cfg['mapping']);
@@ -210,6 +252,9 @@ final class Snapshot
         $base['setpoint'] = $latched;
         $base['forecast'] = $brief;
         $base['storage'] = $outlook;
+        $base['house_mean_kw'] = $mean;
+        $base['car_charging'] = $charging;
+        $base['car_buffer_soc'] = $bufferSoc;
         $base['house_known'] = $balance['house_base_kw'] !== null;
         $base['session'] = $session;
         $base['car_label'] = Energy::carLabel($values['wallbox_car_raw'] ?? null);
@@ -250,16 +295,32 @@ final class Snapshot
             'target' => kw($s['latched_kw'] ?? null),
             'proposal' => $this->proposal($s),
             'activity' => $snap['activity'],
+            'battery_flow' => match ($snap['activity'] ?? '') {
+                'Laden' => 'laden',
+                'Entladen' => 'entladen',
+                default => 'ruhe',
+            },
             'car' => $snap['car_label'],
             'phase' => $snap['phase_label'],
             'amps' => amps(isset($v['wallbox_amps']) ? (float) $v['wallbox_amps'] : null),
             'remaining' => kwh($f['remaining_kwh'] ?? null, 1),
             'today_forecast' => kwh($f['today_kwh'] ?? null, 1),
             'capacity' => kwh($v['battery_capacity_kwh'] ?? null, 1),
+            'capacity_line' => $this->capacityLine($v['battery_capacity_kwh'] ?? null, $v['battery_total_kwh'] ?? null),
             'soc_fill' => isset($v['battery_soc']) ? (string) max(0, min(100, round((float) $v['battery_soc']))) : '0',
             'battery_full' => $this->fullText($snap['storage'] ?? []),
             'battery_priority' => $this->priorityText($snap['storage'] ?? [], (float) ($v['priority_soc'] ?? 80)),
-            'battery_surplus' => $this->surplusText($snap['storage'] ?? [], !empty($snap['house_known']), $b['house_base_kw'] ?? null),
+            'battery_buffer' => $this->bufferText($snap['storage'] ?? [], (float) ($snap['car_buffer_soc'] ?? 100)),
+            'battery_surplus' => $this->surplusText($snap['storage'] ?? [], isset($snap['house_mean_kw']) && $snap['house_mean_kw'] !== null, $snap['house_mean_kw'] ?? null),
+            'house_mean' => kw($snap['house_mean_kw'] ?? null),
+            'plan_now' => $this->levelKwh($v['battery_capacity_kwh'] ?? null, isset($v['battery_soc']) ? (float) $v['battery_soc'] : null, $snap['storage']['full_kwh'] ?? null, true),
+            'plan_priority_kwh' => $this->levelKwh(null, (float) ($v['priority_soc'] ?? 80), $snap['storage']['full_kwh'] ?? null, false),
+            'plan_full_kwh' => $this->levelKwh(null, 100, $snap['storage']['full_kwh'] ?? null, false),
+            'plan_buffer_kwh' => $this->levelKwh(null, (float) ($snap['car_buffer_soc'] ?? 100), $snap['storage']['full_kwh'] ?? null, false),
+            'car_state' => $this->carState($v['car_soc'] ?? null, $v['car_capacity_kwh'] ?? null),
+            'car_outlook' => !empty($snap['car_charging'])
+                ? 'Die Wallbox lädt gerade ein Auto. Die Zeiten gelten wieder, sobald sie pausiert. Angesetzt ist kein Ladestrom.'
+                : 'Kein Auto an der Wallbox. Angesetzt ist kein Ladestrom an der go-e.',
             'grid_kw' => $this->gridMagnitude($v['grid_import_kw'] ?? null, $v['grid_export_kw'] ?? null),
             'flows' => [
                 'pv' => max(0, (float) ($v['pv_kw'] ?? 0)),
@@ -273,11 +334,54 @@ final class Snapshot
         ];
     }
 
-    /** @param array{already_full?:bool, reachable?:bool, full_at?:?int, surplus_kwh?:?float} $storage */
+    private function capacityLine(?float $now, ?float $total): string
+    {
+        if ($now === null && ($total === null || $total <= 0)) {
+            return 'Kapazität —';
+        }
+        if ($total === null || $total <= 0) {
+            return 'aktuell ' . kwh($now, 1) . '. Gesamtkapazität fehlt in den Einstellungen.';
+        }
+        return 'aktuell ' . num($now, 1) . ' / ' . num($total, 1) . ' kWh';
+    }
+
+    private function levelKwh(?float $stored, ?float $soc, ?float $full, bool $preferStored): string
+    {
+        if ($preferStored && $stored !== null) {
+            return num($stored, 1) . ' kWh';
+        }
+        if ($full !== null && $full > 0 && $soc !== null) {
+            return num($full * max(0, min(100, $soc)) / 100, 1) . ' kWh';
+        }
+        if ($soc !== null) {
+            return num($soc, 0) . ' %';
+        }
+        return '—';
+    }
+
+    private function carState(?float $soc, ?float $capacity): string
+    {
+        if ($soc === null && ($capacity === null || $capacity <= 0)) {
+            return 'Fahrzeugdaten fehlen noch. Ladestand und Kapazität des Autos lassen sich im Bereich Auto zuordnen.';
+        }
+        if ($soc !== null && $capacity !== null && $capacity > 0) {
+            $stored = $capacity * max(0, min(100, $soc)) / 100;
+            return 'Auto ' . num($soc, 0) . ' % · ' . num($stored, 1) . ' / ' . num($capacity, 1) . ' kWh';
+        }
+        if ($soc !== null) {
+            return 'Auto ' . num($soc, 0) . ' %. Die Kapazität fehlt noch.';
+        }
+        return 'Kapazität ' . num($capacity, 1) . ' kWh. Der Ladestand fehlt noch.';
+    }
+
+    /** @param array{already_full?:bool, reachable?:bool, full_at?:?int, house_missing?:bool} $storage */
     private function fullText(array $storage): string
     {
         if (!empty($storage['already_full'])) {
             return 'Batterie ist voll.';
+        }
+        if (!empty($storage['house_missing'])) {
+            return '100 % bleibt offen, bis der Hausverbrauch der letzten 30 Tage da ist.';
         }
         if (empty($storage['reachable'])) {
             return 'Zeit bis 100 % braucht Ladestand und nutzbare Energie.';
@@ -288,18 +392,21 @@ final class Snapshot
         return '100 % voraussichtlich ' . when_label((int) $storage['full_at']) . '.';
     }
 
-    /** @param array{priority_open?:bool, priority_reached?:bool, reachable?:bool, priority_at?:?int} $storage */
+    /** @param array{priority_open?:bool, priority_reached?:bool, reachable?:bool, priority_at?:?int, house_missing?:bool} $storage */
     private function priorityText(array $storage, float $priority): string
     {
         if (empty($storage['priority_open'])) {
             return '';
         }
         $mark = num($priority, 0) . ' %';
-        if (empty($storage['reachable'])) {
-            return '';
-        }
         if (!empty($storage['priority_reached'])) {
             return 'Speicher-Vorrang ' . $mark . ' ist erreicht.';
+        }
+        if (!empty($storage['house_missing'])) {
+            return 'Speicher-Vorrang ' . $mark . ' bleibt offen, bis der Hausverbrauch der letzten 30 Tage da ist.';
+        }
+        if (empty($storage['reachable'])) {
+            return '';
         }
         if (empty($storage['priority_at'])) {
             return 'Speicher-Vorrang ' . $mark . ' in den nächsten vier Tagen nicht erreicht.';
@@ -307,19 +414,38 @@ final class Snapshot
         return 'Speicher-Vorrang ' . $mark . ' voraussichtlich ' . when_label((int) $storage['priority_at']) . '.';
     }
 
-    /** @param array{surplus_kwh?:?float} $storage */
+    /** @param array{buffer_open?:bool, buffer_reached?:bool, reachable?:bool, buffer_at?:?int, house_missing?:bool} $storage */
+    private function bufferText(array $storage, float $buffer): string
+    {
+        $mark = num($buffer, 0) . ' %';
+        if ($buffer >= 99.5 || empty($storage['buffer_open'])) {
+            return 'Auto aus dem Speicher ist bei ' . $mark . '. Der Hausspeicher bleibt fürs Haus.';
+        }
+        if (!empty($storage['buffer_reached'])) {
+            return 'Auto aus dem Speicher ab ' . $mark . ' ist erreicht.';
+        }
+        if (!empty($storage['house_missing'])) {
+            return 'Auto aus dem Speicher ab ' . $mark . ' bleibt offen, bis der Hausverbrauch der letzten 30 Tage da ist.';
+        }
+        if (empty($storage['reachable'])) {
+            return 'Auto aus dem Speicher ab ' . $mark . ' braucht Ladestand und Kapazität.';
+        }
+        if (empty($storage['buffer_at'])) {
+            return 'Auto aus dem Speicher ab ' . $mark . ' in den nächsten vier Tagen nicht erreicht.';
+        }
+        return 'Auto aus dem Speicher ab ' . $mark . ' voraussichtlich ' . when_label((int) $storage['buffer_at']) . '.';
+    }
+
+    /** @param array{surplus_kwh?:?float, house_missing?:bool} $storage */
     private function surplusText(array $storage, bool $houseKnown, ?float $houseKw): string
     {
+        if (!empty($storage['house_missing']) || !$houseKnown || $houseKw === null) {
+            return 'Überschuss bis Mitternacht bleibt offen. Der Hausverbrauch der letzten 30 Tage fehlt noch.';
+        }
         if (!isset($storage['surplus_kwh']) || $storage['surplus_kwh'] === null) {
             return '';
         }
-        $text = 'Überschuss bis Mitternacht ' . kwh((float) $storage['surplus_kwh'], 1) . '.';
-        if ($houseKnown && $houseKw !== null) {
-            $text .= ' Hausverbrauch angesetzt mit ' . kw($houseKw) . '.';
-        } else {
-            $text .= ' Hausverbrauch gerade ohne Messwert, deshalb ohne Abzug.';
-        }
-        return $text;
+        return 'Überschuss bis Mitternacht ' . kwh((float) $storage['surplus_kwh'], 1) . '. Hausverbrauch angesetzt mit ' . kw($houseKw) . '.';
     }
 
     private function gridText(?float $import, ?float $export): string

@@ -254,17 +254,102 @@ dialog.sheet .sheet-head {
 }
 dialog.sheet::backdrop { background: rgb(0 0 0 / 0.45); }
 .touch-x::-webkit-scrollbar { display: none; }
-.soc-card { position: relative; overflow: hidden; min-height: 16rem; }
-.soc-fill {
+.battery { width: 6.25rem; flex: none; }
+.battery-nub {
+  width: 2rem;
+  height: 0.45rem;
+  margin: 0 auto;
+  border-radius: 0.35rem 0.35rem 0 0;
+  background: hsl(var(--battery));
+}
+.battery-body {
+  position: relative;
+  height: 10.25rem;
+  overflow: hidden;
+  border: 3px solid hsl(var(--battery));
+  border-radius: 0.85rem;
+  background: hsl(var(--muted));
+}
+.battery-fill {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   height: var(--soc, 0%);
-  background: hsl(var(--battery));
-  opacity: 0.28;
-  pointer-events: none;
-  transition: height 0.45s ease;
+  overflow: hidden;
+  background: linear-gradient(to top, hsl(var(--battery) / 0.5), hsl(var(--battery) / 0.82));
+  transition: height 0.6s ease;
+}
+.battery-fill::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 42%;
+  background: linear-gradient(to bottom, transparent, hsl(var(--card) / 0.35), transparent);
+  opacity: 0;
+}
+[data-battery][data-flow='entladen'] .battery-fill::after {
+  opacity: 0.85;
+  animation: battery-drain 3.4s ease-in-out infinite;
+}
+[data-battery][data-flow='laden'] .battery-fill::after {
+  opacity: 0.85;
+  animation: battery-charge 3.4s ease-in-out infinite;
+}
+@keyframes battery-drain {
+  from { top: -45%; }
+  to { top: 110%; }
+}
+@keyframes battery-charge {
+  from { top: 110%; }
+  to { top: -45%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .battery-fill { transition: none; }
+  .battery-fill::after { animation: none; opacity: 0; }
+}
+.plan-board {
+  display: grid;
+  gap: 0.75rem;
+}
+.plan-cell {
+  min-height: 7.5rem;
+  padding: 0.95rem 1rem;
+  border-radius: 0.9rem;
+  background: hsl(var(--muted));
+}
+.plan-cell-car { background: hsl(var(--wallbox) / 0.12); }
+.plan-cell-house { background: hsl(var(--house) / 0.12); }
+.plan-kicker {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.plan-kicker span { margin-left: 0.35rem; color: hsl(var(--foreground)); letter-spacing: 0; text-transform: none; font-size: 0.95rem; }
+.plan-figure {
+  margin-top: 0.35rem;
+  font-size: 1.8rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--house));
+}
+.plan-now {
+  padding: 0.9rem 1rem;
+  border-left: 3px solid hsl(var(--battery));
+  border-radius: 0.4rem;
+  background: hsl(var(--battery) / 0.08);
+}
+.plan-slider { border-left: 3px solid hsl(var(--battery)); padding-left: 0.8rem; }
+.plan-slider-car { border-left-color: hsl(var(--wallbox)); }
+.plan-slider-house { border-left-color: hsl(var(--house)); }
+@media (min-width: 700px) {
+  .plan-board { grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 1100px) {
+  .plan-board { grid-template-columns: 1fr 1fr 1fr 1.05fr; }
 }
 
 .flow-move {

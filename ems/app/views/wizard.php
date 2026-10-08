@@ -40,7 +40,14 @@ page_head('Einrichten', Actions::STEPS[$step] . ' · Schritt ' . (($index === fa
         <option value="positive_discharge" <?= $mapping['battery_sign'] === 'positive_discharge' ? 'selected' : '' ?>>Entladen</option>
       </select>
     </label>
-    <?php entity_field('battery_capacity', 'Restkapazität, optional', (string) $mapping['battery_capacity'], 'Wh oder kWh.', $suggest['battery_capacity'] ?? ''); ?>
+    <?php entity_field('battery_capacity', 'Restkapazität, optional', (string) $mapping['battery_capacity'], 'Wh oder kWh, der aktuell nutzbare Inhalt.', $suggest['battery_capacity'] ?? ''); ?>
+    <?php
+      $capacityTotal = (string) ($mapping['battery_total'] ?? '');
+      if ($capacityTotal === '' && !empty($suggest['battery_total'])) {
+          $capacityTotal = (string) $suggest['battery_total'];
+      }
+    ?>
+    <?php entity_field('battery_total', 'Gesamtkapazität', $capacityTotal, 'Installierte nutzbare Kapazität, Wh oder kWh.', $suggest['battery_total'] ?? ''); ?>
   <?php elseif ($step === 'netz'): ?>
     <label class="block text-sm">Zählerart
       <select class="field mt-1" name="grid_mode">
@@ -69,6 +76,9 @@ page_head('Einrichten', Actions::STEPS[$step] . ' · Schritt ' . (($index === fa
     <?php entity_field('wallbox_amps_max', 'Maximalstrom der Wallbox', (string) $mapping['wallbox_amps_max'], 'Optional.', $suggest['wallbox_amps_max'] ?? ''); ?>
     <?php entity_field('wallbox_phases', 'Gemeldete Phasen', (string) $mapping['wallbox_phases'], '1-phasig, 3-phasig oder automatisch.', $suggest['wallbox_phases'] ?? ''); ?>
     <?php entity_field('wallbox_force', 'Zwangszustand', (string) $mapping['wallbox_force'], 'Optional, nur Anzeige.', $suggest['wallbox_force'] ?? ''); ?>
+    <p class="text-sm text-muted-foreground">Ladestand und Kapazität des Autos kommen später dazu. Solange die Felder leer sind, rechnet die Batterieseite ohne Fahrzeugenergie.</p>
+    <?php entity_field('car_soc', 'Ladestand des Autos', (string) ($mapping['car_soc'] ?? ''), 'Prozent, sobald das Fahrzeug ihn meldet.', $suggest['car_soc'] ?? ''); ?>
+    <?php entity_field('car_capacity', 'Kapazität des Autos', (string) ($mapping['car_capacity'] ?? ''), 'Wh oder kWh.', $suggest['car_capacity'] ?? ''); ?>
   <?php elseif ($step === 'wetter'): ?>
     <p class="text-sm text-muted-foreground">Strahlung, Bewölkung, Sonnenschein und Temperatur kommen nur aus der MOSMIX-Datei des Deutschen Wetterdienstes. Die App holt sie ungefähr alle 30 Minuten.</p>
     <label class="block text-sm">KMZ-Adresse

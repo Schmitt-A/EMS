@@ -82,6 +82,40 @@ final class Energy
         ];
     }
 
+    /**
+     * Mittel der Hausleistung. Enthält der Hauszähler die Wallbox, wird sie Stunde für Stunde abgezogen.
+     *
+     * @param array<int, array{start?:int, kw?:float}> $house
+     * @param array<int, array{start?:int, kw?:float}> $wallbox
+     */
+    public static function meanHouseBase(array $house, array $wallbox, bool $includesWallbox): ?float
+    {
+        if (!$house) {
+            return null;
+        }
+        $wall = [];
+        foreach ($wallbox as $row) {
+            if (!isset($row['start'])) {
+                continue;
+            }
+            $wall[(int) $row['start']] = max(0, (float) ($row['kw'] ?? 0));
+        }
+        $sum = 0.0;
+        $n = 0;
+        foreach ($house as $row) {
+            if (!isset($row['start'])) {
+                continue;
+            }
+            $base = max(0, (float) ($row['kw'] ?? 0));
+            if ($includesWallbox) {
+                $base = max(0, $base - (float) ($wall[(int) $row['start']] ?? 0));
+            }
+            $sum += $base;
+            $n++;
+        }
+        return $n > 0 ? $sum / $n : null;
+    }
+
     private static function nullable(mixed $value): ?float
     {
         return $value === null ? null : (float) $value;

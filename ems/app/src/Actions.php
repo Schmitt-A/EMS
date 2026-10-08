@@ -24,6 +24,7 @@ final class Actions
         'battery_charge' => 'sensor.sonnenbatterie_382994_state_battery_in',
         'battery_discharge' => 'sensor.sonnenbatterie_382994_state_battery_out',
         'battery_capacity' => 'sensor.sonnenbatterie_382994_battery_remaining_capacity_usable',
+        'battery_total' => 'sensor.sonnenbatterie_382994_battery_installed_capacity_usable',
         'wallbox_power' => 'sensor.go_echarger_506181_power_total',
         'wallbox_car' => 'sensor.go_echarger_506181_car',
         'wallbox_amps' => 'number.go_echarger_506181_amp',
@@ -79,10 +80,10 @@ final class Actions
         }
         $keys = match ($step) {
             'photovoltaik' => ['pv_power', 'pv_energy'],
-            'speicher' => ['battery_soc', 'battery_mode', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_sign', 'battery_capacity'],
+            'speicher' => ['battery_soc', 'battery_mode', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_sign', 'battery_capacity', 'battery_total'],
             'netz' => ['grid_mode', 'grid_import', 'grid_export', 'grid_signed', 'grid_sign'],
             'haus' => ['house_power'],
-            'wallbox' => ['wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'],
+            'wallbox' => ['wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force', 'car_soc', 'car_capacity'],
             default => [],
         };
         if ($step === 'wetter') {
@@ -158,9 +159,24 @@ final class Actions
                 store()->put('last_calibration', '');
             }
         } elseif ($section === 'battery') {
-            store()->merge('battery_strategy', [
+            $strategy = [
                 'priority_soc' => post_float('priority_soc', 0, 100, 80),
                 'reserve_soc' => post_float('reserve_soc', 0, 100, 100),
+            ];
+            if (array_key_exists('car_buffer_soc', $_POST)) {
+                $strategy['car_buffer_soc'] = post_float('car_buffer_soc', 0, 100, 100);
+            }
+            store()->merge('battery_strategy', $strategy);
+        } elseif ($section === 'car') {
+            $mapping = store()->get('mapping', []);
+            if (!is_array($mapping)) {
+                $mapping = [];
+            }
+            $mapping['car_soc'] = post_entity('car_soc');
+            $mapping['car_capacity'] = post_entity('car_capacity');
+            store()->put('mapping', $mapping);
+            store()->merge('battery_strategy', [
+                'car_buffer_soc' => post_float('car_buffer_soc', 0, 100, 100),
             ]);
         } elseif ($section === 'charge') {
             $min = post_int('min_a', 6, 16, 6);
@@ -199,12 +215,15 @@ final class Actions
                 'grid_sign' => ['positive_import', 'positive_export'],
                 'weather_station' => ['soonwald', 'hahn', 'kreuznach'],
             ];
-            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'];
+            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'car_soc', 'car_capacity', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'];
             foreach ($enums as $key => $allowed) {
                 $value = (string) ($_POST[$key] ?? ($mapping[$key] ?? ''));
                 $mapping[$key] = in_array($value, $allowed, true) ? $value : (string) ($mapping[$key] ?? $allowed[0]);
             }
             foreach ($entities as $key) {
+                if (!array_key_exists($key, $_POST)) {
+                    continue;
+                }
                 $mapping[$key] = post_entity($key);
             }
             $mapping['house_includes_wallbox'] = ($_POST['house_includes_wallbox'] ?? '0') === '1';
@@ -298,7 +317,7 @@ final class Actions
                 'grid_sign' => ['positive_import', 'positive_export'],
                 'weather_station' => ['soonwald', 'hahn', 'kreuznach'],
             ];
-            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'];
+            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'car_soc', 'car_capacity', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'];
             foreach ($enums as $key => $allowed) {
                 if (!array_key_exists($key, $data['mapping'])) {
                     continue;
@@ -358,10 +377,14 @@ final class Actions
             ]);
         }
         if (isset($data['battery_strategy']) && is_array($data['battery_strategy'])) {
-            store()->merge('battery_strategy', [
+            $strategy = [
                 'priority_soc' => self::clamped($data['battery_strategy']['priority_soc'] ?? null, 0, 100, 80),
                 'reserve_soc' => self::clamped($data['battery_strategy']['reserve_soc'] ?? null, 0, 100, 100),
-            ]);
+            ];
+            if (array_key_exists('car_buffer_soc', $data['battery_strategy'])) {
+                $strategy['car_buffer_soc'] = self::clamped($data['battery_strategy']['car_buffer_soc'], 0, 100, 100);
+            }
+            store()->merge('battery_strategy', $strategy);
         }
         if (isset($data['weather']['url'])) {
             try {

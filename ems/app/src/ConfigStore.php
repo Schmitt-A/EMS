@@ -67,6 +67,9 @@ final class ConfigStore
                 'battery_signed' => '',
                 'battery_sign' => 'positive_charge',
                 'battery_capacity' => '',
+                'battery_total' => '',
+                'car_soc' => '',
+                'car_capacity' => '',
                 'grid_mode' => 'split',
                 'grid_import' => '',
                 'grid_export' => '',
@@ -111,7 +114,7 @@ final class ConfigStore
                 'on_delay_s' => 60,
                 'off_delay_s' => 60,
             ],
-            'battery_strategy' => ['priority_soc' => 80.0, 'reserve_soc' => 100.0],
+            'battery_strategy' => ['priority_soc' => 80.0, 'reserve_soc' => 100.0, 'car_buffer_soc' => 100.0],
             'weather' => ['url' => 'https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/single_stations/F9519/kml/MOSMIX_L_LATEST_F9519.kmz'],
             'ui' => ['theme' => 'system'],
         ];

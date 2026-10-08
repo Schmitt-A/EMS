@@ -774,10 +774,11 @@ final class Forecast
 
     /**
      * @param array<int, array{t:int, kw:float}> $series
-     * @return array{full_at:?int, priority_at:?int, priority_open:bool, priority_reached:bool, already_full:bool, surplus_kwh:?float, reachable:bool}
+     * @return array{full_at:?int, priority_at:?int, priority_open:bool, priority_reached:bool, already_full:bool, surplus_kwh:?float, reachable:bool, buffer_at:?int, buffer_open:bool, buffer_reached:bool, full_kwh:?float}
      */
-    public static function storageOutlook(array $series, int $now, ?float $soc, ?float $storedKwh, ?float $houseKw, float $prioritySoc): array
+    public static function storageOutlook(array $series, int $now, ?float $soc, ?float $storedKwh, ?float $houseKw, float $prioritySoc, ?float $totalKwh = null, ?float $bufferSoc = null): array
     {
+        $bufferSoc = $bufferSoc === null ? null : max(0.0, min(100.0, $bufferSoc));
         $empty = [
             'full_at' => null,
             'priority_at' => null,
@@ -786,24 +787,45 @@ final class Forecast
             'already_full' => false,
             'surplus_kwh' => null,
             'reachable' => false,
+            'buffer_at' => null,
+            'buffer_open' => $bufferSoc !== null && $bufferSoc < 99.5,
+            'buffer_reached' => false,
+            'full_kwh' => null,
         ];
         $soc = $soc === null ? null : max(0, min(100, $soc));
+        $stored = $storedKwh;
         $fullKwh = null;
+        if ($totalKwh !== null && $totalKwh > 0.05) {
+            $fullKwh = $totalKwh;
+            if (($stored === null || $stored <= 0) && $soc !== null) {
+                $stored = $fullKwh * ($soc / 100);
+            }
+        } elseif ($soc !== null && $soc > 1 && $stored !== null && $stored > 0) {
+            $fullKwh = $stored / ($soc / 100);
+        }
+        $empty['full_kwh'] = $fullKwh;
         if ($soc !== null && $soc >= 99.5) {
             $empty['already_full'] = true;
             $empty['priority_reached'] = true;
-        } elseif ($soc !== null && $soc > 1 && $storedKwh !== null && $storedKwh > 0) {
-            $fullKwh = $storedKwh / ($soc / 100);
+            $empty['buffer_reached'] = $empty['buffer_open'];
         }
-        $needFull = $fullKwh === null ? null : max(0, $fullKwh - (float) $storedKwh);
+        $needFull = ($fullKwh === null || $stored === null) ? null : max(0, $fullKwh - $stored);
         $needPriority = null;
-        if ($fullKwh !== null && $prioritySoc < 99.5) {
-            $needPriority = max(0, $fullKwh * ($prioritySoc / 100) - (float) $storedKwh);
+        if (!$empty['already_full'] && $fullKwh !== null && $stored !== null && $prioritySoc < 99.5) {
+            $needPriority = max(0, $fullKwh * ($prioritySoc / 100) - $stored);
             $empty['priority_reached'] = $needPriority <= 0.05;
+        }
+        $needBuffer = null;
+        if (!$empty['already_full'] && $fullKwh !== null && $stored !== null && $empty['buffer_open'] && $bufferSoc !== null) {
+            $needBuffer = max(0, $fullKwh * ($bufferSoc / 100) - $stored);
+            $empty['buffer_reached'] = $needBuffer <= 0.05;
         }
         if ($needFull !== null && $needFull <= 0.05) {
             $empty['already_full'] = true;
             $empty['priority_reached'] = true;
+            if ($empty['buffer_open']) {
+                $empty['buffer_reached'] = true;
+            }
         }
         $tz = new DateTimeZone('Europe/Berlin');
         $todayEnd = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0)->modify('+1 day')->getTimestamp();
@@ -813,6 +835,7 @@ final class Forecast
         $seen = false;
         $fullAt = null;
         $priorityAt = null;
+        $bufferAt = null;
         foreach ($series as $point) {
             if (!isset($point['t'])) {
                 continue;
@@ -835,12 +858,16 @@ final class Forecast
             if ($needPriority !== null && $needPriority > 0.05 && $priorityAt === null && $acc >= $needPriority) {
                 $priorityAt = self::crossAt($from, $end, $before, $acc, $needPriority);
             }
+            if ($needBuffer !== null && $needBuffer > 0.05 && $bufferAt === null && $acc >= $needBuffer) {
+                $bufferAt = self::crossAt($from, $end, $before, $acc, $needBuffer);
+            }
             if ($needFull !== null && $needFull > 0.05 && $fullAt === null && $acc >= $needFull) {
                 $fullAt = self::crossAt($from, $end, $before, $acc, $needFull);
             }
         }
         $empty['full_at'] = $empty['already_full'] ? $now : $fullAt;
         $empty['priority_at'] = $empty['priority_reached'] ? $now : $priorityAt;
+        $empty['buffer_at'] = $empty['buffer_reached'] ? $now : $bufferAt;
         $empty['surplus_kwh'] = $seen ? $surplus : null;
         $empty['reachable'] = $fullKwh !== null;
         return $empty;

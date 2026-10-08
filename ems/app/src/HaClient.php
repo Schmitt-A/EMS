@@ -136,6 +136,8 @@ final class HaClient
             $out[] = [
                 'start' => $startAt,
                 'mean' => isset($row['mean']) && is_numeric($row['mean']) ? (float) $row['mean'] : null,
+                'min' => isset($row['min']) && is_numeric($row['min']) ? (float) $row['min'] : null,
+                'max' => isset($row['max']) && is_numeric($row['max']) ? (float) $row['max'] : null,
                 'change' => isset($row['change']) && is_numeric($row['change']) ? (float) $row['change'] : null,
             ];
         }

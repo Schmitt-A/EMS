@@ -37,7 +37,7 @@ if ($path === '/api/series') {
     $series = new Series(store(), ha());
     try {
         if ($chart === 'battery') {
-            json_out($series->battery(max(1, (int) ($_GET['range'] ?? 24)), $config['mapping'], $config['battery_strategy']));
+            json_out($series->battery($config['mapping']));
         }
         if ($chart === 'power') {
             json_out($series->power($config['mapping'], $config['plant']));
@@ -223,7 +223,7 @@ if ($path === '/prognose') {
 }
 if ($path === '/einstellungen') {
     $ping = ha()->ping();
-    page('settings', ['cfg' => cfg(), 'ping' => $ping, 'live' => $live, 'title' => 'Einstellungen']);
+    page('settings', ['cfg' => cfg(), 'ping' => $ping, 'live' => $live, 'suggest' => known_suggestions(), 'title' => 'Einstellungen']);
 }
 if ($inWizard) {
     $step = trim(substr($path, strlen('/einrichten')), '/');
@@ -236,19 +236,7 @@ if ($inWizard) {
     $ping = ha()->ping();
     $connection = connection();
     $connection['token'] = $connection['token'] !== '' ? 'set' : '';
-    $suggest = [];
-    try {
-        if (ha()->configured()) {
-            $index = ha()->index();
-            foreach (Actions::SUGGEST as $key => $id) {
-                if (isset($index[$id])) {
-                    $suggest[$key] = $id;
-                }
-            }
-        }
-    } catch (Throwable) {
-        $suggest = [];
-    }
+    $suggest = known_suggestions();
     $missing = Actions::missing(cfg()['mapping']);
     $review = review_lines(cfg()['mapping']);
     page('wizard', [
@@ -267,6 +255,24 @@ if ($inWizard) {
 
 http_response_code(404);
 echo 'Nicht gefunden';
+
+function known_suggestions(): array
+{
+    $suggest = [];
+    try {
+        if (ha()->configured()) {
+            $index = ha()->index();
+            foreach (Actions::SUGGEST as $key => $id) {
+                if (isset($index[$id])) {
+                    $suggest[$key] = $id;
+                }
+            }
+        }
+    } catch (Throwable) {
+        return [];
+    }
+    return $suggest;
+}
 
 function page(string $view, array $data, bool $nav = true): never
 {
