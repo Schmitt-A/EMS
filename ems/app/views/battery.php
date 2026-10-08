@@ -30,17 +30,16 @@ $face = static function (bool $edit) use ($flow, $socFill, $showHouse, $showBuff
     echo '<' . $host . ' class="zone-frame' . ($edit ? ' zone-frame-edit' : '') . '"' . ($edit ? ' data-battery data-flow="' . e($flow) . '" style="--soc: ' . e(num($socFill, 0)) . '%"' : '') . '>';
     echo '<span class="zone-nub"></span><span class="zone-scale">';
     echo '<span class="zone-body' . ($edit ? ' zone-body-edit' : '') . '">';
-    echo '<span class="zone-band zone-boost"><span class="zone-glyph">' . icon('zap', 'h-4 w-4') . '</span></span>';
+    echo '<span class="zone-band zone-boost"></span>';
     echo '<span class="zone-band zone-vehicle"></span>';
-    echo '<span class="zone-band zone-house"><span class="zone-glyph">' . icon('house', 'h-4 w-4') . '</span></span>';
+    echo '<span class="zone-band zone-house"></span>';
     echo '<span class="zone-fill" data-soc-fill></span>';
     echo '<span class="zone-auto"></span>';
-    echo '<span class="zone-level"><span class="zone-level-line"></span><span class="zone-level-car">' . icon('car', 'h-3.5 w-3.5') . '</span></span>';
-    echo '</span>';
-    echo '<span class="zone-tag" data-zone-tag="priority" style="bottom: var(--house)"' . ($showHouse ? '' : ' hidden') . '>' . icon('house', 'h-3 w-3') . ' <span data-zone-read="priority">' . $priority . '</span></span>';
-    echo '<span class="zone-tag" data-zone-tag="buffer" style="bottom: var(--support)"' . ($showBuffer ? '' : ' hidden') . '>' . icon('car', 'h-3 w-3') . ' <span data-zone-read="buffer">' . $buffer . '</span></span>';
-    echo '<span class="zone-tag" data-zone-tag="auto" style="bottom: var(--auto)"' . ($showAuto ? '' : ' hidden') . '>' . icon('zap', 'h-3 w-3') . ' <span data-zone-read="auto">' . $auto . '</span></span>';
-    echo '</span></' . $host . '>';
+    echo '<span class="zone-level"><span class="zone-level-line"></span></span>';
+    echo '<span class="zone-mark" data-zone-tag="priority" style="bottom: calc(var(--house) / 2)"' . ($showHouse ? '' : ' hidden') . '>' . icon('house', 'h-4 w-4') . '<span data-zone-read="priority">' . $priority . '</span></span>';
+    echo '<span class="zone-mark" data-zone-tag="buffer" style="bottom: calc((var(--house) + var(--support)) / 2)"' . ($showBuffer ? '' : ' hidden') . '>' . icon('car', 'h-4 w-4') . '<span data-zone-read="buffer">' . $buffer . '</span></span>';
+    echo '<span class="zone-mark" data-zone-tag="auto" style="bottom: calc((var(--support) + 100%) / 2)"' . ($showAuto ? '' : ' hidden') . '>' . icon('zap', 'h-4 w-4') . '<span data-zone-read="auto">' . $auto . '</span></span>';
+    echo '</span></span></' . $host . '>';
 };
 
 $rows = [[
@@ -79,10 +78,10 @@ page_head('Batterie');
         <?php $face(false); ?>
       </button>
       <div class="batt-copy min-w-0">
-        <p class="text-xs font-medium text-muted-foreground">Ladestand</p>
-        <p class="mt-1 text-4xl font-semibold tabular-nums text-battery sm:text-5xl" data-live="soc"><?= e(pct(isset($v['battery_soc']) ? (float) $v['battery_soc'] : null)) ?></p>
-        <p class="mt-2 text-sm" data-live="activity"><?= e($snap['activity']) ?></p>
-        <p class="mt-1 text-sm tabular-nums" data-live="capacity_line"><?= e($live['capacity_line'] ?? '') ?></p>
+        <p class="text-xs font-semibold text-muted-foreground">Ladestand</p>
+        <p class="mt-1 text-4xl font-extrabold tabular-nums text-battery sm:text-5xl" data-live="soc"><?= e(pct(isset($v['battery_soc']) ? (float) $v['battery_soc'] : null)) ?></p>
+        <p class="mt-2 text-sm font-semibold" data-live="activity"><?= e($snap['activity']) ?></p>
+        <p class="mt-1 text-sm font-semibold tabular-nums" data-live="capacity_line"><?= e($live['capacity_line'] ?? '') ?></p>
       </div>
     </section>
     <section class="card car-stage" data-car-battery data-car-known="<?= $carKnown ? '1' : '0' ?>" data-flow="<?= e($carFlow) ?>" style="--soc: <?= $carFill ?>%">
