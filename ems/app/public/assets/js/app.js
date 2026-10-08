@@ -806,10 +806,15 @@
           node.setAttribute('aria-valuenow', String(next[key]));
         });
       });
-      root.querySelectorAll('[data-zone-mirror="priority"]').forEach((input) => {
-        input.value = String(priority);
-        writeOut(input);
+      ['priority', 'buffer', 'auto'].forEach((key) => {
+        root.querySelectorAll('[data-zone-mirror="' + key + '"]').forEach((input) => {
+          input.value = String(next[key]);
+          writeOut(input);
+        });
       });
+      root.querySelectorAll('[data-zone-tag="priority"]').forEach((node) => { node.hidden = !(priority > 0 && priority < 100); });
+      root.querySelectorAll('[data-zone-tag="buffer"]').forEach((node) => { node.hidden = !(buffer > priority); });
+      root.querySelectorAll('[data-zone-tag="auto"]').forEach((node) => { node.hidden = !(auto > buffer); });
       root.style.setProperty('--house', priority + '%');
       root.style.setProperty('--support', buffer + '%');
       root.style.setProperty('--auto', auto + '%');
@@ -817,10 +822,12 @@
     Object.keys(fields).forEach((key) => {
       fields[key].addEventListener('input', () => paint(key));
     });
-    root.querySelectorAll('[data-zone-mirror="priority"]').forEach((input) => {
+    root.querySelectorAll('[data-zone-mirror]').forEach((input) => {
       input.addEventListener('input', () => {
-        fields.priority.value = input.value;
-        paint('priority');
+        const key = input.dataset.zoneMirror;
+        if (!fields[key]) return;
+        fields[key].value = input.value;
+        paint(key);
       });
     });
     const names = { priority: 'priority', buffer: 'buffer', auto: 'auto' };

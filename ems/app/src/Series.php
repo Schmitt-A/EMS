@@ -91,7 +91,7 @@ final class Series
             'yDecimals' => 0,
         ];
         $nowMs = $now * 1000;
-        $view = [$nowMs - 86400000, $nowMs];
+        $view = [$nowMs - 3 * 86400000, $nowMs];
         $first = $soc[0]['x'] ?? ($cap[0]['x'] ?? $view[0]);
         $boundStart = min((int) $first, $view[0]);
         $today = (new DateTimeImmutable('now', $tz))->setTime(0, 0);

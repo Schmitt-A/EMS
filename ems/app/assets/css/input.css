@@ -308,7 +308,8 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / 0.45); }
 @media (prefers-reduced-motion: reduce) {
   .battery-fill { transition: none; }
   .battery-fill::after { animation: none; opacity: 0; }
-  .zone-sheen::after, .car-pack-fill::after { animation: none; opacity: 0; }
+  .zone-fill { transition: none; }
+  .zone-fill::after, .car-pack-fill::after { animation: none; opacity: 0; }
 }
 .sr-only {
   position: absolute;
@@ -338,8 +339,10 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / 0.45); }
 }
 .batt-copy, .car-stage .min-w-0 { width: 100%; }
 .zone-open {
-  display: block;
+  display: flex;
   flex: none;
+  justify-content: center;
+  width: 100%;
   margin: 0;
   padding: 0;
   border: 0;
@@ -351,7 +354,10 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / 0.45); }
 .zone-open:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 4px; border-radius: 1.1rem; }
 .zone-battery, .zone-slot { --z-edge: 150 28% 22%; --z-house-a: 152 34% 22%; --z-house-b: 150 28% 34%; --z-car-a: 128 32% 36%; --z-car-b: 112 38% 48%; --z-boost-a: 92 42% 58%; --z-boost-b: 80 48% 70%; }
 .dark .zone-battery, .dark .zone-slot { --z-edge: 88 28% 72%; --z-house-a: 154 24% 18%; --z-house-b: 150 22% 30%; --z-car-a: 132 22% 32%; --z-car-b: 108 26% 42%; --z-boost-a: 90 30% 46%; --z-boost-b: 78 34% 60%; }
-.zone-battery { width: 6.6rem; }
+.zone-frame { width: min(18rem, 100%); }
+.zone-scale { position: relative; }
+.zone-scale .zone-body { width: 7.6rem; margin-right: auto; margin-left: auto; }
+.zone-battery { width: 7.6rem; margin: 0 auto; }
 .zone-nub {
   width: 2.1rem;
   height: 0.45rem;
@@ -362,7 +368,7 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / 0.45); }
 .zone-body {
   position: relative;
   display: block;
-  height: clamp(13.5rem, 46vh, 18rem);
+  height: clamp(16rem, 54vh, 22rem);
   overflow: hidden;
   border: 3px solid hsl(var(--z-edge));
   border-radius: 1rem;
@@ -375,7 +381,7 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / 0.45); }
 .zone-glyph { position: absolute; left: 50%; top: 50%; display: flex; transform: translate(-50%, -50%); }
 .zone-house .zone-glyph { color: hsl(80 40% 94%); }
 .zone-boost .zone-glyph { color: hsl(150 36% 14%); }
-.zone-sheen {
+.zone-fill {
   position: absolute;
   left: 0;
   right: 0;
@@ -384,21 +390,46 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / 0.45); }
   height: var(--soc, 0%);
   overflow: hidden;
   pointer-events: none;
+  background: linear-gradient(to top, hsl(82 68% 42% / 0.82), hsl(92 78% 68% / 0.2));
+  box-shadow: inset 0 3px 0 hsl(0 0% 100% / 0.75);
+  transition: height 0.7s ease;
 }
-.zone-sheen::after {
+.zone-fill::after {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
-  height: 42%;
-  background: linear-gradient(to bottom, transparent, hsl(0 0% 100% / 0.28), transparent);
+  height: 48%;
+  background: linear-gradient(to bottom, transparent, hsl(0 0% 100% / 0.62), transparent);
   opacity: 0;
 }
-[data-battery][data-flow='entladen'] .zone-sheen::after { opacity: 0.7; animation: battery-drain 3.4s ease-in-out infinite; }
-[data-battery][data-flow='laden'] .zone-sheen::after { opacity: 0.7; animation: battery-charge 3.4s ease-in-out infinite; }
+[data-battery][data-flow='entladen'] .zone-fill::after { opacity: 0.95; animation: battery-drain 3.2s ease-in-out infinite; }
+[data-battery][data-flow='laden'] .zone-fill::after { opacity: 0.95; animation: battery-charge 3.2s ease-in-out infinite; }
 .zone-level, .zone-auto { position: absolute; left: 0; right: 0; z-index: 3; height: 0; pointer-events: none; }
 .zone-level { bottom: var(--soc, 0%); }
-.zone-auto { bottom: var(--auto, 100%); z-index: 2; border-top: 2px dashed hsl(150 30% 16% / 0.45); }
+.zone-auto { bottom: var(--auto, 100%); border-top: 2px dashed hsl(150 30% 16% / 0.55); }
+.zone-tag {
+  position: absolute;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-height: 1.5rem;
+  padding: 0 0.35rem;
+  transform: translateY(50%);
+  border-radius: 999px;
+  background: hsl(var(--card));
+  color: hsl(var(--z-edge));
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.zone-tag[data-zone-tag='priority'] { right: calc(50% + 4.2rem); }
+.zone-tag[data-zone-tag='buffer'], .zone-tag[data-zone-tag='auto'] { left: calc(50% + 4.2rem); }
+.zone-tag[hidden] { display: none; }
+.zone-frame-edit { margin: 0 auto; }
+.zone-frame-edit .zone-body { width: 5.6rem; height: 14rem; }
 .zone-level-line { position: absolute; left: 0.3rem; right: 1.7rem; top: 0; border-top: 2px solid hsl(var(--card)); }
 .zone-level-car {
   position: absolute;
@@ -421,6 +452,13 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / 0.45); }
 .swatch-house { background: hsl(var(--z-house-b)); }
 .swatch-vehicle { background: hsl(var(--z-car-b)); }
 .swatch-boost { background: hsl(var(--z-boost-b)); }
+.zone-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.zone-table th, .zone-table td { padding: 0.45rem 0.35rem; text-align: left; vertical-align: top; border-top: 1px solid hsl(var(--border)); }
+.zone-table th { color: hsl(var(--muted-foreground)); font-weight: 600; }
+.mode-key { display: grid; gap: 0.4rem; margin: 0.85rem 0 0; padding: 0; list-style: none; }
+@media (min-width: 800px) { .mode-key { grid-template-columns: 1fr 1fr; } }
+.mode-key li { padding: 0.5rem 0.65rem; border-radius: 0.65rem; background: hsl(var(--muted)); font-size: 0.8rem; }
+.mode-key li[aria-current='true'] { background: hsl(var(--battery) / 0.16); }
 .zone-policies { display: grid; gap: 0.85rem; }
 .zone-policy { min-width: 0; padding: 0.95rem 1rem; border-radius: 0.9rem; background: hsl(var(--muted)); }
 .zone-policy-boost { background: hsl(92 40% 46% / 0.16); }

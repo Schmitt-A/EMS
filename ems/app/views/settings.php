@@ -132,7 +132,7 @@ page_head('Einstellungen', 'Tarife, Dach und Strategie liegen hier. Die Messwert
   <form method="post" class="card space-y-4 p-5">
     <?= csrf_field() ?><input type="hidden" name="section" value="car"><input type="hidden" name="back" value="/einstellungen">
     <h2 class="font-medium">Auto</h2>
-    <p class="text-sm text-muted-foreground">Bis zur Hausgrenze fließt Sonnenstrom zuerst in den Hausspeicher. Darüber hat das Fahrzeug Vorrang. Ab der Stützung darf der Speicher mitladen, ab dem automatischen Start ist diese Marke erreicht. Bei 100 % bleibt der Speicher fürs Haus. Die Sollleistung der Wallbox ändern diese Marken nicht. Ladestand und Kapazität des Autos füllen die Anzeige, sobald die Entitäten da sind.</p>
+    <p class="text-sm text-muted-foreground">Bis zur Hausgrenze geht Sonnenüberschuss im Modus Smart zuerst in den Hausspeicher. Darüber hat das Auto den Überschuss. Ab der Stützung darf der Speicher mitladen, ab dem automatischen Start auch ohne Sonne. Die Hausgrenze steckt in der Ladevorschau. Stützung und Start bestimmen Anzeige und Zeiten. Ladestand und Kapazität des Autos füllen die Anzeige, sobald die Entitäten da sind.</p>
     <div class="grid gap-4 sm:grid-cols-2">
       <?php entity_field('car_soc', 'Ladestand des Autos', (string) ($m['car_soc'] ?? ''), 'Prozent, sobald das Fahrzeug ihn meldet.'); ?>
       <?php entity_field('car_capacity', 'Kapazität des Autos', (string) ($m['car_capacity'] ?? ''), 'Wh oder kWh.'); ?>
