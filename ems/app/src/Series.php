@@ -378,7 +378,9 @@ final class Series
             $actualToday,
             $plant,
             $complete,
-            Forecast::windowDays(array_keys($complete), $todayKey, '3')
+            Forecast::windowDays(array_keys($complete), $todayKey, '3'),
+            Forecast::dayIssues($this->store->pdo(), $todayKey),
+            Forecast::factorSamples($rows, $todayKey)
         );
         return ['daily' => $daily, 'compare' => $compare, 'table' => $table, 'board' => $board, 'lesson' => $lesson, 'goodness' => $scores];
     }

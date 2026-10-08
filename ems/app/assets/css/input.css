@@ -117,9 +117,16 @@
   .entity [data-results] { @apply absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-card shadow-card; }
   .tip { @apply relative inline-flex; }
   .tip-btn { @apply inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-foreground; }
-  .tip-body { @apply pointer-events-none invisible absolute left-1/2 top-6 z-30 w-64 -translate-x-1/2 rounded-lg border border-border bg-card p-3 text-left text-xs font-normal leading-relaxed text-foreground opacity-0 shadow-card; }
-  .tip-wide { width: min(22rem, calc(100vw - 2rem)); }
+  .tip-body { @apply pointer-events-none invisible absolute left-0 top-6 z-40 rounded-lg border border-border bg-card p-3 text-left text-xs font-normal leading-relaxed text-foreground opacity-0 shadow-card; width: min(16rem, calc(100vw - 2rem)); transform: none; }
+  .tip-wide { width: min(18rem, calc(100vw - 2rem)); }
   .tip:hover .tip-body, .tip:focus-within .tip-body, .tip.open .tip-body { @apply visible opacity-100; }
+  .method-note { margin: 0.25rem 1rem 0; padding: 0.85rem 1rem; border-radius: 0.75rem; background: hsl(var(--muted)); }
+  .method-note p + p { margin-top: 0.55rem; }
+  .method-steps { display: flex; flex-direction: column; }
+  .method-steps > section { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid hsl(var(--border)); }
+  .method-steps h3 { margin: 0 0 0.45rem; color: hsl(var(--foreground)); font-size: 0.95rem; font-weight: 600; }
+  .formula-scroll { overflow-x: auto; margin: 0.7rem 0; padding: 0.65rem 0.85rem; border-radius: 0.75rem; background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+  .formula-scroll math { font-size: 1.02rem; }
 }
 
 input[type='range'] {
@@ -228,8 +235,8 @@ input[type='range']::-moz-range-thumb {
 @media (min-width: 768px) { .tabbar { display: none; } }
 .touch-x { min-width: 0; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 dialog.sheet {
-  width: min(42rem, calc(100vw - 1.5rem));
-  max-height: min(85vh, 40rem);
+  width: min(48rem, calc(100vw - 1rem));
+  max-height: min(92vh, 56rem);
   margin: auto;
   padding: 0;
   border: 1px solid hsl(var(--border));
@@ -237,6 +244,13 @@ dialog.sheet {
   overflow: auto;
   background: hsl(var(--card));
   color: hsl(var(--card-foreground));
+}
+dialog.sheet .sheet-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border));
 }
 dialog.sheet::backdrop { background: rgb(0 0 0 / 0.45); }
 .touch-x::-webkit-scrollbar { display: none; }

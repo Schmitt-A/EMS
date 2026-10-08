@@ -226,15 +226,76 @@ final class Forecast
     }
 
     /**
+     * Gespeicherte DWD-Läufe eines Tages, ältester zuerst.
+     *
+     * @return array<int, array{issue:int, kwh:float, radiation:?float, sunshine_s:?float, cloud:?float, temp_c:?float, hours:int}>
+     */
+    public static function dayIssues(PDO $pdo, string $day): array
+    {
+        self::ensureIssues($pdo);
+        $stmt = $pdo->prepare('SELECT issue, kwh, radiation, sunshine_s, cloud, temp_c, hours FROM forecast_issues WHERE day = ? ORDER BY issue ASC');
+        $stmt->execute([$day]);
+        $out = [];
+        foreach ($stmt->fetchAll() ?: [] as $row) {
+            $out[] = [
+                'issue' => (int) $row['issue'],
+                'kwh' => (float) $row['kwh'],
+                'radiation' => $row['radiation'] !== null ? (float) $row['radiation'] : null,
+                'sunshine_s' => $row['sunshine_s'] !== null ? (float) $row['sunshine_s'] : null,
+                'cloud' => $row['cloud'] !== null ? (float) $row['cloud'] : null,
+                'temp_c' => $row['temp_c'] !== null ? (float) $row['temp_c'] : null,
+                'hours' => (int) $row['hours'],
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Abgeschlossene Tage für den Eichfaktor: Ist und Rohmodell, ohne heute, ohne festgehaltene und ohne verworfene Tage.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array{day:string, actual:float, raw:float, ratio:float}>
+     */
+    public static function factorSamples(array $rows, string $today): array
+    {
+        $out = [];
+        foreach ($rows as $saved) {
+            $day = (string) ($saved['day'] ?? '');
+            if ($day === '' || $day === $today) {
+                continue;
+            }
+            $mode = (string) ($saved['model_mode'] ?? '');
+            if ($mode === 'drop' || $mode === 'pin') {
+                continue;
+            }
+            $actual = $saved['actual_kwh'] ?? null;
+            $model = $saved['model_kwh'] ?? null;
+            if ($actual === null || $actual === '' || $model === null || $model === '' || (float) $model <= 1) {
+                continue;
+            }
+            $out[] = [
+                'day' => $day,
+                'actual' => (float) $actual,
+                'raw' => (float) $model,
+                'ratio' => (float) $actual / (float) $model,
+            ];
+        }
+        usort($out, static fn (array $a, array $b): int => strcmp($a['day'], $b['day']));
+        return $out;
+    }
+
+    /**
      * Rechnung des laufenden Tages: Eichfaktor in der Formel, Abweichung der Läufe, Güte als nachträglicher Vergleich.
      *
      * @param array<string, array{mean?:float, sd?:?float, n?:int}> $stats
      * @param array<string, array{kwh?:float, sd?:?float, pinned?:bool}> $captions
      * @param array<string, array{actual:float, model:float}> $complete
      * @param array<int, string> $windowDays
-     * @return array{day:string, raw:?float, sd_raw:?float, runs:int, pinned:bool, factor:float, factor_locked:bool, prognosis:?float, sd:?float, actual:?float, pairs:array<int, array{day:string, actual:float, model:float}>, sum_actual:float, sum_model:float, gute:?float, regress_days:int}
+     * @param array<int, array<string, mixed>> $issues
+     * @param array<int, array<string, mixed>> $samples
+     * @return array{day:string, raw:?float, sd_raw:?float, runs:int, pinned:bool, factor:float, factor_locked:bool, prognosis:?float, sd:?float, actual:?float, pairs:array<int, array{day:string, actual:float, model:float}>, sum_actual:float, sum_model:float, gute:?float, regress_days:int, regress_a:float, regress_b:float, issues:array, samples:array, sample_mean:?float}
      */
-    public static function lesson(string $today, array $stats, array $captions, ?float $actualToday, array $plant, array $complete, array $windowDays): array
+    public static function lesson(string $today, array $stats, array $captions, ?float $actualToday, array $plant, array $complete, array $windowDays, array $issues = [], array $samples = []): array
     {
         $stat = $stats[$today] ?? null;
         $caption = $captions[$today] ?? null;
@@ -262,6 +323,14 @@ final class Forecast
             $sumActual += $actual;
             $sumModel += $model;
         }
+        $sampleMean = null;
+        if ($samples) {
+            $ratioSum = 0.0;
+            foreach ($samples as $sample) {
+                $ratioSum += (float) ($sample['ratio'] ?? 0);
+            }
+            $sampleMean = $ratioSum / count($samples);
+        }
         return [
             'day' => $today,
             'raw' => $pinned ? null : $raw,
@@ -280,6 +349,9 @@ final class Forecast
             'regress_days' => (int) ($plant['regress_days'] ?? 0),
             'regress_a' => (float) ($plant['regress_a'] ?? 0),
             'regress_b' => (float) ($plant['regress_b'] ?? 1),
+            'issues' => array_values($issues),
+            'samples' => array_values($samples),
+            'sample_mean' => $sampleMean,
         ];
     }
 

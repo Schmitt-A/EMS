@@ -22,6 +22,18 @@ function tip(string $text, bool $wide = false): void
     echo '<span class="tip-body' . ($wide ? ' tip-wide' : '') . '" role="tooltip">' . e($text) . '</span></span>';
 }
 
+function formula(string $mathml): void
+{
+    echo '<div class="formula-scroll"><math xmlns="http://www.w3.org/1998/Math/MathML">' . $mathml . '</math></div>';
+}
+
+function mnum(?float $value, int $decimals = 2): string
+{
+    return '<mn>' . e(num($value, $decimals)) . '</mn>';
+}
+
+require __DIR__ . '/forecast_method.php';
+
 function entity_field(string $name, string $label, string $value, string $hint, string $suggest = ''): void
 {
     echo '<label class="entity block"><span class="mb-1 block text-sm font-medium">' . e($label) . '</span>';
