@@ -225,7 +225,7 @@ final class Actions
                 $patch['limit_soc'] = max(20.0, snap_percent(post_float('limit_soc', 20, 100, 80)));
             }
             if ($patch) {
-                store()->merge('vehicle', $patch);
+                self::mergeVehicle($patch);
             }
         } elseif ($section === 'chargepoint') {
             store()->merge('chargepoint', ['name' => self::name((string) ($_POST['chargepoint_name'] ?? ''), 'Wallbox')]);
@@ -377,7 +377,7 @@ final class Actions
             ]);
         }
         if (isset($data['vehicle']) && is_array($data['vehicle'])) {
-            store()->merge('vehicle', [
+            self::mergeVehicle([
                 'name' => self::name((string) ($data['vehicle']['name'] ?? ''), 'Auto'),
                 'limit_soc' => max(20.0, snap_percent(self::clamped($data['vehicle']['limit_soc'] ?? null, 20, 100, 80))),
             ]);
@@ -526,6 +526,16 @@ final class Actions
         );
         store()->merge('battery_strategy', $zones);
         return $zones;
+    }
+
+    /** Speichert Fahrzeugwerte; ein neuer Name gilt auch für die bisherigen Vorgänge des Recorders. */
+    private static function mergeVehicle(array $patch): void
+    {
+        $before = (string) (cfg()['vehicle']['name'] ?? 'Auto');
+        store()->merge('vehicle', $patch);
+        if (isset($patch['name'])) {
+            (new Sessions(store()))->renameVehicle($before, (string) $patch['name']);
+        }
     }
 
     private static function name(string $value, string $fallback): string

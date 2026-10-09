@@ -328,4 +328,24 @@ if (is_file($kmz)) {
     check($peak > 50 && $peak < 1400, 'Strahlung der echten Datei in W/m², Spitze ' . round($peak));
 }
 
+if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
+    $file = tempnam(sys_get_temp_dir(), 'ems-selftest');
+    $sessionStore = new ConfigStore($file);
+    $insert = $sessionStore->pdo()->prepare('INSERT INTO sessions (started_at, ended_at, vehicle, source) VALUES (?, ?, ?, ?)');
+    $insert->execute(['2026-10-01T10:00:00+02:00', '2026-10-01T12:00:00+02:00', 'Laden', 'recorder']);
+    $insert->execute(['2026-10-02T10:00:00+02:00', '2026-10-02T12:00:00+02:00', 'Golf', 'import']);
+    $insert->execute(['2026-10-03T10:00:00+02:00', null, 'Laden', 'recorder']);
+    $sessions = new Sessions($sessionStore);
+    $sessions->repairVehicleNames('Auto');
+    $vehicles = $sessionStore->pdo()->query('SELECT vehicle FROM sessions ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
+    check($vehicles === ['Auto', 'Golf', 'Auto'], 'Statustexte als Fahrzeug werden einmalig zum Namen, Importe bleiben');
+    $sessions->renameVehicle('Auto', 'ID.3');
+    $vehicles = $sessionStore->pdo()->query('SELECT vehicle FROM sessions ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
+    check($vehicles === ['ID.3', 'Golf', 'ID.3'], 'ein neuer Fahrzeugname gilt für die Vorgänge des Recorders');
+    check($sessions->delete(1) && !$sessions->delete(3) && count($sessions->all()) === 2, 'Löschen nur für abgeschlossene Vorgänge');
+    foreach (['', '-wal', '-shm'] as $suffix) {
+        @unlink($file . $suffix);
+    }
+}
+
 echo "alle prüfungen bestanden\n";

@@ -76,6 +76,15 @@ final class Sessions
         $this->store->put('vehicle_repair', '1');
     }
 
+    /** Eine Wallbox, ein Auto: bekommt das Auto einen neuen Namen, ziehen die Vorgänge des Recorders mit. */
+    public function renameVehicle(string $from, string $to): void
+    {
+        if ($from === $to || trim($to) === '') {
+            return;
+        }
+        $this->store->pdo()->prepare("UPDATE sessions SET vehicle = ? WHERE source = 'recorder' AND vehicle = ?")->execute([$to, $from]);
+    }
+
     public function find(int $id): ?array
     {
         $stmt = $this->store->pdo()->prepare('SELECT * FROM sessions WHERE id = ?');

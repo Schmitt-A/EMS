@@ -4,6 +4,18 @@ Energie-App für eine PV-Anlage, einen Speicher, einen Zähler und eine Wallbox.
 
 Im Add-on spricht sie über den Supervisor. Lokal liegen Adresse und Token in `.env` (Vorlage: `.env.example`). Die Datei wird nicht eingecheckt.
 
+## Oberfläche
+
+Fünf Bereiche, auf dem Handy als Tab-Leiste unten, ab 1024 px als Leiste links:
+
+- **Laden:** Energiefluss als Balken (rein und raus), die Ladepunkt-Karte mit Modus (Aus, Solar, Min+Solar, Schnell), Leistung, geladener Energie, Restzeit und Ladebalken mit ziehbarem Limit. Ladeparameter und Fahrzeug öffnen sich als Sheet.
+- **Speicher:** die Säule mit den Zonen Haus, Auto und batteriegestützt, Grenzen zum Ziehen, wann sie erreicht sind, und der Verlauf.
+- **Prognose:** Sonne der nächsten drei Tage, Ist gegen Prognose, Güte, Modelle, Rechnung und Wetter.
+- **Ladevorgänge:** Monat, Jahr oder Gesamt mit Energie, Kosten oder CO₂, Solaranteil und alle Vorgänge mit Kilometerstand und Löschen.
+- **Mehr:** Ladepunkt, Fahrzeug, Energie (Zuordnung), Prognose, Tarif & CO₂, Darstellung und System mit Verbindung und JSON-Export.
+
+Hell und Dunkel folgen dem Gerät oder lassen sich unter Mehr → Darstellung festlegen. Die Seiten laden nichts von fremden Servern.
+
 ## Lokal
 
 ```sh
@@ -16,6 +28,15 @@ EMS_DATA=./data php ems/bin/recorder.php
 ```
 
 Dieselbe Anwendung im Container: `docker compose up --build` und danach http://127.0.0.1:8099.
+
+Ohne Home Assistant zeigt der Demo-Modus eine Beispielanlage mit drei Jahren Ladevorgängen:
+
+```sh
+EMS_DEMO=1 EMS_DATA=/tmp/ems-demo php ems/bin/demo-seed.php
+EMS_DEMO=1 EMS_DATA=/tmp/ems-demo php -S 127.0.0.1:8099 -t ems/app/public ems/app/public/router.php
+```
+
+Prüfungen: `php ems/bin/selftest.php` für die Rechnungen, im Ordner `ems` dann `npm run check:contrast` für die Farben und `npm run check:ui` (braucht Google Chrome) für alle Seiten von 360 bis 1920 px, hell und dunkel, mit axe.
 
 ## Home Assistant
 

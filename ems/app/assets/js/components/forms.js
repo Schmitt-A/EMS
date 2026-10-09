@@ -168,6 +168,15 @@ function bindEntities(root) {
   }
 }
 
+// Assistent: die quer scrollbare Schrittleiste zeigt den aktuellen Schritt, ohne die Seite zu bewegen.
+function bindSteps(root) {
+  const current = $('.steps [aria-current="step"]', root);
+  const list = current?.closest('.steps');
+  if (!list) return;
+  const offset = current.getBoundingClientRect().left - list.getBoundingClientRect().left + list.scrollLeft;
+  list.scrollLeft = Math.max(0, offset - (list.clientWidth - current.offsetWidth) / 2);
+}
+
 // Fehler aus Komponenten als kurze Meldung im Kopf zeigen.
 function bindErrors() {
   document.addEventListener('ems:error', (event) => {
@@ -190,6 +199,7 @@ export function initForms(root = document) {
   bindAutosubmit(root);
   bindTheme(root);
   bindEntities(root);
+  bindSteps(root);
 }
 
 export function initGlobal() {
