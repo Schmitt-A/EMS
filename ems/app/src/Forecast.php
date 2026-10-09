@@ -103,7 +103,7 @@ final class Forecast
         if ($sd === null) {
             return kwh($kwh, 1);
         }
-        return num($kwh, 1) . ' ± ' . num($sd, 1) . ' kWh';
+        return num($kwh, 1) . ' ± ' . num($sd, 1) . NNBSP . 'kWh';
     }
 
     /** Feste 0,5-kWh-Schritte. Zwei Schritte bleiben über dem höchsten Punkt frei, dort steht die Tageszahl. */

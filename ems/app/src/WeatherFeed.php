@@ -62,8 +62,9 @@ final class WeatherFeed
             return $this->meta();
         }
         try {
-            $bytes = $this->download($this->url());
-            $parsed = self::parse(self::kmlFromKmz($bytes));
+            $parsed = demo_mode()
+                ? DemoModel::load()->weatherFile(time())
+                : self::parse(self::kmlFromKmz($this->download($this->url())));
             $pdo = $this->store->pdo();
             $pdo->beginTransaction();
             $stmt = $pdo->prepare('INSERT INTO weather_hours (t, radiation, cloud, sunshine_s, temp_c) VALUES (?, ?, ?, ?, ?) ON CONFLICT(t) DO UPDATE SET radiation = excluded.radiation, cloud = excluded.cloud, sunshine_s = excluded.sunshine_s, temp_c = excluded.temp_c');

@@ -184,11 +184,11 @@ final class Energy
                 $floor = self::KW_PER_AMP * $minA * ($phaseMode === '3p' ? 3 : 1);
                 if ($target < $floor) {
                     $target = $floor;
-                    $reason = 'Dauerhaft mindestens ' . $minA . ' A.';
+                    $reason = 'Dauerhaft mindestens ' . $minA . NNBSP . 'A.';
                 }
             } elseif ($target < self::KW_PER_AMP * $minA) {
                 $target = 0.0;
-                $reason = 'Unter ' . num(self::KW_PER_AMP * $minA, 2) . ' kW, Laden würde aussetzen.';
+                $reason = 'Unter ' . num(self::KW_PER_AMP * $minA, 2) . NNBSP . 'kW, Laden würde aussetzen.';
             }
         }
 

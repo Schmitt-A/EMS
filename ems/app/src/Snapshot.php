@@ -5,7 +5,7 @@ final class Snapshot
 {
     public function __construct(
         private ConfigStore $store,
-        private HaClient $ha,
+        private HaSource $ha,
     ) {}
 
     public function build(bool $persistLatch = true): array
@@ -283,7 +283,7 @@ final class Snapshot
             'wallbox' => kw($v['wallbox_kw'] ?? null),
             'in' => kw($b['in_kw'] ?? null),
             'out' => kw($b['out_kw'] ?? null),
-            'diff' => ($b['diff_kw'] ?? null) === null ? '—' : num((float) $b['diff_kw'], 2) . ' kW',
+            'diff' => ($b['diff_kw'] ?? null) === null ? '—' : num((float) $b['diff_kw'], 2) . NNBSP . 'kW',
             'charge' => kw($v['battery_charge_kw'] ?? null),
             'discharge' => kw($v['battery_discharge_kw'] ?? null),
             'import' => kw($v['grid_import_kw'] ?? null),
@@ -346,19 +346,19 @@ final class Snapshot
         if ($total === null || $total <= 0) {
             return 'aktuell ' . kwh($now, 1) . '. Gesamtkapazität fehlt in den Einstellungen.';
         }
-        return 'aktuell ' . num($now, 1) . ' / ' . num($total, 1) . ' kWh';
+        return 'aktuell ' . num($now, 1) . ' / ' . num($total, 1) . NNBSP . 'kWh';
     }
 
     private function levelKwh(?float $stored, ?float $soc, ?float $full, bool $preferStored): string
     {
         if ($preferStored && $stored !== null) {
-            return num($stored, 1) . ' kWh';
+            return num($stored, 1) . NNBSP . 'kWh';
         }
         if ($full !== null && $full > 0 && $soc !== null) {
-            return num($full * max(0, min(100, $soc)) / 100, 1) . ' kWh';
+            return num($full * max(0, min(100, $soc)) / 100, 1) . NNBSP . 'kWh';
         }
         if ($soc !== null) {
-            return num($soc, 0) . ' %';
+            return num($soc, 0) . NNBSP . '%';
         }
         return '—';
     }
@@ -368,10 +368,10 @@ final class Snapshot
         if ($soc !== null && $capacity !== null && $capacity > 0) {
             $stored = $capacity * max(0, min(100, $soc)) / 100;
 
-            return num($stored, 1) . ' / ' . num($capacity, 1) . ' kWh';
+            return num($stored, 1) . ' / ' . num($capacity, 1) . NNBSP . 'kWh';
         }
         if ($capacity !== null && $capacity > 0) {
-            return 'Kapazität ' . num($capacity, 1) . ' kWh. Der Ladestand fehlt noch.';
+            return 'Kapazität ' . num($capacity, 1) . NNBSP . 'kWh. Der Ladestand fehlt noch.';
         }
         if ($soc !== null) {
             return 'Der Ladestand ist da. Die Kapazität fehlt noch.';
@@ -387,12 +387,12 @@ final class Snapshot
         }
         if ($soc !== null && $capacity !== null && $capacity > 0) {
             $stored = $capacity * max(0, min(100, $soc)) / 100;
-            return 'Auto ' . num($soc, 0) . ' % · ' . num($stored, 1) . ' / ' . num($capacity, 1) . ' kWh';
+            return 'Auto ' . num($soc, 0) . NNBSP . '% · ' . num($stored, 1) . ' / ' . num($capacity, 1) . NNBSP . 'kWh';
         }
         if ($soc !== null) {
-            return 'Auto ' . num($soc, 0) . ' %. Die Kapazität fehlt noch.';
+            return 'Auto ' . num($soc, 0) . NNBSP . '%. Die Kapazität fehlt noch.';
         }
-        return 'Kapazität ' . num($capacity, 1) . ' kWh. Der Ladestand fehlt noch.';
+        return 'Kapazität ' . num($capacity, 1) . NNBSP . 'kWh. Der Ladestand fehlt noch.';
     }
 
     /** @param array{already_full?:bool, reachable?:bool, full_at?:?int, house_missing?:bool} $storage */
@@ -419,7 +419,7 @@ final class Snapshot
         if (empty($storage['priority_open'])) {
             return '';
         }
-        $mark = num($priority, 0) . ' %';
+        $mark = num($priority, 0) . NNBSP . '%';
         if (!empty($storage['priority_reached'])) {
             return 'Speicher-Vorrang ' . $mark . ' ist erreicht.';
         }
@@ -438,7 +438,7 @@ final class Snapshot
     /** @param array{buffer_open?:bool, buffer_reached?:bool, reachable?:bool, buffer_at?:?int, house_missing?:bool} $storage */
     private function bufferText(array $storage, float $buffer): string
     {
-        $mark = num($buffer, 0) . ' %';
+        $mark = num($buffer, 0) . NNBSP . '%';
         if ($buffer >= 99.5 || empty($storage['buffer_open'])) {
             return 'Batteriegestütztes Laden ist bei ' . $mark . '. Der Hausspeicher bleibt fürs Haus.';
         }
@@ -477,9 +477,9 @@ final class Snapshot
         $import = $import ?? 0;
         $export = $export ?? 0;
         if ($export > $import) {
-            return num($export, 2) . ' kW Einspeisung';
+            return num($export, 2) . NNBSP . 'kW Einspeisung';
         }
-        return num($import, 2) . ' kW Bezug';
+        return num($import, 2) . NNBSP . 'kW Bezug';
     }
 
     private function gridMagnitude(?float $import, ?float $export): string
@@ -494,7 +494,7 @@ final class Snapshot
     {
         $amps = (int) ($setpoint['latched_amps'] ?? 0);
         $phases = (int) ($setpoint['latched_phases'] ?? 1);
-        $text = $amps === 0 ? 'Vorschlag: aus' : 'Vorschlag: ' . $amps . ' A, ' . $phases . '-phasig';
+        $text = $amps === 0 ? 'Vorschlag: aus' : 'Vorschlag: ' . $amps . NNBSP . 'A, ' . $phases . '-phasig';
         $wait = (int) ($setpoint['wait_s'] ?? 0);
         if ($wait > 0) {
             $text .= ' in ' . $wait . ' s';

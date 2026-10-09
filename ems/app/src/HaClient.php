@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-final class HaClient
+final class HaClient implements HaSource
 {
     private string $pending = '';
 

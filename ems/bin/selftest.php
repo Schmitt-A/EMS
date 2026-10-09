@@ -139,8 +139,11 @@ sort($three);
 check($three === ['2026-10-05', '2026-10-06', '2026-10-07'], 'Gütefenster drei abgeschlossene Tage');
 check(Forecast::windowDays(['2026-10-05', '2026-09-30'], '2026-10-08', 'month') === ['2026-10-05'], 'Gütefenster Monat');
 check(Forecast::windowDays(['2026-10-05', '2026-09-30'], '2026-10-08', 'quarter') === ['2026-10-05'], 'Gütefenster Quartal');
-check(Forecast::captionText(10.47, 0.04) === '10,5 ± 0,0 kWh', 'Beschriftung rundet wie die Tabelle');
-check(Forecast::captionText(10.7, null) === '10,7 kWh', 'ohne Streuung nur der Prognosewert');
+check(Forecast::captionText(10.47, 0.04) === '10,5 ± 0,0' . NNBSP . 'kWh', 'Beschriftung rundet wie die Tabelle');
+check(Forecast::captionText(10.7, null) === '10,7' . NNBSP . 'kWh', 'ohne Streuung nur der Prognosewert');
+check(kw(11.0) === '11,0' . NNBSP . 'kW' && pct(57.0) === '57' . NNBSP . '%' && euro(500.7) === '500,70' . NNBSP . '€', 'Einheit mit schmalem Leerzeichen, Leistung mit einer Stelle');
+check(kw(0.234, 2) === '0,23' . NNBSP . 'kW' && kw(null) === '—', 'Regelungsdetails mit zwei Stellen, fehlender Wert als Strich');
+check(metric(57.84, '%', 1) === '<span class="num">57,8</span>' . NNBSP . '<span class="unit">%</span>', 'Kennzahl trennt Zahl und Einheit');
 $scale = Forecast::energyScale(5.248);
 check(abs($scale['dataMax'] - 5.5) < 0.001 && abs($scale['max'] - 6.5) < 0.001 && abs($scale['step'] - 0.5) < 0.001, 'Energieskala in 0,5-kWh-Schritten mit Platz über der Kurve');
 $exact = Forecast::energyScale(5.0);
@@ -301,7 +304,13 @@ $orderedZones = zone_thresholds(82, 70, 60);
 check(abs($sampleZones['priority_soc'] - 50) < 0.01 && abs($sampleZones['car_buffer_soc'] - 80) < 0.01 && abs($sampleZones['car_auto_soc'] - 90) < 0.01, 'Beispielzonen 50, 80 und 90 bleiben stehen');
 check(abs($orderedZones['priority_soc'] - 80) < 0.01 && abs($orderedZones['car_buffer_soc'] - 80) < 0.01 && abs($orderedZones['car_auto_soc'] - 80) < 0.01, 'Zonen rasten auf 5 Prozent und bleiben geordnet');
 $batteryIcon = icon('battery');
-check(str_contains($batteryIcon, 'width="16"') && str_contains($batteryIcon, 'width="9"'), 'Batterie-Icon behält die Flächen');
+check(str_contains($batteryIcon, 'icons.svg') && str_contains($batteryIcon, '#battery"') && str_contains($batteryIcon, 'aria-hidden="true"'), 'Icon verweist ins Sprite');
+$sprite = @file_get_contents(EMS_APP . '/public/assets/build/icons.svg');
+if (is_string($sprite)) {
+    preg_match('/<symbol id="battery"[^>]*>(.*?)<\/symbol>/s', $sprite, $batterySymbol);
+    check(isset($batterySymbol[1]) && str_contains($batterySymbol[1], 'width="16"') && str_contains($batterySymbol[1], 'width="9"'), 'Batterie im Sprite behält die Flächen');
+    check(str_contains($sprite, 'stroke-width="1.75"'), 'Sprite mit 1,75 px Strich');
+}
 
 $kmz = '/tmp/MOSMIX_L_LATEST_F9519.kmz';
 if (is_file($kmz)) {

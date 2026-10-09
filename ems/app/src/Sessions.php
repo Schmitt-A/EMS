@@ -90,7 +90,7 @@ final class Sessions
         $stmt->execute([$km, $id]);
     }
 
-    public function import(HaClient $ha): array
+    public function import(HaSource $ha): array
     {
         $state = $ha->state('sensor.ems_ladelog_historie');
         $sessions = is_array($state) ? ($state['attributes']['sessions'] ?? null) : null;

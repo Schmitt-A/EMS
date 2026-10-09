@@ -5,7 +5,7 @@ final class Series
 {
     private ?string $statNote = null;
 
-    public function __construct(private ConfigStore $store, private HaClient $ha) {}
+    public function __construct(private ConfigStore $store, private HaSource $ha) {}
 
     public function yieldToday(array $mapping, ?string $powerUnit = 'W'): ?float
     {

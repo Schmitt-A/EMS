@@ -108,6 +108,9 @@ function flash(?string $message = null): ?string
     return is_string($current) ? $current : null;
 }
 
+/** Schmales, nicht umbrechendes Leerzeichen zwischen Zahl und Einheit. */
+const NNBSP = "\u{202F}";
+
 function num(?float $value, int $decimals = 2): string
 {
     if ($value === null || is_nan($value)) {
@@ -116,34 +119,65 @@ function num(?float $value, int $decimals = 2): string
     return number_format($value, $decimals, ',', '.');
 }
 
-function kw(?float $value): string
+function with_unit(?float $value, int $decimals, string $unit): string
 {
-    return $value === null ? '—' : num($value, 2) . ' kW';
+    return $value === null || is_nan($value) ? '—' : num($value, $decimals) . NNBSP . $unit;
+}
+
+function kw(?float $value, int $decimals = 1): string
+{
+    return with_unit($value, $decimals, 'kW');
 }
 
 function kwh(?float $value, int $decimals = 1): string
 {
-    return $value === null ? '—' : num($value, $decimals) . ' kWh';
+    return with_unit($value, $decimals, 'kWh');
 }
 
 function pct(?float $value, int $decimals = 0): string
 {
-    return $value === null ? '—' : num($value, $decimals) . ' %';
+    return with_unit($value, $decimals, '%');
 }
 
 function amps(?float $value): string
 {
-    return $value === null ? '—' : num($value, 0) . ' A';
+    return with_unit($value, 0, 'A');
 }
 
 function ct(?float $value): string
 {
-    return $value === null ? '—' : num($value, 1) . ' ct/kWh';
+    return with_unit($value, 1, 'ct/kWh');
 }
 
 function euro(?float $value): string
 {
-    return $value === null ? '—' : num($value, 2) . ' €';
+    return with_unit($value, 2, '€');
+}
+
+/** Zahl und Einheit als zwei Spans, die Einheit eine Stufe kleiner und leichter. */
+function metric(?float $value, string $unit, int $decimals = 1): string
+{
+    if ($value === null || is_nan($value)) {
+        return '<span class="num">—</span>';
+    }
+    return '<span class="num">' . e(num($value, $decimals)) . '</span>' . NNBSP . '<span class="unit">' . e($unit) . '</span>';
+}
+
+function demo_mode(): bool
+{
+    return getenv('EMS_DEMO') === '1';
+}
+
+/** Gebaute Datei unter /assets/build mit Inhalts-Hash als Version. */
+function asset(string $file): string
+{
+    static $manifest = null;
+    if ($manifest === null) {
+        $json = @file_get_contents(EMS_APP . '/public/assets/build/manifest.json');
+        $manifest = is_string($json) ? (json_decode($json, true) ?: []) : [];
+    }
+    $version = $manifest[$file] ?? '';
+    return url('/assets/build/' . $file) . ($version !== '' ? '?v=' . $version : '');
 }
 
 function duration_label(int $seconds): string
@@ -160,19 +194,11 @@ function duration_label(int $seconds): string
     return $hours . ' h ' . $rest . ' min';
 }
 
-function icon(string $name, string $class = 'h-4 w-4'): string
+/** Icon aus dem Sprite. Die Größe kommt über die Klasse, die Farbe über currentColor. */
+function icon(string $name, string $class = 'icon-16'): string
 {
-    $file = EMS_APP . '/assets/icons/' . basename($name) . '.svg';
-    if (!is_file($file)) {
-        return '';
-    }
-    $svg = (string) file_get_contents($file);
-    $svg = preg_replace('/<!--.*?-->/s', '', $svg) ?? $svg;
-    $svg = preg_replace_callback('/<svg\b([^>]*)>/', static function (array $match) use ($class): string {
-        $attrs = preg_replace('/\s(?:width|height|class)="[^"]*"/', '', $match[1]) ?? $match[1];
-        return '<svg' . $attrs . ' class="' . e($class) . ' overflow-visible" overflow="visible" aria-hidden="true">';
-    }, $svg, 1) ?? $svg;
-    return $svg;
+    $id = preg_replace('/[^a-z0-9-]/', '', strtolower($name)) ?? '';
+    return '<svg class="icon ' . e($class) . '" aria-hidden="true" focusable="false"><use href="' . e(asset('icons.svg')) . '#' . $id . '"></use></svg>';
 }
 
 function month_label(string $month): string
@@ -338,11 +364,16 @@ function save_connection(string $url, ?string $token): void
 function render(string $view, array $data = []): never
 {
     $data['flash'] = flash();
+    $layout = (string) ($data['layout'] ?? 'layout');
+    if ($layout === 'shell') {
+        header("Content-Security-Policy: default-src 'self'");
+        header('X-Content-Type-Options: nosniff');
+    }
     extract($data, EXTR_SKIP);
     ob_start();
     require EMS_APP . '/views/' . $view . '.php';
     $content = ob_get_clean();
-    require EMS_APP . '/views/layout.php';
+    require EMS_APP . '/views/' . ($layout === 'shell' ? 'shell' : 'layout') . '.php';
     exit;
 }
 

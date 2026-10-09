@@ -1,0 +1,6322 @@
+{
+ "beschreibung": "Beispieldaten für EMS_DEMO=1. Erzeugt von bin/demo-data.mjs, Zeitangaben relativ zum Einspielen.",
+ "anlage": {
+  "kwp": 14,
+  "wechselrichter_kw": 12,
+  "neigung": 30,
+  "ausrichtung": 180,
+  "speicher_kwh": 13.4,
+  "speicher_max_kw": 5
+ },
+ "ladepunkt": {
+  "name": "Garage"
+ },
+ "fahrzeug": {
+  "name": "ID.3",
+  "kapazitaet_kwh": 77,
+  "reichweite_voll_km": 520,
+  "limit": 80,
+  "soc_morgens": 38
+ },
+ "tarif": {
+  "bezug_ct": 34.7,
+  "einspeisung_ct": 8.1,
+  "co2_g_kwh": 380
+ },
+ "haus": {
+  "grundlast_kw": 0.28,
+  "profil": [
+   0.05,
+   0.04,
+   0.04,
+   0.04,
+   0.05,
+   0.12,
+   0.45,
+   0.62,
+   0.48,
+   0.32,
+   0.3,
+   0.38,
+   0.52,
+   0.36,
+   0.28,
+   0.3,
+   0.38,
+   0.62,
+   0.95,
+   1.1,
+   0.92,
+   0.66,
+   0.34,
+   0.14
+  ]
+ },
+ "speicher_grenzen": {
+  "priority_soc": 50,
+  "car_buffer_soc": 80,
+  "car_auto_soc": 90
+ },
+ "tage": [
+  {
+   "offset": -150,
+   "sonne": 0.504,
+   "prognose_fehler": 0.977,
+   "temp_mittel": 12.2
+  },
+  {
+   "offset": -149,
+   "sonne": 0.511,
+   "prognose_fehler": 1.026,
+   "temp_mittel": 12.6
+  },
+  {
+   "offset": -148,
+   "sonne": 0.913,
+   "prognose_fehler": 0.943,
+   "temp_mittel": 14.2
+  },
+  {
+   "offset": -147,
+   "sonne": 0.34,
+   "prognose_fehler": 0.982,
+   "temp_mittel": 14.7
+  },
+  {
+   "offset": -146,
+   "sonne": 0.941,
+   "prognose_fehler": 0.931,
+   "temp_mittel": 13.5
+  },
+  {
+   "offset": -145,
+   "sonne": 1,
+   "prognose_fehler": 1.131,
+   "temp_mittel": 14.2
+  },
+  {
+   "offset": -144,
+   "sonne": 0.813,
+   "prognose_fehler": 1.054,
+   "temp_mittel": 13.7
+  },
+  {
+   "offset": -143,
+   "sonne": 0.355,
+   "prognose_fehler": 0.961,
+   "temp_mittel": 16.9
+  },
+  {
+   "offset": -142,
+   "sonne": 0.684,
+   "prognose_fehler": 1.035,
+   "temp_mittel": 13.6
+  },
+  {
+   "offset": -141,
+   "sonne": 0.712,
+   "prognose_fehler": 1.075,
+   "temp_mittel": 18
+  },
+  {
+   "offset": -140,
+   "sonne": 0.671,
+   "prognose_fehler": 0.937,
+   "temp_mittel": 18.6
+  },
+  {
+   "offset": -139,
+   "sonne": 0.473,
+   "prognose_fehler": 1.063,
+   "temp_mittel": 19.2
+  },
+  {
+   "offset": -138,
+   "sonne": 0.984,
+   "prognose_fehler": 0.986,
+   "temp_mittel": 17.5
+  },
+  {
+   "offset": -137,
+   "sonne": 0.766,
+   "prognose_fehler": 1.062,
+   "temp_mittel": 14.7
+  },
+  {
+   "offset": -136,
+   "sonne": 0.737,
+   "prognose_fehler": 1.032,
+   "temp_mittel": 16.3
+  },
+  {
+   "offset": -135,
+   "sonne": 0.534,
+   "prognose_fehler": 0.888,
+   "temp_mittel": 18.1
+  },
+  {
+   "offset": -134,
+   "sonne": 0.889,
+   "prognose_fehler": 0.935,
+   "temp_mittel": 14.1
+  },
+  {
+   "offset": -133,
+   "sonne": 0.511,
+   "prognose_fehler": 0.903,
+   "temp_mittel": 17.1
+  },
+  {
+   "offset": -132,
+   "sonne": 0.792,
+   "prognose_fehler": 1.13,
+   "temp_mittel": 14.7
+  },
+  {
+   "offset": -131,
+   "sonne": 0.808,
+   "prognose_fehler": 0.91,
+   "temp_mittel": 18.9
+  },
+  {
+   "offset": -130,
+   "sonne": 0.99,
+   "prognose_fehler": 1.045,
+   "temp_mittel": 19.6
+  },
+  {
+   "offset": -129,
+   "sonne": 1,
+   "prognose_fehler": 0.97,
+   "temp_mittel": 17.9
+  },
+  {
+   "offset": -128,
+   "sonne": 0.479,
+   "prognose_fehler": 1.017,
+   "temp_mittel": 16.3
+  },
+  {
+   "offset": -127,
+   "sonne": 0.694,
+   "prognose_fehler": 0.87,
+   "temp_mittel": 16.1
+  },
+  {
+   "offset": -126,
+   "sonne": 0.716,
+   "prognose_fehler": 0.962,
+   "temp_mittel": 19.6
+  },
+  {
+   "offset": -125,
+   "sonne": 0.626,
+   "prognose_fehler": 1.126,
+   "temp_mittel": 18.2
+  },
+  {
+   "offset": -124,
+   "sonne": 0.607,
+   "prognose_fehler": 0.876,
+   "temp_mittel": 15.8
+  },
+  {
+   "offset": -123,
+   "sonne": 0.703,
+   "prognose_fehler": 1.035,
+   "temp_mittel": 20.2
+  },
+  {
+   "offset": -122,
+   "sonne": 0.631,
+   "prognose_fehler": 1.123,
+   "temp_mittel": 20.7
+  },
+  {
+   "offset": -121,
+   "sonne": 0.881,
+   "prognose_fehler": 0.994,
+   "temp_mittel": 19.4
+  },
+  {
+   "offset": -120,
+   "sonne": 0.907,
+   "prognose_fehler": 1.113,
+   "temp_mittel": 16.4
+  },
+  {
+   "offset": -119,
+   "sonne": 0.718,
+   "prognose_fehler": 1.089,
+   "temp_mittel": 16.4
+  },
+  {
+   "offset": -118,
+   "sonne": 0.815,
+   "prognose_fehler": 0.945,
+   "temp_mittel": 18.5
+  },
+  {
+   "offset": -117,
+   "sonne": 0.921,
+   "prognose_fehler": 0.939,
+   "temp_mittel": 20.8
+  },
+  {
+   "offset": -116,
+   "sonne": 0.72,
+   "prognose_fehler": 1.077,
+   "temp_mittel": 17.6
+  },
+  {
+   "offset": -115,
+   "sonne": 0.812,
+   "prognose_fehler": 0.96,
+   "temp_mittel": 18.9
+  },
+  {
+   "offset": -114,
+   "sonne": 0.881,
+   "prognose_fehler": 0.868,
+   "temp_mittel": 20.8
+  },
+  {
+   "offset": -113,
+   "sonne": 1,
+   "prognose_fehler": 1.115,
+   "temp_mittel": 19.8
+  },
+  {
+   "offset": -112,
+   "sonne": 0.781,
+   "prognose_fehler": 0.977,
+   "temp_mittel": 15.9
+  },
+  {
+   "offset": -111,
+   "sonne": 0.7,
+   "prognose_fehler": 0.923,
+   "temp_mittel": 16.3
+  },
+  {
+   "offset": -110,
+   "sonne": 0.694,
+   "prognose_fehler": 0.947,
+   "temp_mittel": 20.3
+  },
+  {
+   "offset": -109,
+   "sonne": 1,
+   "prognose_fehler": 0.902,
+   "temp_mittel": 17.5
+  },
+  {
+   "offset": -108,
+   "sonne": 0.541,
+   "prognose_fehler": 1.027,
+   "temp_mittel": 15.7
+  },
+  {
+   "offset": -107,
+   "sonne": 0.82,
+   "prognose_fehler": 1.107,
+   "temp_mittel": 18.4
+  },
+  {
+   "offset": -106,
+   "sonne": 0.825,
+   "prognose_fehler": 1.111,
+   "temp_mittel": 19.3
+  },
+  {
+   "offset": -105,
+   "sonne": 0.541,
+   "prognose_fehler": 1.097,
+   "temp_mittel": 19.1
+  },
+  {
+   "offset": -104,
+   "sonne": 0.609,
+   "prognose_fehler": 1.056,
+   "temp_mittel": 21
+  },
+  {
+   "offset": -103,
+   "sonne": 0.742,
+   "prognose_fehler": 0.952,
+   "temp_mittel": 17.8
+  },
+  {
+   "offset": -102,
+   "sonne": 0.648,
+   "prognose_fehler": 0.986,
+   "temp_mittel": 17.8
+  },
+  {
+   "offset": -101,
+   "sonne": 0.988,
+   "prognose_fehler": 0.908,
+   "temp_mittel": 21.1
+  },
+  {
+   "offset": -100,
+   "sonne": 1,
+   "prognose_fehler": 0.874,
+   "temp_mittel": 17.9
+  },
+  {
+   "offset": -99,
+   "sonne": 0.544,
+   "prognose_fehler": 0.883,
+   "temp_mittel": 17.3
+  },
+  {
+   "offset": -98,
+   "sonne": 0.681,
+   "prognose_fehler": 1.083,
+   "temp_mittel": 21.6
+  },
+  {
+   "offset": -97,
+   "sonne": 0.584,
+   "prognose_fehler": 1.039,
+   "temp_mittel": 19.8
+  },
+  {
+   "offset": -96,
+   "sonne": 0.439,
+   "prognose_fehler": 0.997,
+   "temp_mittel": 20.1
+  },
+  {
+   "offset": -95,
+   "sonne": 0.862,
+   "prognose_fehler": 1.062,
+   "temp_mittel": 17.8
+  },
+  {
+   "offset": -94,
+   "sonne": 0.872,
+   "prognose_fehler": 0.935,
+   "temp_mittel": 21.9
+  },
+  {
+   "offset": -93,
+   "sonne": 1,
+   "prognose_fehler": 1.078,
+   "temp_mittel": 17.6
+  },
+  {
+   "offset": -92,
+   "sonne": 0.454,
+   "prognose_fehler": 1.01,
+   "temp_mittel": 20.9
+  },
+  {
+   "offset": -91,
+   "sonne": 0.646,
+   "prognose_fehler": 0.878,
+   "temp_mittel": 16.2
+  },
+  {
+   "offset": -90,
+   "sonne": 0.648,
+   "prognose_fehler": 0.978,
+   "temp_mittel": 16
+  },
+  {
+   "offset": -89,
+   "sonne": 0.963,
+   "prognose_fehler": 1.088,
+   "temp_mittel": 21.2
+  },
+  {
+   "offset": -88,
+   "sonne": 1,
+   "prognose_fehler": 0.864,
+   "temp_mittel": 16.5
+  },
+  {
+   "offset": -87,
+   "sonne": 0.811,
+   "prognose_fehler": 0.957,
+   "temp_mittel": 19.4
+  },
+  {
+   "offset": -86,
+   "sonne": 0.859,
+   "prognose_fehler": 1.031,
+   "temp_mittel": 16.6
+  },
+  {
+   "offset": -85,
+   "sonne": 1,
+   "prognose_fehler": 1.126,
+   "temp_mittel": 20.9
+  },
+  {
+   "offset": -84,
+   "sonne": 0.988,
+   "prognose_fehler": 0.966,
+   "temp_mittel": 16
+  },
+  {
+   "offset": -83,
+   "sonne": 0.935,
+   "prognose_fehler": 1.091,
+   "temp_mittel": 17.8
+  },
+  {
+   "offset": -82,
+   "sonne": 0.918,
+   "prognose_fehler": 1.015,
+   "temp_mittel": 16.2
+  },
+  {
+   "offset": -81,
+   "sonne": 0.924,
+   "prognose_fehler": 0.883,
+   "temp_mittel": 21.3
+  },
+  {
+   "offset": -80,
+   "sonne": 0.509,
+   "prognose_fehler": 0.861,
+   "temp_mittel": 17.1
+  },
+  {
+   "offset": -79,
+   "sonne": 0.834,
+   "prognose_fehler": 0.904,
+   "temp_mittel": 19.4
+  },
+  {
+   "offset": -78,
+   "sonne": 0.606,
+   "prognose_fehler": 1.131,
+   "temp_mittel": 17.4
+  },
+  {
+   "offset": -77,
+   "sonne": 0.682,
+   "prognose_fehler": 1.109,
+   "temp_mittel": 19.6
+  },
+  {
+   "offset": -76,
+   "sonne": 0.466,
+   "prognose_fehler": 1.052,
+   "temp_mittel": 17.6
+  },
+  {
+   "offset": -75,
+   "sonne": 0.979,
+   "prognose_fehler": 1.095,
+   "temp_mittel": 16.2
+  },
+  {
+   "offset": -74,
+   "sonne": 1,
+   "prognose_fehler": 0.945,
+   "temp_mittel": 17.2
+  },
+  {
+   "offset": -73,
+   "sonne": 1,
+   "prognose_fehler": 0.907,
+   "temp_mittel": 19.6
+  },
+  {
+   "offset": -72,
+   "sonne": 0.46,
+   "prognose_fehler": 1.122,
+   "temp_mittel": 19.4
+  },
+  {
+   "offset": -71,
+   "sonne": 0.543,
+   "prognose_fehler": 0.927,
+   "temp_mittel": 20.6
+  },
+  {
+   "offset": -70,
+   "sonne": 0.956,
+   "prognose_fehler": 0.97,
+   "temp_mittel": 17.5
+  },
+  {
+   "offset": -69,
+   "sonne": 0.656,
+   "prognose_fehler": 0.899,
+   "temp_mittel": 21.3
+  },
+  {
+   "offset": -68,
+   "sonne": 0.516,
+   "prognose_fehler": 1.054,
+   "temp_mittel": 19.5
+  },
+  {
+   "offset": -67,
+   "sonne": 0.511,
+   "prognose_fehler": 1.062,
+   "temp_mittel": 21.2
+  },
+  {
+   "offset": -66,
+   "sonne": 0.796,
+   "prognose_fehler": 1.03,
+   "temp_mittel": 19.7
+  },
+  {
+   "offset": -65,
+   "sonne": 1,
+   "prognose_fehler": 1.109,
+   "temp_mittel": 16.7
+  },
+  {
+   "offset": -64,
+   "sonne": 0.922,
+   "prognose_fehler": 1.087,
+   "temp_mittel": 15.4
+  },
+  {
+   "offset": -63,
+   "sonne": 1,
+   "prognose_fehler": 1.086,
+   "temp_mittel": 18.3
+  },
+  {
+   "offset": -62,
+   "sonne": 0.473,
+   "prognose_fehler": 1.106,
+   "temp_mittel": 15.3
+  },
+  {
+   "offset": -61,
+   "sonne": 1,
+   "prognose_fehler": 1.139,
+   "temp_mittel": 19.1
+  },
+  {
+   "offset": -60,
+   "sonne": 0.55,
+   "prognose_fehler": 1.088,
+   "temp_mittel": 19.3
+  },
+  {
+   "offset": -59,
+   "sonne": 0.484,
+   "prognose_fehler": 1.057,
+   "temp_mittel": 16.4
+  },
+  {
+   "offset": -58,
+   "sonne": 0.61,
+   "prognose_fehler": 1.055,
+   "temp_mittel": 16
+  },
+  {
+   "offset": -57,
+   "sonne": 0.739,
+   "prognose_fehler": 1.097,
+   "temp_mittel": 19.6
+  },
+  {
+   "offset": -56,
+   "sonne": 0.811,
+   "prognose_fehler": 0.974,
+   "temp_mittel": 16.5
+  },
+  {
+   "offset": -55,
+   "sonne": 0.943,
+   "prognose_fehler": 1.028,
+   "temp_mittel": 16.5
+  },
+  {
+   "offset": -54,
+   "sonne": 0.514,
+   "prognose_fehler": 1.036,
+   "temp_mittel": 20
+  },
+  {
+   "offset": -53,
+   "sonne": 0.461,
+   "prognose_fehler": 1.08,
+   "temp_mittel": 17.5
+  },
+  {
+   "offset": -52,
+   "sonne": 0.449,
+   "prognose_fehler": 1.008,
+   "temp_mittel": 18
+  },
+  {
+   "offset": -51,
+   "sonne": 0.822,
+   "prognose_fehler": 1.04,
+   "temp_mittel": 14.9
+  },
+  {
+   "offset": -50,
+   "sonne": 0.551,
+   "prognose_fehler": 0.95,
+   "temp_mittel": 14.4
+  },
+  {
+   "offset": -49,
+   "sonne": 1,
+   "prognose_fehler": 0.906,
+   "temp_mittel": 14.3
+  },
+  {
+   "offset": -48,
+   "sonne": 0.489,
+   "prognose_fehler": 1.125,
+   "temp_mittel": 17.1
+  },
+  {
+   "offset": -47,
+   "sonne": 0.707,
+   "prognose_fehler": 0.978,
+   "temp_mittel": 17
+  },
+  {
+   "offset": -46,
+   "sonne": 0.805,
+   "prognose_fehler": 1.044,
+   "temp_mittel": 15.9
+  },
+  {
+   "offset": -45,
+   "sonne": 0.558,
+   "prognose_fehler": 1.105,
+   "temp_mittel": 15.8
+  },
+  {
+   "offset": -44,
+   "sonne": 0.46,
+   "prognose_fehler": 0.913,
+   "temp_mittel": 14.4
+  },
+  {
+   "offset": -43,
+   "sonne": 0.448,
+   "prognose_fehler": 1.065,
+   "temp_mittel": 17.4
+  },
+  {
+   "offset": -42,
+   "sonne": 0.998,
+   "prognose_fehler": 0.896,
+   "temp_mittel": 19.1
+  },
+  {
+   "offset": -41,
+   "sonne": 0.898,
+   "prognose_fehler": 0.933,
+   "temp_mittel": 15.5
+  },
+  {
+   "offset": -40,
+   "sonne": 0.543,
+   "prognose_fehler": 1.136,
+   "temp_mittel": 18
+  },
+  {
+   "offset": -39,
+   "sonne": 1,
+   "prognose_fehler": 0.916,
+   "temp_mittel": 16.7
+  },
+  {
+   "offset": -38,
+   "sonne": 0.635,
+   "prognose_fehler": 0.907,
+   "temp_mittel": 15.9
+  },
+  {
+   "offset": -37,
+   "sonne": 0.884,
+   "prognose_fehler": 0.917,
+   "temp_mittel": 12.8
+  },
+  {
+   "offset": -36,
+   "sonne": 0.566,
+   "prognose_fehler": 1.02,
+   "temp_mittel": 18.4
+  },
+  {
+   "offset": -35,
+   "sonne": 0.334,
+   "prognose_fehler": 1.129,
+   "temp_mittel": 14.8
+  },
+  {
+   "offset": -34,
+   "sonne": 0.838,
+   "prognose_fehler": 0.874,
+   "temp_mittel": 13.8
+  },
+  {
+   "offset": -33,
+   "sonne": 0.69,
+   "prognose_fehler": 0.948,
+   "temp_mittel": 18
+  },
+  {
+   "offset": -32,
+   "sonne": 0.682,
+   "prognose_fehler": 1.114,
+   "temp_mittel": 15.6
+  },
+  {
+   "offset": -31,
+   "sonne": 0.818,
+   "prognose_fehler": 1.024,
+   "temp_mittel": 16.1
+  },
+  {
+   "offset": -30,
+   "sonne": 0.691,
+   "prognose_fehler": 0.966,
+   "temp_mittel": 13.4
+  },
+  {
+   "offset": -29,
+   "sonne": 0.555,
+   "prognose_fehler": 1.081,
+   "temp_mittel": 14.7
+  },
+  {
+   "offset": -28,
+   "sonne": 0.579,
+   "prognose_fehler": 0.972,
+   "temp_mittel": 17
+  },
+  {
+   "offset": -27,
+   "sonne": 0.918,
+   "prognose_fehler": 1.126,
+   "temp_mittel": 15.9
+  },
+  {
+   "offset": -26,
+   "sonne": 0.641,
+   "prognose_fehler": 0.935,
+   "temp_mittel": 14.5
+  },
+  {
+   "offset": -25,
+   "sonne": 0.455,
+   "prognose_fehler": 0.964,
+   "temp_mittel": 13.4
+  },
+  {
+   "offset": -24,
+   "sonne": 0.457,
+   "prognose_fehler": 0.91,
+   "temp_mittel": 14.2
+  },
+  {
+   "offset": -23,
+   "sonne": 0.802,
+   "prognose_fehler": 0.897,
+   "temp_mittel": 14
+  },
+  {
+   "offset": -22,
+   "sonne": 0.618,
+   "prognose_fehler": 0.884,
+   "temp_mittel": 13.7
+  },
+  {
+   "offset": -21,
+   "sonne": 0.66,
+   "prognose_fehler": 0.95,
+   "temp_mittel": 12
+  },
+  {
+   "offset": -20,
+   "sonne": 0.8,
+   "prognose_fehler": 0.913,
+   "temp_mittel": 13.3
+  },
+  {
+   "offset": -19,
+   "sonne": 0.615,
+   "prognose_fehler": 0.891,
+   "temp_mittel": 15.6
+  },
+  {
+   "offset": -18,
+   "sonne": 0.767,
+   "prognose_fehler": 1.117,
+   "temp_mittel": 10.2
+  },
+  {
+   "offset": -17,
+   "sonne": 0.536,
+   "prognose_fehler": 1.024,
+   "temp_mittel": 11.2
+  },
+  {
+   "offset": -16,
+   "sonne": 0.59,
+   "prognose_fehler": 1.127,
+   "temp_mittel": 15.3
+  },
+  {
+   "offset": -15,
+   "sonne": 0.51,
+   "prognose_fehler": 1.081,
+   "temp_mittel": 12.6
+  },
+  {
+   "offset": -14,
+   "sonne": 0.374,
+   "prognose_fehler": 0.963,
+   "temp_mittel": 13.9
+  },
+  {
+   "offset": -13,
+   "sonne": 0.523,
+   "prognose_fehler": 1.035,
+   "temp_mittel": 10.9
+  },
+  {
+   "offset": -12,
+   "sonne": 0.818,
+   "prognose_fehler": 0.986,
+   "temp_mittel": 14.5
+  },
+  {
+   "offset": -11,
+   "sonne": 0.873,
+   "prognose_fehler": 0.952,
+   "temp_mittel": 12.2
+  },
+  {
+   "offset": -10,
+   "sonne": 0.725,
+   "prognose_fehler": 1.105,
+   "temp_mittel": 12.5
+  },
+  {
+   "offset": -9,
+   "sonne": 0.423,
+   "prognose_fehler": 0.863,
+   "temp_mittel": 13.6
+  },
+  {
+   "offset": -8,
+   "sonne": 0.334,
+   "prognose_fehler": 0.925,
+   "temp_mittel": 11.4
+  },
+  {
+   "offset": -7,
+   "sonne": 0.566,
+   "prognose_fehler": 1.024,
+   "temp_mittel": 14.2
+  },
+  {
+   "offset": -6,
+   "sonne": 0.677,
+   "prognose_fehler": 1.083,
+   "temp_mittel": 14
+  },
+  {
+   "offset": -5,
+   "sonne": 0.373,
+   "prognose_fehler": 0.989,
+   "temp_mittel": 9.9
+  },
+  {
+   "offset": -4,
+   "sonne": 0.676,
+   "prognose_fehler": 1.072,
+   "temp_mittel": 13.6
+  },
+  {
+   "offset": -3,
+   "sonne": 0.619,
+   "prognose_fehler": 0.917,
+   "temp_mittel": 11.1
+  },
+  {
+   "offset": -2,
+   "sonne": 0.937,
+   "prognose_fehler": 1.136,
+   "temp_mittel": 13.4
+  },
+  {
+   "offset": -1,
+   "sonne": 0.511,
+   "prognose_fehler": 1.102,
+   "temp_mittel": 12.1
+  },
+  {
+   "offset": 0,
+   "sonne": 0.769,
+   "prognose_fehler": 1.106,
+   "temp_mittel": 13.2
+  },
+  {
+   "offset": 1,
+   "sonne": 0.855,
+   "prognose_fehler": 1.044,
+   "temp_mittel": 12.4
+  },
+  {
+   "offset": 2,
+   "sonne": 0.913,
+   "prognose_fehler": 0.893,
+   "temp_mittel": 8.8
+  },
+  {
+   "offset": 3,
+   "sonne": 0.503,
+   "prognose_fehler": 0.982,
+   "temp_mittel": 7.8
+  },
+  {
+   "offset": 4,
+   "sonne": 0.187,
+   "prognose_fehler": 0.866,
+   "temp_mittel": 12.1
+  },
+  {
+   "offset": 5,
+   "sonne": 0.359,
+   "prognose_fehler": 0.896,
+   "temp_mittel": 9.4
+  },
+  {
+   "offset": 6,
+   "sonne": 0.569,
+   "prognose_fehler": 1.099,
+   "temp_mittel": 9
+  },
+  {
+   "offset": 7,
+   "sonne": 0.613,
+   "prognose_fehler": 0.91,
+   "temp_mittel": 10.9
+  },
+  {
+   "offset": 8,
+   "sonne": 0.308,
+   "prognose_fehler": 1.015,
+   "temp_mittel": 11
+  },
+  {
+   "offset": 9,
+   "sonne": 0.569,
+   "prognose_fehler": 0.996,
+   "temp_mittel": 7
+  },
+  {
+   "offset": 10,
+   "sonne": 0.302,
+   "prognose_fehler": 1.06,
+   "temp_mittel": 10.8
+  },
+  {
+   "offset": 11,
+   "sonne": 0.411,
+   "prognose_fehler": 0.929,
+   "temp_mittel": 10.5
+  },
+  {
+   "offset": 12,
+   "sonne": 0.606,
+   "prognose_fehler": 0.928,
+   "temp_mittel": 11.7
+  }
+ ],
+ "ladevorgaenge": [
+  {
+   "tage_zurueck": 1095,
+   "start": "12:04",
+   "dauer_min": 419,
+   "kwh": 29.49,
+   "sonne_kwh": 20.73,
+   "netz_kwh": 8.76,
+   "km": null,
+   "zaehler_start": 3120.4,
+   "zaehler_ende": 3149.9
+  },
+  {
+   "tage_zurueck": 1093,
+   "start": "12:20",
+   "dauer_min": 215,
+   "kwh": 34.2,
+   "sonne_kwh": 18.09,
+   "netz_kwh": 16.11,
+   "km": 18361,
+   "zaehler_start": 3149.9,
+   "zaehler_ende": 3184.1
+  },
+  {
+   "tage_zurueck": 1091,
+   "start": "17:10",
+   "dauer_min": 352,
+   "kwh": 33.32,
+   "sonne_kwh": 11.37,
+   "netz_kwh": 21.95,
+   "km": 18436,
+   "zaehler_start": 3184.1,
+   "zaehler_ende": 3217.4
+  },
+  {
+   "tage_zurueck": 1090,
+   "start": "11:21",
+   "dauer_min": 268,
+   "kwh": 40.44,
+   "sonne_kwh": 20.32,
+   "netz_kwh": 20.12,
+   "km": null,
+   "zaehler_start": 3217.4,
+   "zaehler_ende": 3257.9
+  },
+  {
+   "tage_zurueck": 1089,
+   "start": "20:19",
+   "dauer_min": 174,
+   "kwh": 18.25,
+   "sonne_kwh": 8.44,
+   "netz_kwh": 9.81,
+   "km": null,
+   "zaehler_start": 3257.9,
+   "zaehler_ende": 3276.1
+  },
+  {
+   "tage_zurueck": 1088,
+   "start": "20:32",
+   "dauer_min": 38,
+   "kwh": 6.29,
+   "sonne_kwh": 2.19,
+   "netz_kwh": 4.1,
+   "km": 18549,
+   "zaehler_start": 3276.1,
+   "zaehler_ende": 3282.4
+  },
+  {
+   "tage_zurueck": 1082,
+   "start": "16:08",
+   "dauer_min": 180,
+   "kwh": 26.24,
+   "sonne_kwh": 10.81,
+   "netz_kwh": 15.43,
+   "km": 18803,
+   "zaehler_start": 3282.4,
+   "zaehler_ende": 3308.6
+  },
+  {
+   "tage_zurueck": 1081,
+   "start": "20:57",
+   "dauer_min": 259,
+   "kwh": 35.54,
+   "sonne_kwh": 10.21,
+   "netz_kwh": 25.33,
+   "km": 18832,
+   "zaehler_start": 3308.6,
+   "zaehler_ende": 3344.2
+  },
+  {
+   "tage_zurueck": 1079,
+   "start": "10:26",
+   "dauer_min": 368,
+   "kwh": 36.47,
+   "sonne_kwh": 19.03,
+   "netz_kwh": 17.44,
+   "km": 18904,
+   "zaehler_start": 3344.2,
+   "zaehler_ende": 3380.6
+  },
+  {
+   "tage_zurueck": 1077,
+   "start": "19:14",
+   "dauer_min": 128,
+   "kwh": 19.53,
+   "sonne_kwh": 5.4,
+   "netz_kwh": 14.13,
+   "km": null,
+   "zaehler_start": 3380.6,
+   "zaehler_ende": 3400.2
+  },
+  {
+   "tage_zurueck": 1076,
+   "start": "20:37",
+   "dauer_min": 259,
+   "kwh": 39.98,
+   "sonne_kwh": 5.93,
+   "netz_kwh": 34.05,
+   "km": 19005,
+   "zaehler_start": 3400.2,
+   "zaehler_ende": 3440.2
+  },
+  {
+   "tage_zurueck": 1075,
+   "start": "16:37",
+   "dauer_min": 82,
+   "kwh": 10.77,
+   "sonne_kwh": 3.13,
+   "netz_kwh": 7.64,
+   "km": 19045,
+   "zaehler_start": 3440.2,
+   "zaehler_ende": 3450.9
+  },
+  {
+   "tage_zurueck": 1071,
+   "start": "18:29",
+   "dauer_min": 122,
+   "kwh": 18.07,
+   "sonne_kwh": 5.83,
+   "netz_kwh": 12.24,
+   "km": 19198,
+   "zaehler_start": 3450.9,
+   "zaehler_ende": 3469
+  },
+  {
+   "tage_zurueck": 1070,
+   "start": "16:30",
+   "dauer_min": 224,
+   "kwh": 28.55,
+   "sonne_kwh": 4.54,
+   "netz_kwh": 24.01,
+   "km": 19223,
+   "zaehler_start": 3469,
+   "zaehler_ende": 3497.5
+  },
+  {
+   "tage_zurueck": 1067,
+   "start": "20:50",
+   "dauer_min": 298,
+   "kwh": 29.49,
+   "sonne_kwh": 5.83,
+   "netz_kwh": 23.66,
+   "km": null,
+   "zaehler_start": 3497.5,
+   "zaehler_ende": 3527
+  },
+  {
+   "tage_zurueck": 1064,
+   "start": "17:38",
+   "dauer_min": 308,
+   "kwh": 31.3,
+   "sonne_kwh": 5.95,
+   "netz_kwh": 25.35,
+   "km": 19523,
+   "zaehler_start": 3527,
+   "zaehler_ende": 3558.3
+  },
+  {
+   "tage_zurueck": 1058,
+   "start": "16:46",
+   "dauer_min": 181,
+   "kwh": 30.91,
+   "sonne_kwh": 10.62,
+   "netz_kwh": 20.29,
+   "km": 19762,
+   "zaehler_start": 3558.3,
+   "zaehler_ende": 3589.2
+  },
+  {
+   "tage_zurueck": 1055,
+   "start": "18:10",
+   "dauer_min": 155,
+   "kwh": 25.29,
+   "sonne_kwh": 3.99,
+   "netz_kwh": 21.3,
+   "km": null,
+   "zaehler_start": 3589.2,
+   "zaehler_ende": 3614.5
+  },
+  {
+   "tage_zurueck": 1053,
+   "start": "17:05",
+   "dauer_min": 234,
+   "kwh": 40.04,
+   "sonne_kwh": 14.66,
+   "netz_kwh": 25.38,
+   "km": 19990,
+   "zaehler_start": 3614.5,
+   "zaehler_ende": 3654.6
+  },
+  {
+   "tage_zurueck": 1048,
+   "start": "17:47",
+   "dauer_min": 202,
+   "kwh": 29.52,
+   "sonne_kwh": 6.73,
+   "netz_kwh": 22.79,
+   "km": null,
+   "zaehler_start": 3654.6,
+   "zaehler_ende": 3684.1
+  },
+  {
+   "tage_zurueck": 1046,
+   "start": "18:11",
+   "dauer_min": 44,
+   "kwh": 7.94,
+   "sonne_kwh": 1.33,
+   "netz_kwh": 6.61,
+   "km": 20214,
+   "zaehler_start": 3684.1,
+   "zaehler_ende": 3692
+  },
+  {
+   "tage_zurueck": 1045,
+   "start": "18:23",
+   "dauer_min": 182,
+   "kwh": 32.5,
+   "sonne_kwh": 0.39,
+   "netz_kwh": 32.11,
+   "km": 20241,
+   "zaehler_start": 3692,
+   "zaehler_ende": 3724.5
+  },
+  {
+   "tage_zurueck": 1043,
+   "start": "18:00",
+   "dauer_min": 234,
+   "kwh": 29.1,
+   "sonne_kwh": 1.61,
+   "netz_kwh": 27.49,
+   "km": 20295,
+   "zaehler_start": 3724.5,
+   "zaehler_ende": 3753.6
+  },
+  {
+   "tage_zurueck": 1041,
+   "start": "20:00",
+   "dauer_min": 240,
+   "kwh": 37.99,
+   "sonne_kwh": 2.77,
+   "netz_kwh": 35.22,
+   "km": 20373,
+   "zaehler_start": 3753.6,
+   "zaehler_ende": 3791.6
+  },
+  {
+   "tage_zurueck": 1040,
+   "start": "17:01",
+   "dauer_min": 138,
+   "kwh": 16.53,
+   "sonne_kwh": 0.93,
+   "netz_kwh": 15.6,
+   "km": null,
+   "zaehler_start": 3791.6,
+   "zaehler_ende": 3808.2
+  },
+  {
+   "tage_zurueck": 1038,
+   "start": "19:01",
+   "dauer_min": 180,
+   "kwh": 18.2,
+   "sonne_kwh": 2.55,
+   "netz_kwh": 15.65,
+   "km": 20498,
+   "zaehler_start": 3808.2,
+   "zaehler_ende": 3826.3
+  },
+  {
+   "tage_zurueck": 1037,
+   "start": "19:03",
+   "dauer_min": 252,
+   "kwh": 25.97,
+   "sonne_kwh": 6.7,
+   "netz_kwh": 19.27,
+   "km": 20524,
+   "zaehler_start": 3826.3,
+   "zaehler_ende": 3852.3
+  },
+  {
+   "tage_zurueck": 1034,
+   "start": "20:02",
+   "dauer_min": 152,
+   "kwh": 25.39,
+   "sonne_kwh": 7.79,
+   "netz_kwh": 17.6,
+   "km": 20635,
+   "zaehler_start": 3852.3,
+   "zaehler_ende": 3877.7
+  },
+  {
+   "tage_zurueck": 1033,
+   "start": "16:42",
+   "dauer_min": 265,
+   "kwh": 37.34,
+   "sonne_kwh": 0,
+   "netz_kwh": 37.34,
+   "km": 20672,
+   "zaehler_start": 3877.7,
+   "zaehler_ende": 3915
+  },
+  {
+   "tage_zurueck": 1032,
+   "start": "20:06",
+   "dauer_min": 193,
+   "kwh": 20.55,
+   "sonne_kwh": 0.09,
+   "netz_kwh": 20.46,
+   "km": 20717,
+   "zaehler_start": 3915,
+   "zaehler_ende": 3935.6
+  },
+  {
+   "tage_zurueck": 1028,
+   "start": "17:58",
+   "dauer_min": 197,
+   "kwh": 24.96,
+   "sonne_kwh": 0.69,
+   "netz_kwh": 24.27,
+   "km": 20883,
+   "zaehler_start": 3935.6,
+   "zaehler_ende": 3960.6
+  },
+  {
+   "tage_zurueck": 1027,
+   "start": "18:06",
+   "dauer_min": 64,
+   "kwh": 7.97,
+   "sonne_kwh": 1.29,
+   "netz_kwh": 6.68,
+   "km": null,
+   "zaehler_start": 3960.6,
+   "zaehler_ende": 3968.5
+  },
+  {
+   "tage_zurueck": 1026,
+   "start": "18:40",
+   "dauer_min": 207,
+   "kwh": 33.03,
+   "sonne_kwh": 1.19,
+   "netz_kwh": 31.84,
+   "km": 20968,
+   "zaehler_start": 3968.5,
+   "zaehler_ende": 4001.6
+  },
+  {
+   "tage_zurueck": 1024,
+   "start": "17:20",
+   "dauer_min": 337,
+   "kwh": 38.79,
+   "sonne_kwh": 11.76,
+   "netz_kwh": 27.03,
+   "km": 21047,
+   "zaehler_start": 4001.6,
+   "zaehler_ende": 4040.3
+  },
+  {
+   "tage_zurueck": 1021,
+   "start": "17:22",
+   "dauer_min": 172,
+   "kwh": 22.14,
+   "sonne_kwh": 1.74,
+   "netz_kwh": 20.4,
+   "km": 21156,
+   "zaehler_start": 4040.3,
+   "zaehler_ende": 4062.5
+  },
+  {
+   "tage_zurueck": 1020,
+   "start": "20:58",
+   "dauer_min": 66,
+   "kwh": 10.79,
+   "sonne_kwh": 3.36,
+   "netz_kwh": 7.43,
+   "km": 21181,
+   "zaehler_start": 4062.5,
+   "zaehler_ende": 4073.3
+  },
+  {
+   "tage_zurueck": 1009,
+   "start": "17:27",
+   "dauer_min": 268,
+   "kwh": 43.63,
+   "sonne_kwh": 8.28,
+   "netz_kwh": 35.35,
+   "km": 21648,
+   "zaehler_start": 4073.3,
+   "zaehler_ende": 4116.9
+  },
+  {
+   "tage_zurueck": 1007,
+   "start": "19:16",
+   "dauer_min": 62,
+   "kwh": 10.19,
+   "sonne_kwh": 0.48,
+   "netz_kwh": 9.71,
+   "km": 21721,
+   "zaehler_start": 4116.9,
+   "zaehler_ende": 4127.1
+  },
+  {
+   "tage_zurueck": 1006,
+   "start": "16:08",
+   "dauer_min": 94,
+   "kwh": 15.41,
+   "sonne_kwh": 0.91,
+   "netz_kwh": 14.5,
+   "km": null,
+   "zaehler_start": 4127.1,
+   "zaehler_ende": 4142.5
+  },
+  {
+   "tage_zurueck": 1005,
+   "start": "16:08",
+   "dauer_min": 174,
+   "kwh": 23.19,
+   "sonne_kwh": 0,
+   "netz_kwh": 23.19,
+   "km": 21799,
+   "zaehler_start": 4142.5,
+   "zaehler_ende": 4165.7
+  },
+  {
+   "tage_zurueck": 1002,
+   "start": "20:18",
+   "dauer_min": 77,
+   "kwh": 9.17,
+   "sonne_kwh": 3.14,
+   "netz_kwh": 6.03,
+   "km": 21925,
+   "zaehler_start": 4165.7,
+   "zaehler_ende": 4174.9
+  },
+  {
+   "tage_zurueck": 1001,
+   "start": "19:55",
+   "dauer_min": 276,
+   "kwh": 38.79,
+   "sonne_kwh": 2.49,
+   "netz_kwh": 36.3,
+   "km": 21959,
+   "zaehler_start": 4174.9,
+   "zaehler_ende": 4213.7
+  },
+  {
+   "tage_zurueck": 998,
+   "start": "20:29",
+   "dauer_min": 121,
+   "kwh": 17.36,
+   "sonne_kwh": 0,
+   "netz_kwh": 17.36,
+   "km": null,
+   "zaehler_start": 4213.7,
+   "zaehler_ende": 4231
+  },
+  {
+   "tage_zurueck": 991,
+   "start": "19:00",
+   "dauer_min": 309,
+   "kwh": 34,
+   "sonne_kwh": 0,
+   "netz_kwh": 34,
+   "km": null,
+   "zaehler_start": 4231,
+   "zaehler_ende": 4265
+  },
+  {
+   "tage_zurueck": 990,
+   "start": "17:22",
+   "dauer_min": 259,
+   "kwh": 27.33,
+   "sonne_kwh": 0,
+   "netz_kwh": 27.33,
+   "km": 22377,
+   "zaehler_start": 4265,
+   "zaehler_ende": 4292.3
+  },
+  {
+   "tage_zurueck": 988,
+   "start": "16:05",
+   "dauer_min": 62,
+   "kwh": 9.3,
+   "sonne_kwh": 1.75,
+   "netz_kwh": 7.55,
+   "km": null,
+   "zaehler_start": 4292.3,
+   "zaehler_ende": 4301.6
+  },
+  {
+   "tage_zurueck": 987,
+   "start": "16:32",
+   "dauer_min": 232,
+   "kwh": 23.96,
+   "sonne_kwh": 0,
+   "netz_kwh": 23.96,
+   "km": null,
+   "zaehler_start": 4301.6,
+   "zaehler_ende": 4325.6
+  },
+  {
+   "tage_zurueck": 986,
+   "start": "17:36",
+   "dauer_min": 153,
+   "kwh": 16.18,
+   "sonne_kwh": 0,
+   "netz_kwh": 16.18,
+   "km": null,
+   "zaehler_start": 4325.6,
+   "zaehler_ende": 4341.8
+  },
+  {
+   "tage_zurueck": 985,
+   "start": "18:12",
+   "dauer_min": 340,
+   "kwh": 36.55,
+   "sonne_kwh": 11.18,
+   "netz_kwh": 25.37,
+   "km": 22578,
+   "zaehler_start": 4341.8,
+   "zaehler_ende": 4378.3
+  },
+  {
+   "tage_zurueck": 982,
+   "start": "18:31",
+   "dauer_min": 300,
+   "kwh": 36.3,
+   "sonne_kwh": 5.92,
+   "netz_kwh": 30.38,
+   "km": 22709,
+   "zaehler_start": 4378.3,
+   "zaehler_ende": 4414.6
+  },
+  {
+   "tage_zurueck": 978,
+   "start": "19:13",
+   "dauer_min": 168,
+   "kwh": 21.8,
+   "sonne_kwh": 0.49,
+   "netz_kwh": 21.31,
+   "km": null,
+   "zaehler_start": 4414.6,
+   "zaehler_ende": 4436.4
+  },
+  {
+   "tage_zurueck": 974,
+   "start": "16:54",
+   "dauer_min": 140,
+   "kwh": 13.07,
+   "sonne_kwh": 2.83,
+   "netz_kwh": 10.24,
+   "km": 22998,
+   "zaehler_start": 4436.4,
+   "zaehler_ende": 4449.5
+  },
+  {
+   "tage_zurueck": 967,
+   "start": "18:29",
+   "dauer_min": 296,
+   "kwh": 36.48,
+   "sonne_kwh": 3.69,
+   "netz_kwh": 32.79,
+   "km": 23318,
+   "zaehler_start": 4449.5,
+   "zaehler_ende": 4486
+  },
+  {
+   "tage_zurueck": 965,
+   "start": "18:17",
+   "dauer_min": 281,
+   "kwh": 29.82,
+   "sonne_kwh": 0.39,
+   "netz_kwh": 29.43,
+   "km": null,
+   "zaehler_start": 4486,
+   "zaehler_ende": 4515.8
+  },
+  {
+   "tage_zurueck": 964,
+   "start": "20:20",
+   "dauer_min": 167,
+   "kwh": 18.39,
+   "sonne_kwh": 1.33,
+   "netz_kwh": 17.06,
+   "km": 23436,
+   "zaehler_start": 4515.8,
+   "zaehler_ende": 4534.2
+  },
+  {
+   "tage_zurueck": 960,
+   "start": "20:52",
+   "dauer_min": 302,
+   "kwh": 32.44,
+   "sonne_kwh": 3.01,
+   "netz_kwh": 29.43,
+   "km": null,
+   "zaehler_start": 4534.2,
+   "zaehler_ende": 4566.6
+  },
+  {
+   "tage_zurueck": 959,
+   "start": "17:44",
+   "dauer_min": 218,
+   "kwh": 39.28,
+   "sonne_kwh": 16.39,
+   "netz_kwh": 22.89,
+   "km": 23639,
+   "zaehler_start": 4566.6,
+   "zaehler_ende": 4605.9
+  },
+  {
+   "tage_zurueck": 958,
+   "start": "18:27",
+   "dauer_min": 183,
+   "kwh": 33.45,
+   "sonne_kwh": 2.53,
+   "netz_kwh": 30.92,
+   "km": null,
+   "zaehler_start": 4605.9,
+   "zaehler_ende": 4639.4
+  },
+  {
+   "tage_zurueck": 957,
+   "start": "16:38",
+   "dauer_min": 141,
+   "kwh": 16.43,
+   "sonne_kwh": 4.8,
+   "netz_kwh": 11.63,
+   "km": 23728,
+   "zaehler_start": 4639.4,
+   "zaehler_ende": 4655.8
+  },
+  {
+   "tage_zurueck": 956,
+   "start": "19:46",
+   "dauer_min": 63,
+   "kwh": 6.66,
+   "sonne_kwh": 2.53,
+   "netz_kwh": 4.13,
+   "km": null,
+   "zaehler_start": 4655.8,
+   "zaehler_ende": 4662.5
+  },
+  {
+   "tage_zurueck": 955,
+   "start": "19:52",
+   "dauer_min": 201,
+   "kwh": 29.25,
+   "sonne_kwh": 12.68,
+   "netz_kwh": 16.57,
+   "km": 23783,
+   "zaehler_start": 4662.5,
+   "zaehler_ende": 4691.7
+  },
+  {
+   "tage_zurueck": 954,
+   "start": "16:25",
+   "dauer_min": 89,
+   "kwh": 8.79,
+   "sonne_kwh": 1.24,
+   "netz_kwh": 7.55,
+   "km": 23817,
+   "zaehler_start": 4691.7,
+   "zaehler_ende": 4700.5
+  },
+  {
+   "tage_zurueck": 952,
+   "start": "19:37",
+   "dauer_min": 229,
+   "kwh": 35.53,
+   "sonne_kwh": 15.87,
+   "netz_kwh": 19.66,
+   "km": 23892,
+   "zaehler_start": 4700.5,
+   "zaehler_ende": 4736
+  },
+  {
+   "tage_zurueck": 950,
+   "start": "16:22",
+   "dauer_min": 161,
+   "kwh": 26.27,
+   "sonne_kwh": 3.4,
+   "netz_kwh": 22.87,
+   "km": null,
+   "zaehler_start": 4736,
+   "zaehler_ende": 4762.3
+  },
+  {
+   "tage_zurueck": 949,
+   "start": "19:43",
+   "dauer_min": 301,
+   "kwh": 37.8,
+   "sonne_kwh": 12.81,
+   "netz_kwh": 24.99,
+   "km": null,
+   "zaehler_start": 4762.3,
+   "zaehler_ende": 4800.1
+  },
+  {
+   "tage_zurueck": 946,
+   "start": "19:59",
+   "dauer_min": 99,
+   "kwh": 16.33,
+   "sonne_kwh": 6.99,
+   "netz_kwh": 9.34,
+   "km": 24154,
+   "zaehler_start": 4800.1,
+   "zaehler_ende": 4816.4
+  },
+  {
+   "tage_zurueck": 945,
+   "start": "17:23",
+   "dauer_min": 228,
+   "kwh": 33.62,
+   "sonne_kwh": 7.33,
+   "netz_kwh": 26.29,
+   "km": 24202,
+   "zaehler_start": 4816.4,
+   "zaehler_ende": 4850
+  },
+  {
+   "tage_zurueck": 944,
+   "start": "19:48",
+   "dauer_min": 62,
+   "kwh": 9.91,
+   "sonne_kwh": 4.36,
+   "netz_kwh": 5.55,
+   "km": 24257,
+   "zaehler_start": 4850,
+   "zaehler_ende": 4860
+  },
+  {
+   "tage_zurueck": 943,
+   "start": "17:40",
+   "dauer_min": 280,
+   "kwh": 39.68,
+   "sonne_kwh": 18.08,
+   "netz_kwh": 21.6,
+   "km": 24302,
+   "zaehler_start": 4860,
+   "zaehler_ende": 4899.6
+  },
+  {
+   "tage_zurueck": 940,
+   "start": "20:24",
+   "dauer_min": 93,
+   "kwh": 13.51,
+   "sonne_kwh": 3.06,
+   "netz_kwh": 10.45,
+   "km": 24428,
+   "zaehler_start": 4899.6,
+   "zaehler_ende": 4913.1
+  },
+  {
+   "tage_zurueck": 938,
+   "start": "20:12",
+   "dauer_min": 83,
+   "kwh": 13,
+   "sonne_kwh": 2.31,
+   "netz_kwh": 10.69,
+   "km": null,
+   "zaehler_start": 4913.1,
+   "zaehler_ende": 4926.1
+  },
+  {
+   "tage_zurueck": 935,
+   "start": "17:52",
+   "dauer_min": 87,
+   "kwh": 11.74,
+   "sonne_kwh": 2.22,
+   "netz_kwh": 9.52,
+   "km": 24641,
+   "zaehler_start": 4926.1,
+   "zaehler_ende": 4937.9
+  },
+  {
+   "tage_zurueck": 934,
+   "start": "17:29",
+   "dauer_min": 243,
+   "kwh": 24.79,
+   "sonne_kwh": 6.1,
+   "netz_kwh": 18.69,
+   "km": null,
+   "zaehler_start": 4937.9,
+   "zaehler_ende": 4962.7
+  },
+  {
+   "tage_zurueck": 929,
+   "start": "10:59",
+   "dauer_min": 195,
+   "kwh": 23.01,
+   "sonne_kwh": 14.04,
+   "netz_kwh": 8.97,
+   "km": 24918,
+   "zaehler_start": 4962.7,
+   "zaehler_ende": 4985.7
+  },
+  {
+   "tage_zurueck": 923,
+   "start": "19:35",
+   "dauer_min": 173,
+   "kwh": 25.3,
+   "sonne_kwh": 10.11,
+   "netz_kwh": 15.19,
+   "km": null,
+   "zaehler_start": 4985.7,
+   "zaehler_ende": 5011
+  },
+  {
+   "tage_zurueck": 921,
+   "start": "10:13",
+   "dauer_min": 179,
+   "kwh": 22.52,
+   "sonne_kwh": 12.71,
+   "netz_kwh": 9.81,
+   "km": null,
+   "zaehler_start": 5011,
+   "zaehler_ende": 5033.5
+  },
+  {
+   "tage_zurueck": 919,
+   "start": "17:16",
+   "dauer_min": 96,
+   "kwh": 15.69,
+   "sonne_kwh": 4.83,
+   "netz_kwh": 10.86,
+   "km": null,
+   "zaehler_start": 5033.5,
+   "zaehler_ende": 5049.2
+  },
+  {
+   "tage_zurueck": 918,
+   "start": "12:49",
+   "dauer_min": 325,
+   "kwh": 21.15,
+   "sonne_kwh": 13.87,
+   "netz_kwh": 7.28,
+   "km": null,
+   "zaehler_start": 5049.2,
+   "zaehler_ende": 5070.3
+  },
+  {
+   "tage_zurueck": 915,
+   "start": "10:38",
+   "dauer_min": 98,
+   "kwh": 9.65,
+   "sonne_kwh": 5.28,
+   "netz_kwh": 4.37,
+   "km": 25497,
+   "zaehler_start": 5070.3,
+   "zaehler_ende": 5080
+  },
+  {
+   "tage_zurueck": 914,
+   "start": "16:52",
+   "dauer_min": 334,
+   "kwh": 38.94,
+   "sonne_kwh": 10.92,
+   "netz_kwh": 28.02,
+   "km": 25546,
+   "zaehler_start": 5080,
+   "zaehler_ende": 5118.9
+  },
+  {
+   "tage_zurueck": 913,
+   "start": "19:59",
+   "dauer_min": 254,
+   "kwh": 38.98,
+   "sonne_kwh": 12.3,
+   "netz_kwh": 26.68,
+   "km": null,
+   "zaehler_start": 5118.9,
+   "zaehler_ende": 5157.9
+  },
+  {
+   "tage_zurueck": 910,
+   "start": "10:55",
+   "dauer_min": 726,
+   "kwh": 43.65,
+   "sonne_kwh": 30.67,
+   "netz_kwh": 12.98,
+   "km": 25710,
+   "zaehler_start": 5157.9,
+   "zaehler_ende": 5201.6
+  },
+  {
+   "tage_zurueck": 907,
+   "start": "16:05",
+   "dauer_min": 366,
+   "kwh": 42.07,
+   "sonne_kwh": 15.28,
+   "netz_kwh": 26.79,
+   "km": null,
+   "zaehler_start": 5201.6,
+   "zaehler_ende": 5243.6
+  },
+  {
+   "tage_zurueck": 906,
+   "start": "11:42",
+   "dauer_min": 102,
+   "kwh": 17.49,
+   "sonne_kwh": 9.88,
+   "netz_kwh": 7.61,
+   "km": null,
+   "zaehler_start": 5243.6,
+   "zaehler_ende": 5261.1
+  },
+  {
+   "tage_zurueck": 899,
+   "start": "10:03",
+   "dauer_min": 416,
+   "kwh": 41.01,
+   "sonne_kwh": 23.24,
+   "netz_kwh": 17.77,
+   "km": null,
+   "zaehler_start": 5261.1,
+   "zaehler_ende": 5302.1
+  },
+  {
+   "tage_zurueck": 898,
+   "start": "09:06",
+   "dauer_min": 429,
+   "kwh": 32.77,
+   "sonne_kwh": 26.42,
+   "netz_kwh": 6.35,
+   "km": 26188,
+   "zaehler_start": 5302.1,
+   "zaehler_ende": 5334.9
+  },
+  {
+   "tage_zurueck": 897,
+   "start": "09:03",
+   "dauer_min": 177,
+   "kwh": 19.74,
+   "sonne_kwh": 15.71,
+   "netz_kwh": 4.03,
+   "km": 26235,
+   "zaehler_start": 5334.9,
+   "zaehler_ende": 5354.6
+  },
+  {
+   "tage_zurueck": 889,
+   "start": "10:21",
+   "dauer_min": 53,
+   "kwh": 6.31,
+   "sonne_kwh": 3.81,
+   "netz_kwh": 2.5,
+   "km": 26541,
+   "zaehler_start": 5354.6,
+   "zaehler_ende": 5361
+  },
+  {
+   "tage_zurueck": 888,
+   "start": "11:28",
+   "dauer_min": 267,
+   "kwh": 33.46,
+   "sonne_kwh": 17.7,
+   "netz_kwh": 15.76,
+   "km": 26584,
+   "zaehler_start": 5361,
+   "zaehler_ende": 5394.4
+  },
+  {
+   "tage_zurueck": 887,
+   "start": "12:54",
+   "dauer_min": 349,
+   "kwh": 29.69,
+   "sonne_kwh": 19.77,
+   "netz_kwh": 9.92,
+   "km": 26616,
+   "zaehler_start": 5394.4,
+   "zaehler_ende": 5424.1
+  },
+  {
+   "tage_zurueck": 884,
+   "start": "09:58",
+   "dauer_min": 163,
+   "kwh": 18.5,
+   "sonne_kwh": 13.01,
+   "netz_kwh": 5.49,
+   "km": 26713,
+   "zaehler_start": 5424.1,
+   "zaehler_ende": 5442.6
+  },
+  {
+   "tage_zurueck": 880,
+   "start": "09:09",
+   "dauer_min": 600,
+   "kwh": 41.2,
+   "sonne_kwh": 33.08,
+   "netz_kwh": 8.12,
+   "km": 26876,
+   "zaehler_start": 5442.6,
+   "zaehler_ende": 5483.8
+  },
+  {
+   "tage_zurueck": 878,
+   "start": "18:48",
+   "dauer_min": 155,
+   "kwh": 28.14,
+   "sonne_kwh": 13.73,
+   "netz_kwh": 14.41,
+   "km": null,
+   "zaehler_start": 5483.8,
+   "zaehler_ende": 5511.9
+  },
+  {
+   "tage_zurueck": 875,
+   "start": "12:33",
+   "dauer_min": 456,
+   "kwh": 16.93,
+   "sonne_kwh": 12.68,
+   "netz_kwh": 4.25,
+   "km": null,
+   "zaehler_start": 5511.9,
+   "zaehler_ende": 5528.9
+  },
+  {
+   "tage_zurueck": 872,
+   "start": "10:27",
+   "dauer_min": 829,
+   "kwh": 42.32,
+   "sonne_kwh": 37.89,
+   "netz_kwh": 4.43,
+   "km": 27211,
+   "zaehler_start": 5528.9,
+   "zaehler_ende": 5571.2
+  },
+  {
+   "tage_zurueck": 871,
+   "start": "11:05",
+   "dauer_min": 88,
+   "kwh": 6.05,
+   "sonne_kwh": 5.77,
+   "netz_kwh": 0.28,
+   "km": null,
+   "zaehler_start": 5571.2,
+   "zaehler_ende": 5577.2
+  },
+  {
+   "tage_zurueck": 870,
+   "start": "09:34",
+   "dauer_min": 345,
+   "kwh": 38.32,
+   "sonne_kwh": 34.96,
+   "netz_kwh": 3.36,
+   "km": 27277,
+   "zaehler_start": 5577.2,
+   "zaehler_ende": 5615.6
+  },
+  {
+   "tage_zurueck": 867,
+   "start": "10:18",
+   "dauer_min": 400,
+   "kwh": 30.67,
+   "sonne_kwh": 20.37,
+   "netz_kwh": 10.3,
+   "km": 27402,
+   "zaehler_start": 5615.6,
+   "zaehler_ende": 5646.2
+  },
+  {
+   "tage_zurueck": 862,
+   "start": "09:43",
+   "dauer_min": 134,
+   "kwh": 21.83,
+   "sonne_kwh": 13.1,
+   "netz_kwh": 8.73,
+   "km": 27572,
+   "zaehler_start": 5646.2,
+   "zaehler_ende": 5668.1
+  },
+  {
+   "tage_zurueck": 861,
+   "start": "10:45",
+   "dauer_min": 663,
+   "kwh": 33.89,
+   "sonne_kwh": 25.93,
+   "netz_kwh": 7.96,
+   "km": 27618,
+   "zaehler_start": 5668.1,
+   "zaehler_ende": 5702
+  },
+  {
+   "tage_zurueck": 860,
+   "start": "12:20",
+   "dauer_min": 567,
+   "kwh": 38.63,
+   "sonne_kwh": 29.14,
+   "netz_kwh": 9.49,
+   "km": 27660,
+   "zaehler_start": 5702,
+   "zaehler_ende": 5740.6
+  },
+  {
+   "tage_zurueck": 855,
+   "start": "12:44",
+   "dauer_min": 257,
+   "kwh": 27.64,
+   "sonne_kwh": 21.77,
+   "netz_kwh": 5.87,
+   "km": null,
+   "zaehler_start": 5740.6,
+   "zaehler_ende": 5768.2
+  },
+  {
+   "tage_zurueck": 854,
+   "start": "11:40",
+   "dauer_min": 69,
+   "kwh": 7.71,
+   "sonne_kwh": 6.9,
+   "netz_kwh": 0.81,
+   "km": 27899,
+   "zaehler_start": 5768.2,
+   "zaehler_ende": 5775.9
+  },
+  {
+   "tage_zurueck": 853,
+   "start": "10:26",
+   "dauer_min": 126,
+   "kwh": 7.46,
+   "sonne_kwh": 6.77,
+   "netz_kwh": 0.69,
+   "km": 27954,
+   "zaehler_start": 5775.9,
+   "zaehler_ende": 5783.4
+  },
+  {
+   "tage_zurueck": 852,
+   "start": "09:03",
+   "dauer_min": 188,
+   "kwh": 15.55,
+   "sonne_kwh": 13.81,
+   "netz_kwh": 1.74,
+   "km": 27989,
+   "zaehler_start": 5783.4,
+   "zaehler_ende": 5798.9
+  },
+  {
+   "tage_zurueck": 847,
+   "start": "12:43",
+   "dauer_min": 280,
+   "kwh": 13.36,
+   "sonne_kwh": 9.45,
+   "netz_kwh": 3.91,
+   "km": 28229,
+   "zaehler_start": 5798.9,
+   "zaehler_ende": 5812.3
+  },
+  {
+   "tage_zurueck": 846,
+   "start": "10:09",
+   "dauer_min": 578,
+   "kwh": 40.91,
+   "sonne_kwh": 35.84,
+   "netz_kwh": 5.07,
+   "km": 28277,
+   "zaehler_start": 5812.3,
+   "zaehler_ende": 5853.2
+  },
+  {
+   "tage_zurueck": 845,
+   "start": "11:42",
+   "dauer_min": 257,
+   "kwh": 24.2,
+   "sonne_kwh": 19.35,
+   "netz_kwh": 4.85,
+   "km": 28330,
+   "zaehler_start": 5853.2,
+   "zaehler_ende": 5877.4
+  },
+  {
+   "tage_zurueck": 842,
+   "start": "10:08",
+   "dauer_min": 534,
+   "kwh": 41.37,
+   "sonne_kwh": 41.37,
+   "netz_kwh": 0,
+   "km": 28438,
+   "zaehler_start": 5877.4,
+   "zaehler_ende": 5918.8
+  },
+  {
+   "tage_zurueck": 841,
+   "start": "10:28",
+   "dauer_min": 440,
+   "kwh": 37.62,
+   "sonne_kwh": 37.62,
+   "netz_kwh": 0,
+   "km": null,
+   "zaehler_start": 5918.8,
+   "zaehler_ende": 5956.4
+  },
+  {
+   "tage_zurueck": 840,
+   "start": "12:00",
+   "dauer_min": 641,
+   "kwh": 33.63,
+   "sonne_kwh": 26.4,
+   "netz_kwh": 7.23,
+   "km": null,
+   "zaehler_start": 5956.4,
+   "zaehler_ende": 5990
+  },
+  {
+   "tage_zurueck": 836,
+   "start": "12:11",
+   "dauer_min": 874,
+   "kwh": 33.69,
+   "sonne_kwh": 33.69,
+   "netz_kwh": 0,
+   "km": 28700,
+   "zaehler_start": 5990,
+   "zaehler_ende": 6023.7
+  },
+  {
+   "tage_zurueck": 832,
+   "start": "10:23",
+   "dauer_min": 329,
+   "kwh": 32.71,
+   "sonne_kwh": 29.61,
+   "netz_kwh": 3.1,
+   "km": null,
+   "zaehler_start": 6023.7,
+   "zaehler_ende": 6056.4
+  },
+  {
+   "tage_zurueck": 829,
+   "start": "10:23",
+   "dauer_min": 790,
+   "kwh": 42.56,
+   "sonne_kwh": 42.54,
+   "netz_kwh": 0.02,
+   "km": 29010,
+   "zaehler_start": 6056.4,
+   "zaehler_ende": 6099
+  },
+  {
+   "tage_zurueck": 827,
+   "start": "10:18",
+   "dauer_min": 348,
+   "kwh": 36.26,
+   "sonne_kwh": 27.09,
+   "netz_kwh": 9.17,
+   "km": 29076,
+   "zaehler_start": 6099,
+   "zaehler_ende": 6135.3
+  },
+  {
+   "tage_zurueck": 826,
+   "start": "11:31",
+   "dauer_min": 329,
+   "kwh": 17.68,
+   "sonne_kwh": 17.68,
+   "netz_kwh": 0,
+   "km": 29109,
+   "zaehler_start": 6135.3,
+   "zaehler_ende": 6152.9
+  },
+  {
+   "tage_zurueck": 824,
+   "start": "10:27",
+   "dauer_min": 365,
+   "kwh": 19.53,
+   "sonne_kwh": 19.53,
+   "netz_kwh": 0,
+   "km": 29188,
+   "zaehler_start": 6152.9,
+   "zaehler_ende": 6172.5
+  },
+  {
+   "tage_zurueck": 823,
+   "start": "11:54",
+   "dauer_min": 115,
+   "kwh": 9.97,
+   "sonne_kwh": 9,
+   "netz_kwh": 0.97,
+   "km": null,
+   "zaehler_start": 6172.5,
+   "zaehler_ende": 6182.4
+  },
+  {
+   "tage_zurueck": 821,
+   "start": "12:02",
+   "dauer_min": 176,
+   "kwh": 11.9,
+   "sonne_kwh": 8.44,
+   "netz_kwh": 3.46,
+   "km": 29325,
+   "zaehler_start": 6182.4,
+   "zaehler_ende": 6194.3
+  },
+  {
+   "tage_zurueck": 819,
+   "start": "09:18",
+   "dauer_min": 644,
+   "kwh": 42.49,
+   "sonne_kwh": 29.43,
+   "netz_kwh": 13.06,
+   "km": 29390,
+   "zaehler_start": 6194.3,
+   "zaehler_ende": 6236.8
+  },
+  {
+   "tage_zurueck": 818,
+   "start": "12:38",
+   "dauer_min": 165,
+   "kwh": 17.09,
+   "sonne_kwh": 17.09,
+   "netz_kwh": 0,
+   "km": 29420,
+   "zaehler_start": 6236.8,
+   "zaehler_ende": 6253.9
+  },
+  {
+   "tage_zurueck": 817,
+   "start": "09:33",
+   "dauer_min": 412,
+   "kwh": 32.64,
+   "sonne_kwh": 30.23,
+   "netz_kwh": 2.41,
+   "km": 29446,
+   "zaehler_start": 6253.9,
+   "zaehler_ende": 6286.6
+  },
+  {
+   "tage_zurueck": 814,
+   "start": "11:49",
+   "dauer_min": 860,
+   "kwh": 43.1,
+   "sonne_kwh": 38.96,
+   "netz_kwh": 4.14,
+   "km": 29545,
+   "zaehler_start": 6286.6,
+   "zaehler_ende": 6329.7
+  },
+  {
+   "tage_zurueck": 812,
+   "start": "12:57",
+   "dauer_min": 113,
+   "kwh": 8.15,
+   "sonne_kwh": 8.15,
+   "netz_kwh": 0,
+   "km": null,
+   "zaehler_start": 6329.7,
+   "zaehler_ende": 6337.8
+  },
+  {
+   "tage_zurueck": 811,
+   "start": "09:41",
+   "dauer_min": 282,
+   "kwh": 22.19,
+   "sonne_kwh": 15.45,
+   "netz_kwh": 6.74,
+   "km": null,
+   "zaehler_start": 6337.8,
+   "zaehler_ende": 6360
+  },
+  {
+   "tage_zurueck": 810,
+   "start": "12:25",
+   "dauer_min": 168,
+   "kwh": 13.25,
+   "sonne_kwh": 9.36,
+   "netz_kwh": 3.89,
+   "km": 29689,
+   "zaehler_start": 6360,
+   "zaehler_ende": 6373.2
+  },
+  {
+   "tage_zurueck": 808,
+   "start": "10:59",
+   "dauer_min": 380,
+   "kwh": 29.03,
+   "sonne_kwh": 25.17,
+   "netz_kwh": 3.86,
+   "km": 29765,
+   "zaehler_start": 6373.2,
+   "zaehler_ende": 6402.3
+  },
+  {
+   "tage_zurueck": 806,
+   "start": "10:12",
+   "dauer_min": 762,
+   "kwh": 37.57,
+   "sonne_kwh": 26.51,
+   "netz_kwh": 11.06,
+   "km": 29862,
+   "zaehler_start": 6402.3,
+   "zaehler_ende": 6439.8
+  },
+  {
+   "tage_zurueck": 800,
+   "start": "12:00",
+   "dauer_min": 438,
+   "kwh": 39.27,
+   "sonne_kwh": 25.43,
+   "netz_kwh": 13.84,
+   "km": 30139,
+   "zaehler_start": 6439.8,
+   "zaehler_ende": 6479.1
+  },
+  {
+   "tage_zurueck": 799,
+   "start": "11:05",
+   "dauer_min": 400,
+   "kwh": 38.44,
+   "sonne_kwh": 38.18,
+   "netz_kwh": 0.26,
+   "km": 30172,
+   "zaehler_start": 6479.1,
+   "zaehler_ende": 6517.6
+  },
+  {
+   "tage_zurueck": 798,
+   "start": "11:48",
+   "dauer_min": 267,
+   "kwh": 26.11,
+   "sonne_kwh": 16.97,
+   "netz_kwh": 9.14,
+   "km": 30206,
+   "zaehler_start": 6517.6,
+   "zaehler_ende": 6543.7
+  },
+  {
+   "tage_zurueck": 797,
+   "start": "11:12",
+   "dauer_min": 159,
+   "kwh": 16.18,
+   "sonne_kwh": 13.48,
+   "netz_kwh": 2.7,
+   "km": 30238,
+   "zaehler_start": 6543.7,
+   "zaehler_ende": 6559.8
+  },
+  {
+   "tage_zurueck": 796,
+   "start": "11:24",
+   "dauer_min": 500,
+   "kwh": 43.57,
+   "sonne_kwh": 29.46,
+   "netz_kwh": 14.11,
+   "km": null,
+   "zaehler_start": 6559.8,
+   "zaehler_ende": 6603.4
+  },
+  {
+   "tage_zurueck": 794,
+   "start": "12:05",
+   "dauer_min": 270,
+   "kwh": 23.44,
+   "sonne_kwh": 15.53,
+   "netz_kwh": 7.91,
+   "km": 30374,
+   "zaehler_start": 6603.4,
+   "zaehler_ende": 6626.9
+  },
+  {
+   "tage_zurueck": 792,
+   "start": "12:11",
+   "dauer_min": 224,
+   "kwh": 12.34,
+   "sonne_kwh": 11.43,
+   "netz_kwh": 0.91,
+   "km": null,
+   "zaehler_start": 6626.9,
+   "zaehler_ende": 6639.2
+  },
+  {
+   "tage_zurueck": 788,
+   "start": "09:24",
+   "dauer_min": 378,
+   "kwh": 34.01,
+   "sonne_kwh": 27.27,
+   "netz_kwh": 6.74,
+   "km": 30630,
+   "zaehler_start": 6639.2,
+   "zaehler_ende": 6673.2
+  },
+  {
+   "tage_zurueck": 784,
+   "start": "09:42",
+   "dauer_min": 110,
+   "kwh": 8.43,
+   "sonne_kwh": 5.5,
+   "netz_kwh": 2.93,
+   "km": null,
+   "zaehler_start": 6673.2,
+   "zaehler_ende": 6681.6
+  },
+  {
+   "tage_zurueck": 781,
+   "start": "12:33",
+   "dauer_min": 75,
+   "kwh": 9.03,
+   "sonne_kwh": 7.86,
+   "netz_kwh": 1.17,
+   "km": 30889,
+   "zaehler_start": 6681.6,
+   "zaehler_ende": 6690.7
+  },
+  {
+   "tage_zurueck": 778,
+   "start": "09:12",
+   "dauer_min": 347,
+   "kwh": 21.02,
+   "sonne_kwh": 15.53,
+   "netz_kwh": 5.49,
+   "km": null,
+   "zaehler_start": 6690.7,
+   "zaehler_ende": 6711.7
+  },
+  {
+   "tage_zurueck": 775,
+   "start": "11:15",
+   "dauer_min": 89,
+   "kwh": 7.98,
+   "sonne_kwh": 6.6,
+   "netz_kwh": 1.38,
+   "km": 31140,
+   "zaehler_start": 6711.7,
+   "zaehler_ende": 6719.7
+  },
+  {
+   "tage_zurueck": 773,
+   "start": "12:55",
+   "dauer_min": 432,
+   "kwh": 37.86,
+   "sonne_kwh": 23.49,
+   "netz_kwh": 14.37,
+   "km": 31218,
+   "zaehler_start": 6719.7,
+   "zaehler_ende": 6757.5
+  },
+  {
+   "tage_zurueck": 769,
+   "start": "11:27",
+   "dauer_min": 457,
+   "kwh": 34.82,
+   "sonne_kwh": 27.46,
+   "netz_kwh": 7.36,
+   "km": 31381,
+   "zaehler_start": 6757.5,
+   "zaehler_ende": 6792.3
+  },
+  {
+   "tage_zurueck": 768,
+   "start": "09:18",
+   "dauer_min": 253,
+   "kwh": 22.92,
+   "sonne_kwh": 19.03,
+   "netz_kwh": 3.89,
+   "km": 31412,
+   "zaehler_start": 6792.3,
+   "zaehler_ende": 6815.3
+  },
+  {
+   "tage_zurueck": 767,
+   "start": "09:15",
+   "dauer_min": 179,
+   "kwh": 17.2,
+   "sonne_kwh": 15.29,
+   "netz_kwh": 1.91,
+   "km": 31453,
+   "zaehler_start": 6815.3,
+   "zaehler_ende": 6832.5
+  },
+  {
+   "tage_zurueck": 765,
+   "start": "10:44",
+   "dauer_min": 276,
+   "kwh": 35.14,
+   "sonne_kwh": 18.13,
+   "netz_kwh": 17.01,
+   "km": null,
+   "zaehler_start": 6832.5,
+   "zaehler_ende": 6867.6
+  },
+  {
+   "tage_zurueck": 764,
+   "start": "09:03",
+   "dauer_min": 138,
+   "kwh": 19.93,
+   "sonne_kwh": 10.38,
+   "netz_kwh": 9.55,
+   "km": 31556,
+   "zaehler_start": 6867.6,
+   "zaehler_ende": 6887.5
+  },
+  {
+   "tage_zurueck": 762,
+   "start": "11:30",
+   "dauer_min": 649,
+   "kwh": 27.16,
+   "sonne_kwh": 23.47,
+   "netz_kwh": 3.69,
+   "km": 31630,
+   "zaehler_start": 6887.5,
+   "zaehler_ende": 6914.7
+  },
+  {
+   "tage_zurueck": 758,
+   "start": "09:43",
+   "dauer_min": 512,
+   "kwh": 24.95,
+   "sonne_kwh": 19.88,
+   "netz_kwh": 5.07,
+   "km": null,
+   "zaehler_start": 6914.7,
+   "zaehler_ende": 6939.6
+  },
+  {
+   "tage_zurueck": 757,
+   "start": "12:49",
+   "dauer_min": 289,
+   "kwh": 15.83,
+   "sonne_kwh": 12.96,
+   "netz_kwh": 2.87,
+   "km": 31835,
+   "zaehler_start": 6939.6,
+   "zaehler_ende": 6955.5
+  },
+  {
+   "tage_zurueck": 755,
+   "start": "19:46",
+   "dauer_min": 198,
+   "kwh": 34.09,
+   "sonne_kwh": 16.32,
+   "netz_kwh": 17.77,
+   "km": null,
+   "zaehler_start": 6955.5,
+   "zaehler_ende": 6989.6
+  },
+  {
+   "tage_zurueck": 754,
+   "start": "12:13",
+   "dauer_min": 140,
+   "kwh": 13.83,
+   "sonne_kwh": 7.15,
+   "netz_kwh": 6.68,
+   "km": 31964,
+   "zaehler_start": 6989.6,
+   "zaehler_ende": 7003.4
+  },
+  {
+   "tage_zurueck": 751,
+   "start": "11:42",
+   "dauer_min": 242,
+   "kwh": 26.71,
+   "sonne_kwh": 20.84,
+   "netz_kwh": 5.87,
+   "km": 32111,
+   "zaehler_start": 7003.4,
+   "zaehler_ende": 7030.1
+  },
+  {
+   "tage_zurueck": 747,
+   "start": "16:26",
+   "dauer_min": 59,
+   "kwh": 7.89,
+   "sonne_kwh": 3.7,
+   "netz_kwh": 4.19,
+   "km": 32286,
+   "zaehler_start": 7030.1,
+   "zaehler_ende": 7038
+  },
+  {
+   "tage_zurueck": 745,
+   "start": "11:39",
+   "dauer_min": 198,
+   "kwh": 14.66,
+   "sonne_kwh": 11.04,
+   "netz_kwh": 3.62,
+   "km": 32371,
+   "zaehler_start": 7038,
+   "zaehler_ende": 7052.7
+  },
+  {
+   "tage_zurueck": 742,
+   "start": "18:56",
+   "dauer_min": 302,
+   "kwh": 36.12,
+   "sonne_kwh": 14.18,
+   "netz_kwh": 21.94,
+   "km": null,
+   "zaehler_start": 7052.7,
+   "zaehler_ende": 7088.8
+  },
+  {
+   "tage_zurueck": 739,
+   "start": "18:19",
+   "dauer_min": 374,
+   "kwh": 38.64,
+   "sonne_kwh": 13.96,
+   "netz_kwh": 24.68,
+   "km": null,
+   "zaehler_start": 7088.8,
+   "zaehler_ende": 7127.4
+  },
+  {
+   "tage_zurueck": 738,
+   "start": "20:30",
+   "dauer_min": 196,
+   "kwh": 34.04,
+   "sonne_kwh": 14.5,
+   "netz_kwh": 19.54,
+   "km": null,
+   "zaehler_start": 7127.4,
+   "zaehler_ende": 7161.5
+  },
+  {
+   "tage_zurueck": 736,
+   "start": "11:37",
+   "dauer_min": 427,
+   "kwh": 26.44,
+   "sonne_kwh": 18.01,
+   "netz_kwh": 8.43,
+   "km": 32730,
+   "zaehler_start": 7161.5,
+   "zaehler_ende": 7187.9
+  },
+  {
+   "tage_zurueck": 735,
+   "start": "11:03",
+   "dauer_min": 358,
+   "kwh": 29.35,
+   "sonne_kwh": 21.41,
+   "netz_kwh": 7.94,
+   "km": 32762,
+   "zaehler_start": 7187.9,
+   "zaehler_ende": 7217.2
+  },
+  {
+   "tage_zurueck": 734,
+   "start": "09:27",
+   "dauer_min": 333,
+   "kwh": 34.14,
+   "sonne_kwh": 19.24,
+   "netz_kwh": 14.9,
+   "km": null,
+   "zaehler_start": 7217.2,
+   "zaehler_ende": 7251.4
+  },
+  {
+   "tage_zurueck": 728,
+   "start": "19:58",
+   "dauer_min": 137,
+   "kwh": 19.21,
+   "sonne_kwh": 8.18,
+   "netz_kwh": 11.03,
+   "km": null,
+   "zaehler_start": 7251.4,
+   "zaehler_ende": 7270.6
+  },
+  {
+   "tage_zurueck": 727,
+   "start": "09:51",
+   "dauer_min": 290,
+   "kwh": 37.4,
+   "sonne_kwh": 20.29,
+   "netz_kwh": 17.11,
+   "km": 33095,
+   "zaehler_start": 7270.6,
+   "zaehler_ende": 7308
+  },
+  {
+   "tage_zurueck": 726,
+   "start": "20:24",
+   "dauer_min": 248,
+   "kwh": 32.78,
+   "sonne_kwh": 8.61,
+   "netz_kwh": 24.17,
+   "km": 33122,
+   "zaehler_start": 7308,
+   "zaehler_ende": 7340.8
+  },
+  {
+   "tage_zurueck": 723,
+   "start": "19:27",
+   "dauer_min": 211,
+   "kwh": 25.57,
+   "sonne_kwh": 11.16,
+   "netz_kwh": 14.41,
+   "km": null,
+   "zaehler_start": 7340.8,
+   "zaehler_ende": 7366.3
+  },
+  {
+   "tage_zurueck": 719,
+   "start": "09:11",
+   "dauer_min": 1166,
+   "kwh": 43.89,
+   "sonne_kwh": 27.09,
+   "netz_kwh": 16.8,
+   "km": 33390,
+   "zaehler_start": 7366.3,
+   "zaehler_ende": 7410.2
+  },
+  {
+   "tage_zurueck": 717,
+   "start": "20:46",
+   "dauer_min": 209,
+   "kwh": 26.92,
+   "sonne_kwh": 11.08,
+   "netz_kwh": 15.84,
+   "km": 33481,
+   "zaehler_start": 7410.2,
+   "zaehler_ende": 7437.2
+  },
+  {
+   "tage_zurueck": 715,
+   "start": "17:52",
+   "dauer_min": 253,
+   "kwh": 29.56,
+   "sonne_kwh": 11.22,
+   "netz_kwh": 18.34,
+   "km": 33543,
+   "zaehler_start": 7437.2,
+   "zaehler_ende": 7466.7
+  },
+  {
+   "tage_zurueck": 713,
+   "start": "10:07",
+   "dauer_min": 734,
+   "kwh": 35.52,
+   "sonne_kwh": 21.34,
+   "netz_kwh": 14.18,
+   "km": null,
+   "zaehler_start": 7466.7,
+   "zaehler_ende": 7502.2
+  },
+  {
+   "tage_zurueck": 705,
+   "start": "20:27",
+   "dauer_min": 41,
+   "kwh": 7.12,
+   "sonne_kwh": 1.95,
+   "netz_kwh": 5.17,
+   "km": null,
+   "zaehler_start": 7502.2,
+   "zaehler_ende": 7509.4
+  },
+  {
+   "tage_zurueck": 704,
+   "start": "17:17",
+   "dauer_min": 281,
+   "kwh": 35,
+   "sonne_kwh": 9.91,
+   "netz_kwh": 25.09,
+   "km": 34028,
+   "zaehler_start": 7509.4,
+   "zaehler_ende": 7544.4
+  },
+  {
+   "tage_zurueck": 700,
+   "start": "19:34",
+   "dauer_min": 249,
+   "kwh": 38.04,
+   "sonne_kwh": 9.53,
+   "netz_kwh": 28.51,
+   "km": 34178,
+   "zaehler_start": 7544.4,
+   "zaehler_ende": 7582.4
+  },
+  {
+   "tage_zurueck": 699,
+   "start": "18:22",
+   "dauer_min": 193,
+   "kwh": 21.76,
+   "sonne_kwh": 5.38,
+   "netz_kwh": 16.38,
+   "km": 34206,
+   "zaehler_start": 7582.4,
+   "zaehler_ende": 7604.2
+  },
+  {
+   "tage_zurueck": 696,
+   "start": "16:01",
+   "dauer_min": 50,
+   "kwh": 8.53,
+   "sonne_kwh": 2.81,
+   "netz_kwh": 5.72,
+   "km": 34321,
+   "zaehler_start": 7604.2,
+   "zaehler_ende": 7612.7
+  },
+  {
+   "tage_zurueck": 695,
+   "start": "20:46",
+   "dauer_min": 195,
+   "kwh": 19.18,
+   "sonne_kwh": 2.72,
+   "netz_kwh": 16.46,
+   "km": 34348,
+   "zaehler_start": 7612.7,
+   "zaehler_ende": 7631.9
+  },
+  {
+   "tage_zurueck": 694,
+   "start": "18:36",
+   "dauer_min": 357,
+   "kwh": 35.08,
+   "sonne_kwh": 2.1,
+   "netz_kwh": 32.98,
+   "km": null,
+   "zaehler_start": 7631.9,
+   "zaehler_ende": 7666.9
+  },
+  {
+   "tage_zurueck": 693,
+   "start": "16:54",
+   "dauer_min": 177,
+   "kwh": 31.05,
+   "sonne_kwh": 5.09,
+   "netz_kwh": 25.96,
+   "km": 34457,
+   "zaehler_start": 7666.9,
+   "zaehler_ende": 7698
+  },
+  {
+   "tage_zurueck": 691,
+   "start": "17:17",
+   "dauer_min": 57,
+   "kwh": 9.51,
+   "sonne_kwh": 2.61,
+   "netz_kwh": 6.9,
+   "km": null,
+   "zaehler_start": 7698,
+   "zaehler_ende": 7707.5
+  },
+  {
+   "tage_zurueck": 690,
+   "start": "20:31",
+   "dauer_min": 128,
+   "kwh": 20.36,
+   "sonne_kwh": 5.84,
+   "netz_kwh": 14.52,
+   "km": 34585,
+   "zaehler_start": 7707.5,
+   "zaehler_ende": 7727.9
+  },
+  {
+   "tage_zurueck": 689,
+   "start": "18:27",
+   "dauer_min": 158,
+   "kwh": 23.2,
+   "sonne_kwh": 3.26,
+   "netz_kwh": 19.94,
+   "km": 34618,
+   "zaehler_start": 7727.9,
+   "zaehler_ende": 7751.1
+  },
+  {
+   "tage_zurueck": 688,
+   "start": "16:10",
+   "dauer_min": 125,
+   "kwh": 16.34,
+   "sonne_kwh": 6.85,
+   "netz_kwh": 9.49,
+   "km": null,
+   "zaehler_start": 7751.1,
+   "zaehler_ende": 7767.4
+  },
+  {
+   "tage_zurueck": 684,
+   "start": "18:20",
+   "dauer_min": 241,
+   "kwh": 40.72,
+   "sonne_kwh": 17.52,
+   "netz_kwh": 23.2,
+   "km": null,
+   "zaehler_start": 7767.4,
+   "zaehler_ende": 7808.1
+  },
+  {
+   "tage_zurueck": 681,
+   "start": "20:37",
+   "dauer_min": 140,
+   "kwh": 22.91,
+   "sonne_kwh": 7.68,
+   "netz_kwh": 15.23,
+   "km": 34940,
+   "zaehler_start": 7808.1,
+   "zaehler_ende": 7831
+  },
+  {
+   "tage_zurueck": 678,
+   "start": "16:42",
+   "dauer_min": 68,
+   "kwh": 9.8,
+   "sonne_kwh": 2.75,
+   "netz_kwh": 7.05,
+   "km": null,
+   "zaehler_start": 7831,
+   "zaehler_ende": 7840.8
+  },
+  {
+   "tage_zurueck": 675,
+   "start": "16:08",
+   "dauer_min": 194,
+   "kwh": 34.66,
+   "sonne_kwh": 0.61,
+   "netz_kwh": 34.05,
+   "km": 35187,
+   "zaehler_start": 7840.8,
+   "zaehler_ende": 7875.5
+  },
+  {
+   "tage_zurueck": 674,
+   "start": "20:27",
+   "dauer_min": 152,
+   "kwh": 25.64,
+   "sonne_kwh": 9.55,
+   "netz_kwh": 16.09,
+   "km": 35228,
+   "zaehler_start": 7875.5,
+   "zaehler_ende": 7901.1
+  },
+  {
+   "tage_zurueck": 670,
+   "start": "20:12",
+   "dauer_min": 121,
+   "kwh": 20.21,
+   "sonne_kwh": 0,
+   "netz_kwh": 20.21,
+   "km": null,
+   "zaehler_start": 7901.1,
+   "zaehler_ende": 7921.3
+  },
+  {
+   "tage_zurueck": 668,
+   "start": "16:12",
+   "dauer_min": 65,
+   "kwh": 6.17,
+   "sonne_kwh": 0,
+   "netz_kwh": 6.17,
+   "km": 35470,
+   "zaehler_start": 7921.3,
+   "zaehler_ende": 7927.5
+  },
+  {
+   "tage_zurueck": 667,
+   "start": "16:09",
+   "dauer_min": 200,
+   "kwh": 31.06,
+   "sonne_kwh": 0,
+   "netz_kwh": 31.06,
+   "km": 35519,
+   "zaehler_start": 7927.5,
+   "zaehler_ende": 7958.6
+  },
+  {
+   "tage_zurueck": 665,
+   "start": "16:06",
+   "dauer_min": 131,
+   "kwh": 21.11,
+   "sonne_kwh": 5.81,
+   "netz_kwh": 15.3,
+   "km": 35574,
+   "zaehler_start": 7958.6,
+   "zaehler_ende": 7979.7
+  },
+  {
+   "tage_zurueck": 663,
+   "start": "20:28",
+   "dauer_min": 257,
+   "kwh": 32.71,
+   "sonne_kwh": 1.71,
+   "netz_kwh": 31,
+   "km": 35632,
+   "zaehler_start": 7979.7,
+   "zaehler_ende": 8012.4
+  },
+  {
+   "tage_zurueck": 659,
+   "start": "18:31",
+   "dauer_min": 271,
+   "kwh": 37.68,
+   "sonne_kwh": 4.62,
+   "netz_kwh": 33.06,
+   "km": 35803,
+   "zaehler_start": 8012.4,
+   "zaehler_ende": 8050.1
+  },
+  {
+   "tage_zurueck": 658,
+   "start": "17:58",
+   "dauer_min": 295,
+   "kwh": 29.01,
+   "sonne_kwh": 0,
+   "netz_kwh": 29.01,
+   "km": 35834,
+   "zaehler_start": 8050.1,
+   "zaehler_ende": 8079.1
+  },
+  {
+   "tage_zurueck": 653,
+   "start": "20:09",
+   "dauer_min": 110,
+   "kwh": 18.23,
+   "sonne_kwh": 0.88,
+   "netz_kwh": 17.35,
+   "km": 36030,
+   "zaehler_start": 8079.1,
+   "zaehler_ende": 8097.3
+  },
+  {
+   "tage_zurueck": 652,
+   "start": "16:36",
+   "dauer_min": 203,
+   "kwh": 37.03,
+   "sonne_kwh": 0.43,
+   "netz_kwh": 36.6,
+   "km": null,
+   "zaehler_start": 8097.3,
+   "zaehler_ende": 8134.3
+  },
+  {
+   "tage_zurueck": 650,
+   "start": "18:37",
+   "dauer_min": 93,
+   "kwh": 12.63,
+   "sonne_kwh": 2.64,
+   "netz_kwh": 9.99,
+   "km": null,
+   "zaehler_start": 8134.3,
+   "zaehler_ende": 8147
+  },
+  {
+   "tage_zurueck": 648,
+   "start": "16:08",
+   "dauer_min": 104,
+   "kwh": 17.78,
+   "sonne_kwh": 0,
+   "netz_kwh": 17.78,
+   "km": 36276,
+   "zaehler_start": 8147,
+   "zaehler_ende": 8164.8
+  },
+  {
+   "tage_zurueck": 646,
+   "start": "18:14",
+   "dauer_min": 192,
+   "kwh": 34.8,
+   "sonne_kwh": 11.59,
+   "netz_kwh": 23.21,
+   "km": null,
+   "zaehler_start": 8164.8,
+   "zaehler_ende": 8199.6
+  },
+  {
+   "tage_zurueck": 641,
+   "start": "16:49",
+   "dauer_min": 145,
+   "kwh": 15.13,
+   "sonne_kwh": 4.64,
+   "netz_kwh": 10.49,
+   "km": 36544,
+   "zaehler_start": 8199.6,
+   "zaehler_ende": 8214.7
+  },
+  {
+   "tage_zurueck": 636,
+   "start": "18:57",
+   "dauer_min": 249,
+   "kwh": 24.7,
+   "sonne_kwh": 0,
+   "netz_kwh": 24.7,
+   "km": 36762,
+   "zaehler_start": 8214.7,
+   "zaehler_ende": 8239.4
+  },
+  {
+   "tage_zurueck": 634,
+   "start": "19:38",
+   "dauer_min": 170,
+   "kwh": 29.22,
+   "sonne_kwh": 2.77,
+   "netz_kwh": 26.45,
+   "km": 36834,
+   "zaehler_start": 8239.4,
+   "zaehler_ende": 8268.6
+  },
+  {
+   "tage_zurueck": 633,
+   "start": "18:54",
+   "dauer_min": 320,
+   "kwh": 43.82,
+   "sonne_kwh": 8.75,
+   "netz_kwh": 35.07,
+   "km": 36877,
+   "zaehler_start": 8268.6,
+   "zaehler_ende": 8312.4
+  },
+  {
+   "tage_zurueck": 630,
+   "start": "20:54",
+   "dauer_min": 237,
+   "kwh": 28.1,
+   "sonne_kwh": 9.72,
+   "netz_kwh": 18.38,
+   "km": null,
+   "zaehler_start": 8312.4,
+   "zaehler_ende": 8340.5
+  },
+  {
+   "tage_zurueck": 629,
+   "start": "18:28",
+   "dauer_min": 261,
+   "kwh": 38.12,
+   "sonne_kwh": 3.53,
+   "netz_kwh": 34.59,
+   "km": 37073,
+   "zaehler_start": 8340.5,
+   "zaehler_ende": 8378.6
+  },
+  {
+   "tage_zurueck": 628,
+   "start": "18:05",
+   "dauer_min": 186,
+   "kwh": 29.76,
+   "sonne_kwh": 1.77,
+   "netz_kwh": 27.99,
+   "km": 37105,
+   "zaehler_start": 8378.6,
+   "zaehler_ende": 8408.4
+  },
+  {
+   "tage_zurueck": 627,
+   "start": "19:37",
+   "dauer_min": 162,
+   "kwh": 22.32,
+   "sonne_kwh": 2.69,
+   "netz_kwh": 19.63,
+   "km": null,
+   "zaehler_start": 8408.4,
+   "zaehler_ende": 8430.7
+  },
+  {
+   "tage_zurueck": 622,
+   "start": "20:04",
+   "dauer_min": 258,
+   "kwh": 28.43,
+   "sonne_kwh": 0,
+   "netz_kwh": 28.43,
+   "km": null,
+   "zaehler_start": 8430.7,
+   "zaehler_ende": 8459.2
+  },
+  {
+   "tage_zurueck": 611,
+   "start": "20:11",
+   "dauer_min": 123,
+   "kwh": 22.34,
+   "sonne_kwh": 1.41,
+   "netz_kwh": 20.93,
+   "km": 37818,
+   "zaehler_start": 8459.2,
+   "zaehler_ende": 8481.5
+  },
+  {
+   "tage_zurueck": 608,
+   "start": "16:16",
+   "dauer_min": 291,
+   "kwh": 30.78,
+   "sonne_kwh": 5.65,
+   "netz_kwh": 25.13,
+   "km": 37938,
+   "zaehler_start": 8481.5,
+   "zaehler_ende": 8512.3
+  },
+  {
+   "tage_zurueck": 604,
+   "start": "18:44",
+   "dauer_min": 94,
+   "kwh": 14.45,
+   "sonne_kwh": 0,
+   "netz_kwh": 14.45,
+   "km": 38063,
+   "zaehler_start": 8512.3,
+   "zaehler_ende": 8526.7
+  },
+  {
+   "tage_zurueck": 603,
+   "start": "19:36",
+   "dauer_min": 230,
+   "kwh": 24.27,
+   "sonne_kwh": 0,
+   "netz_kwh": 24.27,
+   "km": null,
+   "zaehler_start": 8526.7,
+   "zaehler_ende": 8551
+  },
+  {
+   "tage_zurueck": 602,
+   "start": "18:09",
+   "dauer_min": 90,
+   "kwh": 12.79,
+   "sonne_kwh": 3.31,
+   "netz_kwh": 9.48,
+   "km": 38143,
+   "zaehler_start": 8551,
+   "zaehler_ende": 8563.8
+  },
+  {
+   "tage_zurueck": 601,
+   "start": "17:15",
+   "dauer_min": 43,
+   "kwh": 7.63,
+   "sonne_kwh": 3.16,
+   "netz_kwh": 4.47,
+   "km": 38169,
+   "zaehler_start": 8563.8,
+   "zaehler_ende": 8571.4
+  },
+  {
+   "tage_zurueck": 598,
+   "start": "19:23",
+   "dauer_min": 158,
+   "kwh": 15.53,
+   "sonne_kwh": 4.38,
+   "netz_kwh": 11.15,
+   "km": null,
+   "zaehler_start": 8571.4,
+   "zaehler_ende": 8586.9
+  },
+  {
+   "tage_zurueck": 597,
+   "start": "17:55",
+   "dauer_min": 179,
+   "kwh": 32.07,
+   "sonne_kwh": 11.27,
+   "netz_kwh": 20.8,
+   "km": 38327,
+   "zaehler_start": 8586.9,
+   "zaehler_ende": 8619
+  },
+  {
+   "tage_zurueck": 596,
+   "start": "18:15",
+   "dauer_min": 84,
+   "kwh": 12.79,
+   "sonne_kwh": 1,
+   "netz_kwh": 11.79,
+   "km": 38359,
+   "zaehler_start": 8619,
+   "zaehler_ende": 8631.8
+  },
+  {
+   "tage_zurueck": 595,
+   "start": "19:51",
+   "dauer_min": 159,
+   "kwh": 22.37,
+   "sonne_kwh": 8.71,
+   "netz_kwh": 13.66,
+   "km": 38407,
+   "zaehler_start": 8631.8,
+   "zaehler_ende": 8654.2
+  },
+  {
+   "tage_zurueck": 586,
+   "start": "16:22",
+   "dauer_min": 320,
+   "kwh": 34.18,
+   "sonne_kwh": 5.74,
+   "netz_kwh": 28.44,
+   "km": 38754,
+   "zaehler_start": 8654.2,
+   "zaehler_ende": 8688.4
+  },
+  {
+   "tage_zurueck": 585,
+   "start": "19:54",
+   "dauer_min": 85,
+   "kwh": 13.04,
+   "sonne_kwh": 6.36,
+   "netz_kwh": 6.68,
+   "km": null,
+   "zaehler_start": 8688.4,
+   "zaehler_ende": 8701.4
+  },
+  {
+   "tage_zurueck": 584,
+   "start": "16:33",
+   "dauer_min": 65,
+   "kwh": 11.49,
+   "sonne_kwh": 2.93,
+   "netz_kwh": 8.56,
+   "km": null,
+   "zaehler_start": 8701.4,
+   "zaehler_ende": 8712.9
+  },
+  {
+   "tage_zurueck": 583,
+   "start": "16:25",
+   "dauer_min": 49,
+   "kwh": 7.33,
+   "sonne_kwh": 0.94,
+   "netz_kwh": 6.39,
+   "km": null,
+   "zaehler_start": 8712.9,
+   "zaehler_ende": 8720.2
+  },
+  {
+   "tage_zurueck": 582,
+   "start": "20:05",
+   "dauer_min": 194,
+   "kwh": 18.53,
+   "sonne_kwh": 6.98,
+   "netz_kwh": 11.55,
+   "km": 38911,
+   "zaehler_start": 8720.2,
+   "zaehler_ende": 8738.8
+  },
+  {
+   "tage_zurueck": 579,
+   "start": "17:46",
+   "dauer_min": 47,
+   "kwh": 6.97,
+   "sonne_kwh": 0.68,
+   "netz_kwh": 6.29,
+   "km": 39030,
+   "zaehler_start": 8738.8,
+   "zaehler_ende": 8745.7
+  },
+  {
+   "tage_zurueck": 578,
+   "start": "17:22",
+   "dauer_min": 72,
+   "kwh": 9.5,
+   "sonne_kwh": 1.45,
+   "netz_kwh": 8.05,
+   "km": null,
+   "zaehler_start": 8745.7,
+   "zaehler_ende": 8755.2
+  },
+  {
+   "tage_zurueck": 577,
+   "start": "18:35",
+   "dauer_min": 256,
+   "kwh": 24.7,
+   "sonne_kwh": 5.54,
+   "netz_kwh": 19.16,
+   "km": 39116,
+   "zaehler_start": 8755.2,
+   "zaehler_ende": 8779.9
+  },
+  {
+   "tage_zurueck": 576,
+   "start": "20:14",
+   "dauer_min": 47,
+   "kwh": 7.84,
+   "sonne_kwh": 3.67,
+   "netz_kwh": 4.17,
+   "km": 39163,
+   "zaehler_start": 8779.9,
+   "zaehler_ende": 8787.8
+  },
+  {
+   "tage_zurueck": 575,
+   "start": "20:34",
+   "dauer_min": 148,
+   "kwh": 18.67,
+   "sonne_kwh": 3.16,
+   "netz_kwh": 15.51,
+   "km": 39204,
+   "zaehler_start": 8787.8,
+   "zaehler_ende": 8806.4
+  },
+  {
+   "tage_zurueck": 574,
+   "start": "17:11",
+   "dauer_min": 275,
+   "kwh": 31.71,
+   "sonne_kwh": 15.15,
+   "netz_kwh": 16.56,
+   "km": null,
+   "zaehler_start": 8806.4,
+   "zaehler_ende": 8838.1
+  },
+  {
+   "tage_zurueck": 573,
+   "start": "18:16",
+   "dauer_min": 158,
+   "kwh": 28.76,
+   "sonne_kwh": 7.39,
+   "netz_kwh": 21.37,
+   "km": null,
+   "zaehler_start": 8838.1,
+   "zaehler_ende": 8866.9
+  },
+  {
+   "tage_zurueck": 569,
+   "start": "16:58",
+   "dauer_min": 220,
+   "kwh": 24.49,
+   "sonne_kwh": 11.48,
+   "netz_kwh": 13.01,
+   "km": null,
+   "zaehler_start": 8866.9,
+   "zaehler_ende": 8891.4
+  },
+  {
+   "tage_zurueck": 567,
+   "start": "19:33",
+   "dauer_min": 391,
+   "kwh": 37.95,
+   "sonne_kwh": 9.29,
+   "netz_kwh": 28.66,
+   "km": 39478,
+   "zaehler_start": 8891.4,
+   "zaehler_ende": 8929.3
+  },
+  {
+   "tage_zurueck": 566,
+   "start": "10:45",
+   "dauer_min": 143,
+   "kwh": 16.42,
+   "sonne_kwh": 8.38,
+   "netz_kwh": 8.04,
+   "km": null,
+   "zaehler_start": 8929.3,
+   "zaehler_ende": 8945.8
+  },
+  {
+   "tage_zurueck": 565,
+   "start": "12:17",
+   "dauer_min": 73,
+   "kwh": 12.36,
+   "sonne_kwh": 7.41,
+   "netz_kwh": 4.95,
+   "km": 39558,
+   "zaehler_start": 8945.8,
+   "zaehler_ende": 8958.1
+  },
+  {
+   "tage_zurueck": 563,
+   "start": "19:01",
+   "dauer_min": 166,
+   "kwh": 20.25,
+   "sonne_kwh": 4.01,
+   "netz_kwh": 16.24,
+   "km": null,
+   "zaehler_start": 8958.1,
+   "zaehler_ende": 8978.4
+  },
+  {
+   "tage_zurueck": 561,
+   "start": "19:51",
+   "dauer_min": 120,
+   "kwh": 17.28,
+   "sonne_kwh": 7.63,
+   "netz_kwh": 9.65,
+   "km": 39695,
+   "zaehler_start": 8978.4,
+   "zaehler_ende": 8995.7
+  },
+  {
+   "tage_zurueck": 560,
+   "start": "12:52",
+   "dauer_min": 118,
+   "kwh": 18.17,
+   "sonne_kwh": 10.16,
+   "netz_kwh": 8.01,
+   "km": null,
+   "zaehler_start": 8995.7,
+   "zaehler_ende": 9013.8
+  },
+  {
+   "tage_zurueck": 553,
+   "start": "11:24",
+   "dauer_min": 115,
+   "kwh": 16.53,
+   "sonne_kwh": 9.49,
+   "netz_kwh": 7.04,
+   "km": 40025,
+   "zaehler_start": 9013.8,
+   "zaehler_ende": 9030.4
+  },
+  {
+   "tage_zurueck": 552,
+   "start": "17:55",
+   "dauer_min": 196,
+   "kwh": 32.17,
+   "sonne_kwh": 8.78,
+   "netz_kwh": 23.39,
+   "km": 40059,
+   "zaehler_start": 9030.4,
+   "zaehler_ende": 9062.5
+  },
+  {
+   "tage_zurueck": 549,
+   "start": "10:45",
+   "dauer_min": 204,
+   "kwh": 15.4,
+   "sonne_kwh": 10.13,
+   "netz_kwh": 5.27,
+   "km": 40204,
+   "zaehler_start": 9062.5,
+   "zaehler_ende": 9077.9
+  },
+  {
+   "tage_zurueck": 547,
+   "start": "20:51",
+   "dauer_min": 133,
+   "kwh": 23.07,
+   "sonne_kwh": 8.12,
+   "netz_kwh": 14.95,
+   "km": 40282,
+   "zaehler_start": 9077.9,
+   "zaehler_ende": 9101
+  },
+  {
+   "tage_zurueck": 546,
+   "start": "09:42",
+   "dauer_min": 120,
+   "kwh": 19.68,
+   "sonne_kwh": 10.32,
+   "netz_kwh": 9.36,
+   "km": 40316,
+   "zaehler_start": 9101,
+   "zaehler_ende": 9120.7
+  },
+  {
+   "tage_zurueck": 545,
+   "start": "10:04",
+   "dauer_min": 254,
+   "kwh": 27.99,
+   "sonne_kwh": 15.63,
+   "netz_kwh": 12.36,
+   "km": null,
+   "zaehler_start": 9120.7,
+   "zaehler_ende": 9148.7
+  },
+  {
+   "tage_zurueck": 544,
+   "start": "18:26",
+   "dauer_min": 193,
+   "kwh": 20.82,
+   "sonne_kwh": 7.18,
+   "netz_kwh": 13.64,
+   "km": 40391,
+   "zaehler_start": 9148.7,
+   "zaehler_ende": 9169.5
+  },
+  {
+   "tage_zurueck": 543,
+   "start": "12:05",
+   "dauer_min": 89,
+   "kwh": 9.65,
+   "sonne_kwh": 6.67,
+   "netz_kwh": 2.98,
+   "km": null,
+   "zaehler_start": 9169.5,
+   "zaehler_ende": 9179.1
+  },
+  {
+   "tage_zurueck": 542,
+   "start": "10:41",
+   "dauer_min": 189,
+   "kwh": 16.42,
+   "sonne_kwh": 9.97,
+   "netz_kwh": 6.45,
+   "km": null,
+   "zaehler_start": 9179.1,
+   "zaehler_ende": 9195.6
+  },
+  {
+   "tage_zurueck": 537,
+   "start": "18:55",
+   "dauer_min": 85,
+   "kwh": 11.86,
+   "sonne_kwh": 4.89,
+   "netz_kwh": 6.97,
+   "km": 40653,
+   "zaehler_start": 9195.6,
+   "zaehler_ende": 9207.4
+  },
+  {
+   "tage_zurueck": 536,
+   "start": "11:11",
+   "dauer_min": 258,
+   "kwh": 25.43,
+   "sonne_kwh": 19.02,
+   "netz_kwh": 6.41,
+   "km": 40685,
+   "zaehler_start": 9207.4,
+   "zaehler_ende": 9232.8
+  },
+  {
+   "tage_zurueck": 535,
+   "start": "09:13",
+   "dauer_min": 218,
+   "kwh": 21.44,
+   "sonne_kwh": 12.06,
+   "netz_kwh": 9.38,
+   "km": 40719,
+   "zaehler_start": 9232.8,
+   "zaehler_ende": 9254.3
+  },
+  {
+   "tage_zurueck": 534,
+   "start": "11:30",
+   "dauer_min": 375,
+   "kwh": 41.95,
+   "sonne_kwh": 28.71,
+   "netz_kwh": 13.24,
+   "km": 40762,
+   "zaehler_start": 9254.3,
+   "zaehler_ende": 9296.2
+  },
+  {
+   "tage_zurueck": 533,
+   "start": "11:21",
+   "dauer_min": 71,
+   "kwh": 12.37,
+   "sonne_kwh": 6.69,
+   "netz_kwh": 5.68,
+   "km": 40788,
+   "zaehler_start": 9296.2,
+   "zaehler_ende": 9308.6
+  },
+  {
+   "tage_zurueck": 532,
+   "start": "16:32",
+   "dauer_min": 374,
+   "kwh": 42.12,
+   "sonne_kwh": 16.33,
+   "netz_kwh": 25.79,
+   "km": null,
+   "zaehler_start": 9308.6,
+   "zaehler_ende": 9350.7
+  },
+  {
+   "tage_zurueck": 531,
+   "start": "11:39",
+   "dauer_min": 639,
+   "kwh": 31.67,
+   "sonne_kwh": 21.36,
+   "netz_kwh": 10.31,
+   "km": 40871,
+   "zaehler_start": 9350.7,
+   "zaehler_ende": 9382.4
+  },
+  {
+   "tage_zurueck": 529,
+   "start": "11:44",
+   "dauer_min": 326,
+   "kwh": 22.82,
+   "sonne_kwh": 17.81,
+   "netz_kwh": 5.01,
+   "km": 40932,
+   "zaehler_start": 9382.4,
+   "zaehler_ende": 9405.2
+  },
+  {
+   "tage_zurueck": 528,
+   "start": "09:35",
+   "dauer_min": 249,
+   "kwh": 32.79,
+   "sonne_kwh": 16.69,
+   "netz_kwh": 16.1,
+   "km": 40966,
+   "zaehler_start": 9405.2,
+   "zaehler_ende": 9438
+  },
+  {
+   "tage_zurueck": 525,
+   "start": "19:12",
+   "dauer_min": 385,
+   "kwh": 43.25,
+   "sonne_kwh": 20.87,
+   "netz_kwh": 22.38,
+   "km": null,
+   "zaehler_start": 9438,
+   "zaehler_ende": 9481.3
+  },
+  {
+   "tage_zurueck": 522,
+   "start": "11:49",
+   "dauer_min": 196,
+   "kwh": 8.8,
+   "sonne_kwh": 6.75,
+   "netz_kwh": 2.05,
+   "km": 41215,
+   "zaehler_start": 9481.3,
+   "zaehler_ende": 9490.1
+  },
+  {
+   "tage_zurueck": 521,
+   "start": "18:18",
+   "dauer_min": 54,
+   "kwh": 8.87,
+   "sonne_kwh": 4.08,
+   "netz_kwh": 4.79,
+   "km": null,
+   "zaehler_start": 9490.1,
+   "zaehler_ende": 9498.9
+  },
+  {
+   "tage_zurueck": 519,
+   "start": "20:29",
+   "dauer_min": 400,
+   "kwh": 38.59,
+   "sonne_kwh": 18.22,
+   "netz_kwh": 20.37,
+   "km": 41319,
+   "zaehler_start": 9498.9,
+   "zaehler_ende": 9537.5
+  },
+  {
+   "tage_zurueck": 515,
+   "start": "17:16",
+   "dauer_min": 88,
+   "kwh": 13.84,
+   "sonne_kwh": 6.68,
+   "netz_kwh": 7.16,
+   "km": null,
+   "zaehler_start": 9537.5,
+   "zaehler_ende": 9551.4
+  },
+  {
+   "tage_zurueck": 513,
+   "start": "12:20",
+   "dauer_min": 110,
+   "kwh": 12.19,
+   "sonne_kwh": 10.87,
+   "netz_kwh": 1.32,
+   "km": null,
+   "zaehler_start": 9551.4,
+   "zaehler_ende": 9563.5
+  },
+  {
+   "tage_zurueck": 510,
+   "start": "11:25",
+   "dauer_min": 309,
+   "kwh": 32.56,
+   "sonne_kwh": 18.31,
+   "netz_kwh": 14.25,
+   "km": 41695,
+   "zaehler_start": 9563.5,
+   "zaehler_ende": 9596.1
+  },
+  {
+   "tage_zurueck": 508,
+   "start": "09:20",
+   "dauer_min": 123,
+   "kwh": 13.73,
+   "sonne_kwh": 7.23,
+   "netz_kwh": 6.5,
+   "km": 41762,
+   "zaehler_start": 9596.1,
+   "zaehler_ende": 9609.8
+  },
+  {
+   "tage_zurueck": 504,
+   "start": "09:44",
+   "dauer_min": 89,
+   "kwh": 6.8,
+   "sonne_kwh": 5.08,
+   "netz_kwh": 1.72,
+   "km": null,
+   "zaehler_start": 9609.8,
+   "zaehler_ende": 9616.6
+  },
+  {
+   "tage_zurueck": 502,
+   "start": "10:11",
+   "dauer_min": 604,
+   "kwh": 42.97,
+   "sonne_kwh": 26.34,
+   "netz_kwh": 16.63,
+   "km": 42033,
+   "zaehler_start": 9616.6,
+   "zaehler_ende": 9659.6
+  },
+  {
+   "tage_zurueck": 501,
+   "start": "09:51",
+   "dauer_min": 54,
+   "kwh": 8.41,
+   "sonne_kwh": 4.62,
+   "netz_kwh": 3.79,
+   "km": 42073,
+   "zaehler_start": 9659.6,
+   "zaehler_ende": 9668
+  },
+  {
+   "tage_zurueck": 500,
+   "start": "11:29",
+   "dauer_min": 391,
+   "kwh": 25.05,
+   "sonne_kwh": 16.58,
+   "netz_kwh": 8.47,
+   "km": 42107,
+   "zaehler_start": 9668,
+   "zaehler_ende": 9693.1
+  },
+  {
+   "tage_zurueck": 499,
+   "start": "12:50",
+   "dauer_min": 291,
+   "kwh": 29,
+   "sonne_kwh": 25.26,
+   "netz_kwh": 3.74,
+   "km": 42159,
+   "zaehler_start": 9693.1,
+   "zaehler_ende": 9722.1
+  },
+  {
+   "tage_zurueck": 497,
+   "start": "11:16",
+   "dauer_min": 85,
+   "kwh": 8.54,
+   "sonne_kwh": 6.89,
+   "netz_kwh": 1.65,
+   "km": 42230,
+   "zaehler_start": 9722.1,
+   "zaehler_ende": 9730.6
+  },
+  {
+   "tage_zurueck": 496,
+   "start": "11:48",
+   "dauer_min": 217,
+   "kwh": 24.99,
+   "sonne_kwh": 22.14,
+   "netz_kwh": 2.85,
+   "km": null,
+   "zaehler_start": 9730.6,
+   "zaehler_ende": 9755.6
+  },
+  {
+   "tage_zurueck": 488,
+   "start": "10:38",
+   "dauer_min": 110,
+   "kwh": 11.8,
+   "sonne_kwh": 7.15,
+   "netz_kwh": 4.65,
+   "km": 42595,
+   "zaehler_start": 9755.6,
+   "zaehler_ende": 9767.4
+  },
+  {
+   "tage_zurueck": 487,
+   "start": "09:48",
+   "dauer_min": 362,
+   "kwh": 34.97,
+   "sonne_kwh": 28.5,
+   "netz_kwh": 6.47,
+   "km": 42641,
+   "zaehler_start": 9767.4,
+   "zaehler_ende": 9802.4
+  },
+  {
+   "tage_zurueck": 486,
+   "start": "10:33",
+   "dauer_min": 205,
+   "kwh": 11.79,
+   "sonne_kwh": 11.54,
+   "netz_kwh": 0.25,
+   "km": 42693,
+   "zaehler_start": 9802.4,
+   "zaehler_ende": 9814.2
+  },
+  {
+   "tage_zurueck": 482,
+   "start": "11:03",
+   "dauer_min": 246,
+   "kwh": 17.08,
+   "sonne_kwh": 12.59,
+   "netz_kwh": 4.49,
+   "km": null,
+   "zaehler_start": 9814.2,
+   "zaehler_ende": 9831.2
+  },
+  {
+   "tage_zurueck": 481,
+   "start": "12:14",
+   "dauer_min": 604,
+   "kwh": 39.99,
+   "sonne_kwh": 33.64,
+   "netz_kwh": 6.35,
+   "km": 42910,
+   "zaehler_start": 9831.2,
+   "zaehler_ende": 9871.2
+  },
+  {
+   "tage_zurueck": 479,
+   "start": "10:58",
+   "dauer_min": 125,
+   "kwh": 14.56,
+   "sonne_kwh": 10.07,
+   "netz_kwh": 4.49,
+   "km": 42966,
+   "zaehler_start": 9871.2,
+   "zaehler_ende": 9885.8
+  },
+  {
+   "tage_zurueck": 478,
+   "start": "12:56",
+   "dauer_min": 728,
+   "kwh": 39.01,
+   "sonne_kwh": 39.01,
+   "netz_kwh": 0,
+   "km": 43001,
+   "zaehler_start": 9885.8,
+   "zaehler_ende": 9924.8
+  },
+  {
+   "tage_zurueck": 477,
+   "start": "12:18",
+   "dauer_min": 475,
+   "kwh": 42.3,
+   "sonne_kwh": 31.7,
+   "netz_kwh": 10.6,
+   "km": 43035,
+   "zaehler_start": 9924.8,
+   "zaehler_ende": 9967.1
+  },
+  {
+   "tage_zurueck": 476,
+   "start": "12:14",
+   "dauer_min": 457,
+   "kwh": 27.92,
+   "sonne_kwh": 21.77,
+   "netz_kwh": 6.15,
+   "km": null,
+   "zaehler_start": 9967.1,
+   "zaehler_ende": 9995
+  },
+  {
+   "tage_zurueck": 475,
+   "start": "09:14",
+   "dauer_min": 312,
+   "kwh": 30.56,
+   "sonne_kwh": 27.65,
+   "netz_kwh": 2.91,
+   "km": 43113,
+   "zaehler_start": 9995,
+   "zaehler_ende": 10025.6
+  },
+  {
+   "tage_zurueck": 474,
+   "start": "11:32",
+   "dauer_min": 210,
+   "kwh": 7.79,
+   "sonne_kwh": 6.28,
+   "netz_kwh": 1.51,
+   "km": 43141,
+   "zaehler_start": 10025.6,
+   "zaehler_ende": 10033.4
+  },
+  {
+   "tage_zurueck": 473,
+   "start": "10:54",
+   "dauer_min": 327,
+   "kwh": 29.29,
+   "sonne_kwh": 19.52,
+   "netz_kwh": 9.77,
+   "km": 43195,
+   "zaehler_start": 10033.4,
+   "zaehler_ende": 10062.7
+  },
+  {
+   "tage_zurueck": 472,
+   "start": "12:39",
+   "dauer_min": 496,
+   "kwh": 33.16,
+   "sonne_kwh": 33.1,
+   "netz_kwh": 0.06,
+   "km": 43232,
+   "zaehler_start": 10062.7,
+   "zaehler_ende": 10095.8
+  },
+  {
+   "tage_zurueck": 471,
+   "start": "11:11",
+   "dauer_min": 161,
+   "kwh": 10.35,
+   "sonne_kwh": 8.81,
+   "netz_kwh": 1.54,
+   "km": null,
+   "zaehler_start": 10095.8,
+   "zaehler_ende": 10106.2
+  },
+  {
+   "tage_zurueck": 468,
+   "start": "11:55",
+   "dauer_min": 142,
+   "kwh": 12.65,
+   "sonne_kwh": 8.13,
+   "netz_kwh": 4.52,
+   "km": 43416,
+   "zaehler_start": 10106.2,
+   "zaehler_ende": 10118.8
+  },
+  {
+   "tage_zurueck": 466,
+   "start": "12:22",
+   "dauer_min": 467,
+   "kwh": 43.02,
+   "sonne_kwh": 36.77,
+   "netz_kwh": 6.25,
+   "km": 43509,
+   "zaehler_start": 10118.8,
+   "zaehler_ende": 10161.8
+  },
+  {
+   "tage_zurueck": 464,
+   "start": "11:11",
+   "dauer_min": 284,
+   "kwh": 25.48,
+   "sonne_kwh": 19.48,
+   "netz_kwh": 6,
+   "km": null,
+   "zaehler_start": 10161.8,
+   "zaehler_ende": 10187.3
+  },
+  {
+   "tage_zurueck": 463,
+   "start": "10:54",
+   "dauer_min": 496,
+   "kwh": 40.88,
+   "sonne_kwh": 27.76,
+   "netz_kwh": 13.12,
+   "km": 43624,
+   "zaehler_start": 10187.3,
+   "zaehler_ende": 10228.2
+  },
+  {
+   "tage_zurueck": 457,
+   "start": "11:46",
+   "dauer_min": 394,
+   "kwh": 18.93,
+   "sonne_kwh": 12.79,
+   "netz_kwh": 6.14,
+   "km": 43879,
+   "zaehler_start": 10228.2,
+   "zaehler_ende": 10247.1
+  },
+  {
+   "tage_zurueck": 456,
+   "start": "09:27",
+   "dauer_min": 252,
+   "kwh": 14.25,
+   "sonne_kwh": 11.08,
+   "netz_kwh": 3.17,
+   "km": 43907,
+   "zaehler_start": 10247.1,
+   "zaehler_ende": 10261.4
+  },
+  {
+   "tage_zurueck": 455,
+   "start": "10:26",
+   "dauer_min": 341,
+   "kwh": 40.81,
+   "sonne_kwh": 28.81,
+   "netz_kwh": 12,
+   "km": 43943,
+   "zaehler_start": 10261.4,
+   "zaehler_ende": 10302.2
+  },
+  {
+   "tage_zurueck": 452,
+   "start": "11:19",
+   "dauer_min": 89,
+   "kwh": 8.39,
+   "sonne_kwh": 8.39,
+   "netz_kwh": 0,
+   "km": 44057,
+   "zaehler_start": 10302.2,
+   "zaehler_ende": 10310.6
+  },
+  {
+   "tage_zurueck": 450,
+   "start": "11:44",
+   "dauer_min": 200,
+   "kwh": 13.28,
+   "sonne_kwh": 9.09,
+   "netz_kwh": 4.19,
+   "km": 44139,
+   "zaehler_start": 10310.6,
+   "zaehler_ende": 10323.9
+  },
+  {
+   "tage_zurueck": 449,
+   "start": "10:24",
+   "dauer_min": 453,
+   "kwh": 29.2,
+   "sonne_kwh": 19.19,
+   "netz_kwh": 10.01,
+   "km": 44164,
+   "zaehler_start": 10323.9,
+   "zaehler_ende": 10353.1
+  },
+  {
+   "tage_zurueck": 447,
+   "start": "11:06",
+   "dauer_min": 423,
+   "kwh": 39.69,
+   "sonne_kwh": 33.13,
+   "netz_kwh": 6.56,
+   "km": null,
+   "zaehler_start": 10353.1,
+   "zaehler_ende": 10392.7
+  },
+  {
+   "tage_zurueck": 444,
+   "start": "10:11",
+   "dauer_min": 215,
+   "kwh": 18.85,
+   "sonne_kwh": 14.49,
+   "netz_kwh": 4.36,
+   "km": 44374,
+   "zaehler_start": 10392.7,
+   "zaehler_ende": 10411.6
+  },
+  {
+   "tage_zurueck": 439,
+   "start": "09:37",
+   "dauer_min": 89,
+   "kwh": 10.26,
+   "sonne_kwh": 8.4,
+   "netz_kwh": 1.86,
+   "km": null,
+   "zaehler_start": 10411.6,
+   "zaehler_ende": 10421.9
+  },
+  {
+   "tage_zurueck": 433,
+   "start": "10:30",
+   "dauer_min": 327,
+   "kwh": 39.88,
+   "sonne_kwh": 28.6,
+   "netz_kwh": 11.28,
+   "km": 44831,
+   "zaehler_start": 10421.9,
+   "zaehler_ende": 10461.7
+  },
+  {
+   "tage_zurueck": 430,
+   "start": "11:29",
+   "dauer_min": 338,
+   "kwh": 33.86,
+   "sonne_kwh": 27.05,
+   "netz_kwh": 6.81,
+   "km": 44938,
+   "zaehler_start": 10461.7,
+   "zaehler_ende": 10495.6
+  },
+  {
+   "tage_zurueck": 429,
+   "start": "09:10",
+   "dauer_min": 253,
+   "kwh": 19.41,
+   "sonne_kwh": 19.41,
+   "netz_kwh": 0,
+   "km": 44968,
+   "zaehler_start": 10495.6,
+   "zaehler_ende": 10515
+  },
+  {
+   "tage_zurueck": 427,
+   "start": "09:15",
+   "dauer_min": 166,
+   "kwh": 18.65,
+   "sonne_kwh": 11.28,
+   "netz_kwh": 7.37,
+   "km": null,
+   "zaehler_start": 10515,
+   "zaehler_ende": 10533.7
+  },
+  {
+   "tage_zurueck": 424,
+   "start": "11:03",
+   "dauer_min": 942,
+   "kwh": 34.82,
+   "sonne_kwh": 34.82,
+   "netz_kwh": 0,
+   "km": 45195,
+   "zaehler_start": 10533.7,
+   "zaehler_ende": 10568.5
+  },
+  {
+   "tage_zurueck": 422,
+   "start": "12:11",
+   "dauer_min": 214,
+   "kwh": 21.19,
+   "sonne_kwh": 15.31,
+   "netz_kwh": 5.88,
+   "km": 45268,
+   "zaehler_start": 10568.5,
+   "zaehler_ende": 10589.7
+  },
+  {
+   "tage_zurueck": 421,
+   "start": "11:07",
+   "dauer_min": 494,
+   "kwh": 20.63,
+   "sonne_kwh": 14.73,
+   "netz_kwh": 5.9,
+   "km": null,
+   "zaehler_start": 10589.7,
+   "zaehler_ende": 10610.3
+  },
+  {
+   "tage_zurueck": 418,
+   "start": "11:13",
+   "dauer_min": 179,
+   "kwh": 16.37,
+   "sonne_kwh": 14.57,
+   "netz_kwh": 1.8,
+   "km": 45446,
+   "zaehler_start": 10610.3,
+   "zaehler_ende": 10626.7
+  },
+  {
+   "tage_zurueck": 415,
+   "start": "12:23",
+   "dauer_min": 325,
+   "kwh": 34.12,
+   "sonne_kwh": 20.8,
+   "netz_kwh": 13.32,
+   "km": null,
+   "zaehler_start": 10626.7,
+   "zaehler_ende": 10660.8
+  },
+  {
+   "tage_zurueck": 414,
+   "start": "09:24",
+   "dauer_min": 52,
+   "kwh": 6.3,
+   "sonne_kwh": 5.69,
+   "netz_kwh": 0.61,
+   "km": 45588,
+   "zaehler_start": 10660.8,
+   "zaehler_ende": 10667.1
+  },
+  {
+   "tage_zurueck": 408,
+   "start": "12:54",
+   "dauer_min": 327,
+   "kwh": 32.7,
+   "sonne_kwh": 17.76,
+   "netz_kwh": 14.94,
+   "km": 45830,
+   "zaehler_start": 10667.1,
+   "zaehler_ende": 10699.8
+  },
+  {
+   "tage_zurueck": 406,
+   "start": "10:07",
+   "dauer_min": 496,
+   "kwh": 34.79,
+   "sonne_kwh": 26.35,
+   "netz_kwh": 8.44,
+   "km": 45913,
+   "zaehler_start": 10699.8,
+   "zaehler_ende": 10734.6
+  },
+  {
+   "tage_zurueck": 404,
+   "start": "10:45",
+   "dauer_min": 91,
+   "kwh": 6.71,
+   "sonne_kwh": 4.38,
+   "netz_kwh": 2.33,
+   "km": 45976,
+   "zaehler_start": 10734.6,
+   "zaehler_ende": 10741.3
+  },
+  {
+   "tage_zurueck": 403,
+   "start": "12:29",
+   "dauer_min": 253,
+   "kwh": 26.35,
+   "sonne_kwh": 15.36,
+   "netz_kwh": 10.99,
+   "km": null,
+   "zaehler_start": 10741.3,
+   "zaehler_ende": 10767.6
+  },
+  {
+   "tage_zurueck": 402,
+   "start": "10:59",
+   "dauer_min": 431,
+   "kwh": 24.75,
+   "sonne_kwh": 23.24,
+   "netz_kwh": 1.51,
+   "km": 46052,
+   "zaehler_start": 10767.6,
+   "zaehler_ende": 10792.4
+  },
+  {
+   "tage_zurueck": 397,
+   "start": "09:23",
+   "dauer_min": 79,
+   "kwh": 6.02,
+   "sonne_kwh": 5.33,
+   "netz_kwh": 0.69,
+   "km": 46247,
+   "zaehler_start": 10792.4,
+   "zaehler_ende": 10798.4
+  },
+  {
+   "tage_zurueck": 396,
+   "start": "11:56",
+   "dauer_min": 182,
+   "kwh": 16.85,
+   "sonne_kwh": 8.81,
+   "netz_kwh": 8.04,
+   "km": 46285,
+   "zaehler_start": 10798.4,
+   "zaehler_ende": 10815.3
+  },
+  {
+   "tage_zurueck": 395,
+   "start": "09:24",
+   "dauer_min": 157,
+   "kwh": 14.03,
+   "sonne_kwh": 10.84,
+   "netz_kwh": 3.19,
+   "km": null,
+   "zaehler_start": 10815.3,
+   "zaehler_ende": 10829.3
+  },
+  {
+   "tage_zurueck": 392,
+   "start": "10:44",
+   "dauer_min": 445,
+   "kwh": 43.42,
+   "sonne_kwh": 35.58,
+   "netz_kwh": 7.84,
+   "km": null,
+   "zaehler_start": 10829.3,
+   "zaehler_ende": 10872.7
+  },
+  {
+   "tage_zurueck": 391,
+   "start": "09:19",
+   "dauer_min": 348,
+   "kwh": 24.27,
+   "sonne_kwh": 18.33,
+   "netz_kwh": 5.94,
+   "km": null,
+   "zaehler_start": 10872.7,
+   "zaehler_ende": 10897
+  },
+  {
+   "tage_zurueck": 388,
+   "start": "12:17",
+   "dauer_min": 136,
+   "kwh": 14.05,
+   "sonne_kwh": 7.17,
+   "netz_kwh": 6.88,
+   "km": null,
+   "zaehler_start": 10897,
+   "zaehler_ende": 10911
+  },
+  {
+   "tage_zurueck": 386,
+   "start": "16:50",
+   "dauer_min": 320,
+   "kwh": 42.43,
+   "sonne_kwh": 19.49,
+   "netz_kwh": 22.94,
+   "km": null,
+   "zaehler_start": 10911,
+   "zaehler_ende": 10953.5
+  },
+  {
+   "tage_zurueck": 385,
+   "start": "12:10",
+   "dauer_min": 171,
+   "kwh": 30.6,
+   "sonne_kwh": 17.5,
+   "netz_kwh": 13.1,
+   "km": 46694,
+   "zaehler_start": 10953.5,
+   "zaehler_ende": 10984.1
+  },
+  {
+   "tage_zurueck": 384,
+   "start": "11:52",
+   "dauer_min": 302,
+   "kwh": 32.8,
+   "sonne_kwh": 20.87,
+   "netz_kwh": 11.93,
+   "km": 46742,
+   "zaehler_start": 10984.1,
+   "zaehler_ende": 11016.9
+  },
+  {
+   "tage_zurueck": 382,
+   "start": "10:18",
+   "dauer_min": 327,
+   "kwh": 13.35,
+   "sonne_kwh": 9.43,
+   "netz_kwh": 3.92,
+   "km": 46837,
+   "zaehler_start": 11016.9,
+   "zaehler_ende": 11030.2
+  },
+  {
+   "tage_zurueck": 380,
+   "start": "10:55",
+   "dauer_min": 351,
+   "kwh": 35.24,
+   "sonne_kwh": 19.66,
+   "netz_kwh": 15.58,
+   "km": 46905,
+   "zaehler_start": 11030.2,
+   "zaehler_ende": 11065.4
+  },
+  {
+   "tage_zurueck": 379,
+   "start": "09:44",
+   "dauer_min": 77,
+   "kwh": 11.5,
+   "sonne_kwh": 5.86,
+   "netz_kwh": 5.64,
+   "km": 46946,
+   "zaehler_start": 11065.4,
+   "zaehler_ende": 11076.9
+  },
+  {
+   "tage_zurueck": 378,
+   "start": "12:12",
+   "dauer_min": 464,
+   "kwh": 32.49,
+   "sonne_kwh": 24.03,
+   "netz_kwh": 8.46,
+   "km": 46974,
+   "zaehler_start": 11076.9,
+   "zaehler_ende": 11109.4
+  },
+  {
+   "tage_zurueck": 375,
+   "start": "19:01",
+   "dauer_min": 175,
+   "kwh": 25.83,
+   "sonne_kwh": 8.73,
+   "netz_kwh": 17.1,
+   "km": 47089,
+   "zaehler_start": 11109.4,
+   "zaehler_ende": 11135.3
+  },
+  {
+   "tage_zurueck": 373,
+   "start": "16:09",
+   "dauer_min": 278,
+   "kwh": 33.82,
+   "sonne_kwh": 14.52,
+   "netz_kwh": 19.3,
+   "km": null,
+   "zaehler_start": 11135.3,
+   "zaehler_ende": 11169.1
+  },
+  {
+   "tage_zurueck": 371,
+   "start": "17:11",
+   "dauer_min": 370,
+   "kwh": 38.1,
+   "sonne_kwh": 12.32,
+   "netz_kwh": 25.78,
+   "km": 47254,
+   "zaehler_start": 11169.1,
+   "zaehler_ende": 11207.2
+  },
+  {
+   "tage_zurueck": 367,
+   "start": "10:43",
+   "dauer_min": 110,
+   "kwh": 13.15,
+   "sonne_kwh": 9.39,
+   "netz_kwh": 3.76,
+   "km": null,
+   "zaehler_start": 11207.2,
+   "zaehler_ende": 11220.3
+  },
+  {
+   "tage_zurueck": 365,
+   "start": "09:32",
+   "dauer_min": 125,
+   "kwh": 16.99,
+   "sonne_kwh": 8.84,
+   "netz_kwh": 8.15,
+   "km": 47473,
+   "zaehler_start": 11220.3,
+   "zaehler_ende": 11237.3
+  },
+  {
+   "tage_zurueck": 359,
+   "start": "20:25",
+   "dauer_min": 192,
+   "kwh": 35.09,
+   "sonne_kwh": 16.08,
+   "netz_kwh": 19.01,
+   "km": 47728,
+   "zaehler_start": 11237.3,
+   "zaehler_ende": 11272.4
+  },
+  {
+   "tage_zurueck": 358,
+   "start": "10:08",
+   "dauer_min": 187,
+   "kwh": 29.24,
+   "sonne_kwh": 16.8,
+   "netz_kwh": 12.44,
+   "km": 47755,
+   "zaehler_start": 11272.4,
+   "zaehler_ende": 11301.7
+  },
+  {
+   "tage_zurueck": 357,
+   "start": "16:22",
+   "dauer_min": 153,
+   "kwh": 27.91,
+   "sonne_kwh": 6.8,
+   "netz_kwh": 21.11,
+   "km": 47797,
+   "zaehler_start": 11301.7,
+   "zaehler_ende": 11329.6
+  },
+  {
+   "tage_zurueck": 354,
+   "start": "10:18",
+   "dauer_min": 120,
+   "kwh": 16.28,
+   "sonne_kwh": 9.13,
+   "netz_kwh": 7.15,
+   "km": null,
+   "zaehler_start": 11329.6,
+   "zaehler_ende": 11345.8
+  },
+  {
+   "tage_zurueck": 353,
+   "start": "18:20",
+   "dauer_min": 99,
+   "kwh": 12.11,
+   "sonne_kwh": 5.54,
+   "netz_kwh": 6.57,
+   "km": null,
+   "zaehler_start": 11345.8,
+   "zaehler_ende": 11358
+  },
+  {
+   "tage_zurueck": 341,
+   "start": "16:35",
+   "dauer_min": 184,
+   "kwh": 23.3,
+   "sonne_kwh": 10.24,
+   "netz_kwh": 13.06,
+   "km": 48443,
+   "zaehler_start": 11358,
+   "zaehler_ende": 11381.3
+  },
+  {
+   "tage_zurueck": 340,
+   "start": "10:54",
+   "dauer_min": 68,
+   "kwh": 10.76,
+   "sonne_kwh": 5.77,
+   "netz_kwh": 4.99,
+   "km": null,
+   "zaehler_start": 11381.3,
+   "zaehler_ende": 11392
+  },
+  {
+   "tage_zurueck": 337,
+   "start": "17:11",
+   "dauer_min": 145,
+   "kwh": 22.28,
+   "sonne_kwh": 7.3,
+   "netz_kwh": 14.98,
+   "km": null,
+   "zaehler_start": 11392,
+   "zaehler_ende": 11414.3
+  },
+  {
+   "tage_zurueck": 336,
+   "start": "11:58",
+   "dauer_min": 206,
+   "kwh": 33.26,
+   "sonne_kwh": 17.38,
+   "netz_kwh": 15.88,
+   "km": 48640,
+   "zaehler_start": 11414.3,
+   "zaehler_ende": 11447.6
+  },
+  {
+   "tage_zurueck": 334,
+   "start": "20:15",
+   "dauer_min": 205,
+   "kwh": 22.57,
+   "sonne_kwh": 6.73,
+   "netz_kwh": 15.84,
+   "km": 48739,
+   "zaehler_start": 11447.6,
+   "zaehler_ende": 11470.1
+  },
+  {
+   "tage_zurueck": 333,
+   "start": "17:16",
+   "dauer_min": 144,
+   "kwh": 25.52,
+   "sonne_kwh": 12.15,
+   "netz_kwh": 13.37,
+   "km": 48786,
+   "zaehler_start": 11470.1,
+   "zaehler_ende": 11495.6
+  },
+  {
+   "tage_zurueck": 332,
+   "start": "17:32",
+   "dauer_min": 112,
+   "kwh": 14.67,
+   "sonne_kwh": 3.87,
+   "netz_kwh": 10.8,
+   "km": 48830,
+   "zaehler_start": 11495.6,
+   "zaehler_ende": 11510.3
+  },
+  {
+   "tage_zurueck": 328,
+   "start": "16:27",
+   "dauer_min": 78,
+   "kwh": 10.38,
+   "sonne_kwh": 2.75,
+   "netz_kwh": 7.63,
+   "km": 48992,
+   "zaehler_start": 11510.3,
+   "zaehler_ende": 11520.7
+  },
+  {
+   "tage_zurueck": 327,
+   "start": "18:14",
+   "dauer_min": 376,
+   "kwh": 37.25,
+   "sonne_kwh": 1.79,
+   "netz_kwh": 35.46,
+   "km": 49023,
+   "zaehler_start": 11520.7,
+   "zaehler_ende": 11557.9
+  },
+  {
+   "tage_zurueck": 326,
+   "start": "16:28",
+   "dauer_min": 152,
+   "kwh": 18.53,
+   "sonne_kwh": 2.96,
+   "netz_kwh": 15.57,
+   "km": 49072,
+   "zaehler_start": 11557.9,
+   "zaehler_ende": 11576.5
+  },
+  {
+   "tage_zurueck": 324,
+   "start": "16:50",
+   "dauer_min": 288,
+   "kwh": 38.6,
+   "sonne_kwh": 16.41,
+   "netz_kwh": 22.19,
+   "km": null,
+   "zaehler_start": 11576.5,
+   "zaehler_ende": 11615.1
+  },
+  {
+   "tage_zurueck": 322,
+   "start": "16:33",
+   "dauer_min": 283,
+   "kwh": 27.83,
+   "sonne_kwh": 1.49,
+   "netz_kwh": 26.34,
+   "km": 49242,
+   "zaehler_start": 11615.1,
+   "zaehler_ende": 11642.9
+  },
+  {
+   "tage_zurueck": 317,
+   "start": "19:44",
+   "dauer_min": 263,
+   "kwh": 38.39,
+   "sonne_kwh": 14.98,
+   "netz_kwh": 23.41,
+   "km": 49444,
+   "zaehler_start": 11642.9,
+   "zaehler_ende": 11681.3
+  },
+  {
+   "tage_zurueck": 316,
+   "start": "19:09",
+   "dauer_min": 315,
+   "kwh": 32.71,
+   "sonne_kwh": 4.77,
+   "netz_kwh": 27.94,
+   "km": 49494,
+   "zaehler_start": 11681.3,
+   "zaehler_ende": 11714
+  },
+  {
+   "tage_zurueck": 315,
+   "start": "17:52",
+   "dauer_min": 268,
+   "kwh": 35.71,
+   "sonne_kwh": 13.2,
+   "netz_kwh": 22.51,
+   "km": null,
+   "zaehler_start": 11714,
+   "zaehler_ende": 11749.7
+  },
+  {
+   "tage_zurueck": 314,
+   "start": "17:34",
+   "dauer_min": 235,
+   "kwh": 40.36,
+   "sonne_kwh": 15.57,
+   "netz_kwh": 24.79,
+   "km": null,
+   "zaehler_start": 11749.7,
+   "zaehler_ende": 11790.1
+  },
+  {
+   "tage_zurueck": 312,
+   "start": "20:24",
+   "dauer_min": 277,
+   "kwh": 43.72,
+   "sonne_kwh": 6.55,
+   "netz_kwh": 37.17,
+   "km": null,
+   "zaehler_start": 11790.1,
+   "zaehler_ende": 11833.8
+  },
+  {
+   "tage_zurueck": 307,
+   "start": "17:11",
+   "dauer_min": 78,
+   "kwh": 13.92,
+   "sonne_kwh": 1.84,
+   "netz_kwh": 12.08,
+   "km": 49856,
+   "zaehler_start": 11833.8,
+   "zaehler_ende": 11847.7
+  },
+  {
+   "tage_zurueck": 306,
+   "start": "16:59",
+   "dauer_min": 40,
+   "kwh": 6.59,
+   "sonne_kwh": 2.48,
+   "netz_kwh": 4.11,
+   "km": 49899,
+   "zaehler_start": 11847.7,
+   "zaehler_ende": 11854.3
+  },
+  {
+   "tage_zurueck": 305,
+   "start": "19:49",
+   "dauer_min": 126,
+   "kwh": 19.49,
+   "sonne_kwh": 5.19,
+   "netz_kwh": 14.3,
+   "km": null,
+   "zaehler_start": 11854.3,
+   "zaehler_ende": 11873.8
+  },
+  {
+   "tage_zurueck": 304,
+   "start": "17:36",
+   "dauer_min": 119,
+   "kwh": 20.62,
+   "sonne_kwh": 0,
+   "netz_kwh": 20.62,
+   "km": 49981,
+   "zaehler_start": 11873.8,
+   "zaehler_ende": 11894.4
+  },
+  {
+   "tage_zurueck": 303,
+   "start": "17:59",
+   "dauer_min": 354,
+   "kwh": 38.24,
+   "sonne_kwh": 9.59,
+   "netz_kwh": 28.65,
+   "km": 50019,
+   "zaehler_start": 11894.4,
+   "zaehler_ende": 11932.7
+  },
+  {
+   "tage_zurueck": 302,
+   "start": "16:32",
+   "dauer_min": 159,
+   "kwh": 27.46,
+   "sonne_kwh": 5.53,
+   "netz_kwh": 21.93,
+   "km": null,
+   "zaehler_start": 11932.7,
+   "zaehler_ende": 11960.1
+  },
+  {
+   "tage_zurueck": 301,
+   "start": "18:27",
+   "dauer_min": 300,
+   "kwh": 37.84,
+   "sonne_kwh": 10.25,
+   "netz_kwh": 27.59,
+   "km": null,
+   "zaehler_start": 11960.1,
+   "zaehler_ende": 11998
+  },
+  {
+   "tage_zurueck": 297,
+   "start": "18:47",
+   "dauer_min": 56,
+   "kwh": 9.08,
+   "sonne_kwh": 3.36,
+   "netz_kwh": 5.72,
+   "km": 50280,
+   "zaehler_start": 11998,
+   "zaehler_ende": 12007
+  },
+  {
+   "tage_zurueck": 296,
+   "start": "17:20",
+   "dauer_min": 42,
+   "kwh": 6.82,
+   "sonne_kwh": 0.39,
+   "netz_kwh": 6.43,
+   "km": 50320,
+   "zaehler_start": 12007,
+   "zaehler_ende": 12013.9
+  },
+  {
+   "tage_zurueck": 295,
+   "start": "20:38",
+   "dauer_min": 182,
+   "kwh": 30.67,
+   "sonne_kwh": 5.31,
+   "netz_kwh": 25.36,
+   "km": 50357,
+   "zaehler_start": 12013.9,
+   "zaehler_ende": 12044.5
+  },
+  {
+   "tage_zurueck": 294,
+   "start": "19:51",
+   "dauer_min": 137,
+   "kwh": 24.63,
+   "sonne_kwh": 5.49,
+   "netz_kwh": 19.14,
+   "km": 50402,
+   "zaehler_start": 12044.5,
+   "zaehler_ende": 12069.2
+  },
+  {
+   "tage_zurueck": 293,
+   "start": "18:43",
+   "dauer_min": 111,
+   "kwh": 18.97,
+   "sonne_kwh": 4.47,
+   "netz_kwh": 14.5,
+   "km": null,
+   "zaehler_start": 12069.2,
+   "zaehler_ende": 12088.1
+  },
+  {
+   "tage_zurueck": 289,
+   "start": "20:26",
+   "dauer_min": 144,
+   "kwh": 21.8,
+   "sonne_kwh": 6.96,
+   "netz_kwh": 14.84,
+   "km": 50592,
+   "zaehler_start": 12088.1,
+   "zaehler_ende": 12109.9
+  },
+  {
+   "tage_zurueck": 287,
+   "start": "20:50",
+   "dauer_min": 301,
+   "kwh": 40.84,
+   "sonne_kwh": 12.83,
+   "netz_kwh": 28.01,
+   "km": 50687,
+   "zaehler_start": 12109.9,
+   "zaehler_ende": 12150.8
+  },
+  {
+   "tage_zurueck": 285,
+   "start": "20:25",
+   "dauer_min": 111,
+   "kwh": 17.13,
+   "sonne_kwh": 3.01,
+   "netz_kwh": 14.12,
+   "km": null,
+   "zaehler_start": 12150.8,
+   "zaehler_ende": 12167.9
+  },
+  {
+   "tage_zurueck": 283,
+   "start": "19:23",
+   "dauer_min": 209,
+   "kwh": 34.31,
+   "sonne_kwh": 0,
+   "netz_kwh": 34.31,
+   "km": 50851,
+   "zaehler_start": 12167.9,
+   "zaehler_ende": 12202.2
+  },
+  {
+   "tage_zurueck": 280,
+   "start": "18:51",
+   "dauer_min": 124,
+   "kwh": 15.82,
+   "sonne_kwh": 4.39,
+   "netz_kwh": 11.43,
+   "km": null,
+   "zaehler_start": 12202.2,
+   "zaehler_ende": 12218
+  },
+  {
+   "tage_zurueck": 277,
+   "start": "20:20",
+   "dauer_min": 244,
+   "kwh": 40.84,
+   "sonne_kwh": 3.99,
+   "netz_kwh": 36.85,
+   "km": 51096,
+   "zaehler_start": 12218,
+   "zaehler_ende": 12258.9
+  },
+  {
+   "tage_zurueck": 275,
+   "start": "20:22",
+   "dauer_min": 304,
+   "kwh": 36.98,
+   "sonne_kwh": 0,
+   "netz_kwh": 36.98,
+   "km": 51183,
+   "zaehler_start": 12258.9,
+   "zaehler_ende": 12295.8
+  },
+  {
+   "tage_zurueck": 273,
+   "start": "19:33",
+   "dauer_min": 287,
+   "kwh": 28.16,
+   "sonne_kwh": 0.8,
+   "netz_kwh": 27.36,
+   "km": 51266,
+   "zaehler_start": 12295.8,
+   "zaehler_ende": 12324
+  },
+  {
+   "tage_zurueck": 272,
+   "start": "16:07",
+   "dauer_min": 270,
+   "kwh": 41.65,
+   "sonne_kwh": 13.67,
+   "netz_kwh": 27.98,
+   "km": 51321,
+   "zaehler_start": 12324,
+   "zaehler_ende": 12365.7
+  },
+  {
+   "tage_zurueck": 270,
+   "start": "18:57",
+   "dauer_min": 137,
+   "kwh": 24.2,
+   "sonne_kwh": 7.91,
+   "netz_kwh": 16.29,
+   "km": 51409,
+   "zaehler_start": 12365.7,
+   "zaehler_ende": 12389.9
+  },
+  {
+   "tage_zurueck": 268,
+   "start": "19:07",
+   "dauer_min": 165,
+   "kwh": 29.07,
+   "sonne_kwh": 6.37,
+   "netz_kwh": 22.7,
+   "km": 51491,
+   "zaehler_start": 12389.9,
+   "zaehler_ende": 12418.9
+  },
+  {
+   "tage_zurueck": 261,
+   "start": "18:06",
+   "dauer_min": 56,
+   "kwh": 10.16,
+   "sonne_kwh": 2.81,
+   "netz_kwh": 7.35,
+   "km": null,
+   "zaehler_start": 12418.9,
+   "zaehler_ende": 12429.1
+  },
+  {
+   "tage_zurueck": 259,
+   "start": "18:55",
+   "dauer_min": 247,
+   "kwh": 23.41,
+   "sonne_kwh": 0.15,
+   "netz_kwh": 23.26,
+   "km": 51831,
+   "zaehler_start": 12429.1,
+   "zaehler_ende": 12452.5
+  },
+  {
+   "tage_zurueck": 246,
+   "start": "20:40",
+   "dauer_min": 208,
+   "kwh": 29.05,
+   "sonne_kwh": 5.64,
+   "netz_kwh": 23.41,
+   "km": 52335,
+   "zaehler_start": 12452.5,
+   "zaehler_ende": 12481.5
+  },
+  {
+   "tage_zurueck": 244,
+   "start": "16:37",
+   "dauer_min": 65,
+   "kwh": 8.02,
+   "sonne_kwh": 0,
+   "netz_kwh": 8.02,
+   "km": 52432,
+   "zaehler_start": 12481.5,
+   "zaehler_ende": 12489.6
+  },
+  {
+   "tage_zurueck": 243,
+   "start": "18:30",
+   "dauer_min": 253,
+   "kwh": 32.69,
+   "sonne_kwh": 4.66,
+   "netz_kwh": 28.03,
+   "km": null,
+   "zaehler_start": 12489.6,
+   "zaehler_ende": 12522.3
+  },
+  {
+   "tage_zurueck": 240,
+   "start": "17:59",
+   "dauer_min": 57,
+   "kwh": 8.62,
+   "sonne_kwh": 3.42,
+   "netz_kwh": 5.2,
+   "km": null,
+   "zaehler_start": 12522.3,
+   "zaehler_ende": 12530.9
+  },
+  {
+   "tage_zurueck": 235,
+   "start": "20:56",
+   "dauer_min": 114,
+   "kwh": 18.49,
+   "sonne_kwh": 2.51,
+   "netz_kwh": 15.98,
+   "km": 52790,
+   "zaehler_start": 12530.9,
+   "zaehler_ende": 12549.4
+  },
+  {
+   "tage_zurueck": 234,
+   "start": "19:54",
+   "dauer_min": 83,
+   "kwh": 13.94,
+   "sonne_kwh": 5.42,
+   "netz_kwh": 8.52,
+   "km": 52841,
+   "zaehler_start": 12549.4,
+   "zaehler_ende": 12563.3
+  },
+  {
+   "tage_zurueck": 231,
+   "start": "18:07",
+   "dauer_min": 437,
+   "kwh": 42.93,
+   "sonne_kwh": 2.14,
+   "netz_kwh": 40.79,
+   "km": 52966,
+   "zaehler_start": 12563.3,
+   "zaehler_ende": 12606.2
+  },
+  {
+   "tage_zurueck": 230,
+   "start": "17:25",
+   "dauer_min": 46,
+   "kwh": 7.52,
+   "sonne_kwh": 1.21,
+   "netz_kwh": 6.31,
+   "km": 52997,
+   "zaehler_start": 12606.2,
+   "zaehler_ende": 12613.8
+  },
+  {
+   "tage_zurueck": 227,
+   "start": "18:00",
+   "dauer_min": 125,
+   "kwh": 19.33,
+   "sonne_kwh": 5.82,
+   "netz_kwh": 13.51,
+   "km": 53105,
+   "zaehler_start": 12613.8,
+   "zaehler_ende": 12633.1
+  },
+  {
+   "tage_zurueck": 226,
+   "start": "19:59",
+   "dauer_min": 67,
+   "kwh": 7.28,
+   "sonne_kwh": 0.17,
+   "netz_kwh": 7.11,
+   "km": 53142,
+   "zaehler_start": 12633.1,
+   "zaehler_ende": 12640.4
+  },
+  {
+   "tage_zurueck": 225,
+   "start": "17:16",
+   "dauer_min": 136,
+   "kwh": 14.47,
+   "sonne_kwh": 3.41,
+   "netz_kwh": 11.06,
+   "km": 53197,
+   "zaehler_start": 12640.4,
+   "zaehler_ende": 12654.8
+  },
+  {
+   "tage_zurueck": 220,
+   "start": "19:31",
+   "dauer_min": 166,
+   "kwh": 19.27,
+   "sonne_kwh": 8.48,
+   "netz_kwh": 10.79,
+   "km": 53408,
+   "zaehler_start": 12654.8,
+   "zaehler_ende": 12674.1
+  },
+  {
+   "tage_zurueck": 218,
+   "start": "17:40",
+   "dauer_min": 261,
+   "kwh": 27.86,
+   "sonne_kwh": 9.01,
+   "netz_kwh": 18.85,
+   "km": 53467,
+   "zaehler_start": 12674.1,
+   "zaehler_ende": 12702
+  },
+  {
+   "tage_zurueck": 217,
+   "start": "20:12",
+   "dauer_min": 201,
+   "kwh": 31.33,
+   "sonne_kwh": 13.11,
+   "netz_kwh": 18.22,
+   "km": null,
+   "zaehler_start": 12702,
+   "zaehler_ende": 12733.3
+  },
+  {
+   "tage_zurueck": 210,
+   "start": "19:07",
+   "dauer_min": 216,
+   "kwh": 34.77,
+   "sonne_kwh": 4.63,
+   "netz_kwh": 30.14,
+   "km": 53793,
+   "zaehler_start": 12733.3,
+   "zaehler_ende": 12768.1
+  },
+  {
+   "tage_zurueck": 208,
+   "start": "19:29",
+   "dauer_min": 45,
+   "kwh": 8.04,
+   "sonne_kwh": 2.57,
+   "netz_kwh": 5.47,
+   "km": 53887,
+   "zaehler_start": 12768.1,
+   "zaehler_ende": 12776.1
+  },
+  {
+   "tage_zurueck": 202,
+   "start": "12:12",
+   "dauer_min": 73,
+   "kwh": 9.08,
+   "sonne_kwh": 5.1,
+   "netz_kwh": 3.98,
+   "km": 54158,
+   "zaehler_start": 12776.1,
+   "zaehler_ende": 12785.2
+  },
+  {
+   "tage_zurueck": 201,
+   "start": "16:37",
+   "dauer_min": 87,
+   "kwh": 12.2,
+   "sonne_kwh": 3.54,
+   "netz_kwh": 8.66,
+   "km": null,
+   "zaehler_start": 12785.2,
+   "zaehler_ende": 12797.4
+  },
+  {
+   "tage_zurueck": 199,
+   "start": "18:46",
+   "dauer_min": 73,
+   "kwh": 11.28,
+   "sonne_kwh": 2.38,
+   "netz_kwh": 8.9,
+   "km": 54306,
+   "zaehler_start": 12797.4,
+   "zaehler_ende": 12808.7
+  },
+  {
+   "tage_zurueck": 198,
+   "start": "20:55",
+   "dauer_min": 270,
+   "kwh": 32.65,
+   "sonne_kwh": 6.99,
+   "netz_kwh": 25.66,
+   "km": 54333,
+   "zaehler_start": 12808.7,
+   "zaehler_ende": 12841.3
+  },
+  {
+   "tage_zurueck": 197,
+   "start": "18:26",
+   "dauer_min": 172,
+   "kwh": 18.79,
+   "sonne_kwh": 4.95,
+   "netz_kwh": 13.84,
+   "km": 54386,
+   "zaehler_start": 12841.3,
+   "zaehler_ende": 12860.1
+  },
+  {
+   "tage_zurueck": 196,
+   "start": "17:33",
+   "dauer_min": 328,
+   "kwh": 40.53,
+   "sonne_kwh": 15.37,
+   "netz_kwh": 25.16,
+   "km": null,
+   "zaehler_start": 12860.1,
+   "zaehler_ende": 12900.6
+  },
+  {
+   "tage_zurueck": 195,
+   "start": "09:02",
+   "dauer_min": 66,
+   "kwh": 6.25,
+   "sonne_kwh": 3.54,
+   "netz_kwh": 2.71,
+   "km": null,
+   "zaehler_start": 12900.6,
+   "zaehler_ende": 12906.9
+  },
+  {
+   "tage_zurueck": 190,
+   "start": "16:28",
+   "dauer_min": 346,
+   "kwh": 33.08,
+   "sonne_kwh": 15.79,
+   "netz_kwh": 17.29,
+   "km": 54650,
+   "zaehler_start": 12906.9,
+   "zaehler_ende": 12940
+  },
+  {
+   "tage_zurueck": 184,
+   "start": "17:52",
+   "dauer_min": 170,
+   "kwh": 25.29,
+   "sonne_kwh": 8.12,
+   "netz_kwh": 17.17,
+   "km": 54883,
+   "zaehler_start": 12940,
+   "zaehler_ende": 12965.3
+  },
+  {
+   "tage_zurueck": 180,
+   "start": "16:11",
+   "dauer_min": 50,
+   "kwh": 7.31,
+   "sonne_kwh": 2.66,
+   "netz_kwh": 4.65,
+   "km": 55029,
+   "zaehler_start": 12965.3,
+   "zaehler_ende": 12972.6
+  },
+  {
+   "tage_zurueck": 175,
+   "start": "10:05",
+   "dauer_min": 308,
+   "kwh": 35.78,
+   "sonne_kwh": 21.26,
+   "netz_kwh": 14.52,
+   "km": 55227,
+   "zaehler_start": 12972.6,
+   "zaehler_ende": 13008.3
+  },
+  {
+   "tage_zurueck": 170,
+   "start": "18:07",
+   "dauer_min": 249,
+   "kwh": 39.48,
+   "sonne_kwh": 13.88,
+   "netz_kwh": 25.6,
+   "km": 55436,
+   "zaehler_start": 13008.3,
+   "zaehler_ende": 13047.8
+  },
+  {
+   "tage_zurueck": 167,
+   "start": "11:40",
+   "dauer_min": 88,
+   "kwh": 13.68,
+   "sonne_kwh": 7.44,
+   "netz_kwh": 6.24,
+   "km": 55552,
+   "zaehler_start": 13047.8,
+   "zaehler_ende": 13061.5
+  },
+  {
+   "tage_zurueck": 166,
+   "start": "09:51",
+   "dauer_min": 182,
+   "kwh": 22.19,
+   "sonne_kwh": 13.7,
+   "netz_kwh": 8.49,
+   "km": 55599,
+   "zaehler_start": 13061.5,
+   "zaehler_ende": 13083.7
+  },
+  {
+   "tage_zurueck": 164,
+   "start": "11:06",
+   "dauer_min": 300,
+   "kwh": 22.06,
+   "sonne_kwh": 14.41,
+   "netz_kwh": 7.65,
+   "km": 55679,
+   "zaehler_start": 13083.7,
+   "zaehler_ende": 13105.8
+  },
+  {
+   "tage_zurueck": 163,
+   "start": "09:52",
+   "dauer_min": 277,
+   "kwh": 32.62,
+   "sonne_kwh": 18.37,
+   "netz_kwh": 14.25,
+   "km": 55710,
+   "zaehler_start": 13105.8,
+   "zaehler_ende": 13138.4
+  },
+  {
+   "tage_zurueck": 162,
+   "start": "09:18",
+   "dauer_min": 450,
+   "kwh": 30.03,
+   "sonne_kwh": 24.4,
+   "netz_kwh": 5.63,
+   "km": 55736,
+   "zaehler_start": 13138.4,
+   "zaehler_ende": 13168.4
+  },
+  {
+   "tage_zurueck": 161,
+   "start": "11:10",
+   "dauer_min": 101,
+   "kwh": 12.41,
+   "sonne_kwh": 9.31,
+   "netz_kwh": 3.1,
+   "km": 55786,
+   "zaehler_start": 13168.4,
+   "zaehler_ende": 13180.8
+  },
+  {
+   "tage_zurueck": 159,
+   "start": "10:09",
+   "dauer_min": 465,
+   "kwh": 25.6,
+   "sonne_kwh": 21.43,
+   "netz_kwh": 4.17,
+   "km": 55881,
+   "zaehler_start": 13180.8,
+   "zaehler_ende": 13206.4
+  },
+  {
+   "tage_zurueck": 158,
+   "start": "17:53",
+   "dauer_min": 287,
+   "kwh": 27.71,
+   "sonne_kwh": 12.42,
+   "netz_kwh": 15.29,
+   "km": null,
+   "zaehler_start": 13206.4,
+   "zaehler_ende": 13234.1
+  },
+  {
+   "tage_zurueck": 152,
+   "start": "10:32",
+   "dauer_min": 100,
+   "kwh": 10.32,
+   "sonne_kwh": 6.94,
+   "netz_kwh": 3.38,
+   "km": null,
+   "zaehler_start": 13234.1,
+   "zaehler_ende": 13244.4
+  },
+  {
+   "tage_zurueck": 151,
+   "start": "09:28",
+   "dauer_min": 578,
+   "kwh": 36.45,
+   "sonne_kwh": 29.13,
+   "netz_kwh": 7.32,
+   "km": null,
+   "zaehler_start": 13244.4,
+   "zaehler_ende": 13280.9
+  },
+  {
+   "tage_zurueck": 148,
+   "start": "09:21",
+   "dauer_min": 733,
+   "kwh": 40.16,
+   "sonne_kwh": 35.01,
+   "netz_kwh": 5.15,
+   "km": 56289,
+   "zaehler_start": 13280.9,
+   "zaehler_ende": 13321.1
+  },
+  {
+   "tage_zurueck": 144,
+   "start": "12:54",
+   "dauer_min": 187,
+   "kwh": 19.4,
+   "sonne_kwh": 12.65,
+   "netz_kwh": 6.75,
+   "km": 56425,
+   "zaehler_start": 13321.1,
+   "zaehler_ende": 13340.5
+  },
+  {
+   "tage_zurueck": 141,
+   "start": "10:09",
+   "dauer_min": 1055,
+   "kwh": 39.64,
+   "sonne_kwh": 28.5,
+   "netz_kwh": 11.14,
+   "km": null,
+   "zaehler_start": 13340.5,
+   "zaehler_ende": 13380.1
+  },
+  {
+   "tage_zurueck": 139,
+   "start": "12:42",
+   "dauer_min": 469,
+   "kwh": 35.06,
+   "sonne_kwh": 23.73,
+   "netz_kwh": 11.33,
+   "km": 56615,
+   "zaehler_start": 13380.1,
+   "zaehler_ende": 13415.2
+  },
+  {
+   "tage_zurueck": 135,
+   "start": "12:47",
+   "dauer_min": 263,
+   "kwh": 30.83,
+   "sonne_kwh": 30.04,
+   "netz_kwh": 0.79,
+   "km": 56794,
+   "zaehler_start": 13415.2,
+   "zaehler_ende": 13446
+  },
+  {
+   "tage_zurueck": 128,
+   "start": "12:43",
+   "dauer_min": 295,
+   "kwh": 31.08,
+   "sonne_kwh": 20.71,
+   "netz_kwh": 10.37,
+   "km": 57070,
+   "zaehler_start": 13446,
+   "zaehler_ende": 13477.1
+  },
+  {
+   "tage_zurueck": 127,
+   "start": "10:25",
+   "dauer_min": 487,
+   "kwh": 38.25,
+   "sonne_kwh": 25.72,
+   "netz_kwh": 12.53,
+   "km": null,
+   "zaehler_start": 13477.1,
+   "zaehler_ende": 13515.3
+  },
+  {
+   "tage_zurueck": 124,
+   "start": "12:06",
+   "dauer_min": 389,
+   "kwh": 37.4,
+   "sonne_kwh": 37.4,
+   "netz_kwh": 0,
+   "km": 57204,
+   "zaehler_start": 13515.3,
+   "zaehler_ende": 13552.7
+  },
+  {
+   "tage_zurueck": 122,
+   "start": "09:23",
+   "dauer_min": 516,
+   "kwh": 37.38,
+   "sonne_kwh": 37.38,
+   "netz_kwh": 0,
+   "km": null,
+   "zaehler_start": 13552.7,
+   "zaehler_ende": 13590.1
+  },
+  {
+   "tage_zurueck": 121,
+   "start": "12:39",
+   "dauer_min": 392,
+   "kwh": 16.31,
+   "sonne_kwh": 12.29,
+   "netz_kwh": 4.02,
+   "km": 57333,
+   "zaehler_start": 13590.1,
+   "zaehler_ende": 13606.4
+  },
+  {
+   "tage_zurueck": 120,
+   "start": "11:38",
+   "dauer_min": 195,
+   "kwh": 17.72,
+   "sonne_kwh": 11.36,
+   "netz_kwh": 6.36,
+   "km": null,
+   "zaehler_start": 13606.4,
+   "zaehler_ende": 13624.1
+  },
+  {
+   "tage_zurueck": 119,
+   "start": "10:58",
+   "dauer_min": 214,
+   "kwh": 21.12,
+   "sonne_kwh": 15.46,
+   "netz_kwh": 5.66,
+   "km": 57422,
+   "zaehler_start": 13624.1,
+   "zaehler_ende": 13645.2
+  },
+  {
+   "tage_zurueck": 118,
+   "start": "10:35",
+   "dauer_min": 152,
+   "kwh": 15,
+   "sonne_kwh": 15,
+   "netz_kwh": 0,
+   "km": 57457,
+   "zaehler_start": 13645.2,
+   "zaehler_ende": 13660.2
+  },
+  {
+   "tage_zurueck": 117,
+   "start": "09:12",
+   "dauer_min": 82,
+   "kwh": 9.09,
+   "sonne_kwh": 8.25,
+   "netz_kwh": 0.84,
+   "km": 57511,
+   "zaehler_start": 13660.2,
+   "zaehler_ende": 13669.3
+  },
+  {
+   "tage_zurueck": 114,
+   "start": "12:01",
+   "dauer_min": 254,
+   "kwh": 12.18,
+   "sonne_kwh": 8.35,
+   "netz_kwh": 3.83,
+   "km": null,
+   "zaehler_start": 13669.3,
+   "zaehler_ende": 13681.5
+  },
+  {
+   "tage_zurueck": 113,
+   "start": "12:09",
+   "dauer_min": 1097,
+   "kwh": 41.83,
+   "sonne_kwh": 34.92,
+   "netz_kwh": 6.91,
+   "km": null,
+   "zaehler_start": 13681.5,
+   "zaehler_ende": 13723.3
+  },
+  {
+   "tage_zurueck": 112,
+   "start": "10:04",
+   "dauer_min": 492,
+   "kwh": 24.94,
+   "sonne_kwh": 22.51,
+   "netz_kwh": 2.43,
+   "km": 57667,
+   "zaehler_start": 13723.3,
+   "zaehler_ende": 13748.3
+  },
+  {
+   "tage_zurueck": 111,
+   "start": "12:39",
+   "dauer_min": 142,
+   "kwh": 16.04,
+   "sonne_kwh": 13.92,
+   "netz_kwh": 2.12,
+   "km": 57711,
+   "zaehler_start": 13748.3,
+   "zaehler_ende": 13764.3
+  },
+  {
+   "tage_zurueck": 110,
+   "start": "11:29",
+   "dauer_min": 607,
+   "kwh": 39.16,
+   "sonne_kwh": 39.16,
+   "netz_kwh": 0,
+   "km": null,
+   "zaehler_start": 13764.3,
+   "zaehler_ende": 13803.5
+  },
+  {
+   "tage_zurueck": 109,
+   "start": "12:57",
+   "dauer_min": 510,
+   "kwh": 40.45,
+   "sonne_kwh": 39.2,
+   "netz_kwh": 1.25,
+   "km": 57818,
+   "zaehler_start": 13803.5,
+   "zaehler_ende": 13843.9
+  },
+  {
+   "tage_zurueck": 107,
+   "start": "12:01",
+   "dauer_min": 583,
+   "kwh": 42.69,
+   "sonne_kwh": 27.45,
+   "netz_kwh": 15.24,
+   "km": 57917,
+   "zaehler_start": 13843.9,
+   "zaehler_ende": 13886.6
+  },
+  {
+   "tage_zurueck": 106,
+   "start": "09:54",
+   "dauer_min": 173,
+   "kwh": 15.23,
+   "sonne_kwh": 15.23,
+   "netz_kwh": 0,
+   "km": 57955,
+   "zaehler_start": 13886.6,
+   "zaehler_ende": 13901.9
+  },
+  {
+   "tage_zurueck": 105,
+   "start": "11:28",
+   "dauer_min": 394,
+   "kwh": 24.34,
+   "sonne_kwh": 15.87,
+   "netz_kwh": 8.47,
+   "km": 57998,
+   "zaehler_start": 13901.9,
+   "zaehler_ende": 13926.2
+  },
+  {
+   "tage_zurueck": 102,
+   "start": "12:08",
+   "dauer_min": 551,
+   "kwh": 41.22,
+   "sonne_kwh": 34.99,
+   "netz_kwh": 6.23,
+   "km": null,
+   "zaehler_start": 13926.2,
+   "zaehler_ende": 13967.4
+  },
+  {
+   "tage_zurueck": 95,
+   "start": "12:41",
+   "dauer_min": 556,
+   "kwh": 23.69,
+   "sonne_kwh": 15.35,
+   "netz_kwh": 8.34,
+   "km": null,
+   "zaehler_start": 13967.4,
+   "zaehler_ende": 13991.1
+  },
+  {
+   "tage_zurueck": 94,
+   "start": "12:06",
+   "dauer_min": 451,
+   "kwh": 41.31,
+   "sonne_kwh": 31.11,
+   "netz_kwh": 10.2,
+   "km": 58471,
+   "zaehler_start": 13991.1,
+   "zaehler_ende": 14032.4
+  },
+  {
+   "tage_zurueck": 93,
+   "start": "11:50",
+   "dauer_min": 153,
+   "kwh": 9.47,
+   "sonne_kwh": 8.86,
+   "netz_kwh": 0.61,
+   "km": null,
+   "zaehler_start": 14032.4,
+   "zaehler_ende": 14041.9
+  },
+  {
+   "tage_zurueck": 89,
+   "start": "12:48",
+   "dauer_min": 409,
+   "kwh": 35.89,
+   "sonne_kwh": 27.25,
+   "netz_kwh": 8.64,
+   "km": 58682,
+   "zaehler_start": 14041.9,
+   "zaehler_ende": 14077.8
+  },
+  {
+   "tage_zurueck": 88,
+   "start": "10:44",
+   "dauer_min": 243,
+   "kwh": 18.65,
+   "sonne_kwh": 12.16,
+   "netz_kwh": 6.49,
+   "km": 58736,
+   "zaehler_start": 14077.8,
+   "zaehler_ende": 14096.4
+  },
+  {
+   "tage_zurueck": 85,
+   "start": "10:47",
+   "dauer_min": 302,
+   "kwh": 28.08,
+   "sonne_kwh": 19.21,
+   "netz_kwh": 8.87,
+   "km": null,
+   "zaehler_start": 14096.4,
+   "zaehler_ende": 14124.5
+  },
+  {
+   "tage_zurueck": 83,
+   "start": "09:06",
+   "dauer_min": 465,
+   "kwh": 24.78,
+   "sonne_kwh": 24.78,
+   "netz_kwh": 0,
+   "km": 58911,
+   "zaehler_start": 14124.5,
+   "zaehler_ende": 14149.3
+  },
+  {
+   "tage_zurueck": 82,
+   "start": "10:56",
+   "dauer_min": 1004,
+   "kwh": 38.59,
+   "sonne_kwh": 25.19,
+   "netz_kwh": 13.4,
+   "km": null,
+   "zaehler_start": 14149.3,
+   "zaehler_ende": 14187.9
+  },
+  {
+   "tage_zurueck": 78,
+   "start": "10:34",
+   "dauer_min": 272,
+   "kwh": 22.57,
+   "sonne_kwh": 21.94,
+   "netz_kwh": 0.63,
+   "km": 59093,
+   "zaehler_start": 14187.9,
+   "zaehler_ende": 14210.4
+  },
+  {
+   "tage_zurueck": 74,
+   "start": "12:36",
+   "dauer_min": 248,
+   "kwh": 27.3,
+   "sonne_kwh": 23.9,
+   "netz_kwh": 3.4,
+   "km": 59282,
+   "zaehler_start": 14210.4,
+   "zaehler_ende": 14237.7
+  },
+  {
+   "tage_zurueck": 72,
+   "start": "11:37",
+   "dauer_min": 374,
+   "kwh": 27.73,
+   "sonne_kwh": 18.92,
+   "netz_kwh": 8.81,
+   "km": 59387,
+   "zaehler_start": 14237.7,
+   "zaehler_ende": 14265.5
+  },
+  {
+   "tage_zurueck": 71,
+   "start": "12:34",
+   "dauer_min": 232,
+   "kwh": 26.44,
+   "sonne_kwh": 17.95,
+   "netz_kwh": 8.49,
+   "km": 59431,
+   "zaehler_start": 14265.5,
+   "zaehler_ende": 14291.9
+  },
+  {
+   "tage_zurueck": 70,
+   "start": "11:24",
+   "dauer_min": 337,
+   "kwh": 15.79,
+   "sonne_kwh": 10.34,
+   "netz_kwh": 5.45,
+   "km": null,
+   "zaehler_start": 14291.9,
+   "zaehler_ende": 14307.7
+  },
+  {
+   "tage_zurueck": 67,
+   "start": "11:06",
+   "dauer_min": 107,
+   "kwh": 9.6,
+   "sonne_kwh": 9.6,
+   "netz_kwh": 0,
+   "km": 59585,
+   "zaehler_start": 14307.7,
+   "zaehler_ende": 14317.3
+  },
+  {
+   "tage_zurueck": 66,
+   "start": "09:58",
+   "dauer_min": 373,
+   "kwh": 38.23,
+   "sonne_kwh": 27.45,
+   "netz_kwh": 10.78,
+   "km": 59635,
+   "zaehler_start": 14317.3,
+   "zaehler_ende": 14355.5
+  },
+  {
+   "tage_zurueck": 64,
+   "start": "09:11",
+   "dauer_min": 596,
+   "kwh": 36.8,
+   "sonne_kwh": 34.08,
+   "netz_kwh": 2.72,
+   "km": 59736,
+   "zaehler_start": 14355.5,
+   "zaehler_ende": 14392.3
+  },
+  {
+   "tage_zurueck": 63,
+   "start": "11:06",
+   "dauer_min": 183,
+   "kwh": 9.24,
+   "sonne_kwh": 7.16,
+   "netz_kwh": 2.08,
+   "km": 59789,
+   "zaehler_start": 14392.3,
+   "zaehler_ende": 14401.6
+  },
+  {
+   "tage_zurueck": 57,
+   "start": "09:28",
+   "dauer_min": 199,
+   "kwh": 22.83,
+   "sonne_kwh": 14.29,
+   "netz_kwh": 8.54,
+   "km": 60001,
+   "zaehler_start": 14401.6,
+   "zaehler_ende": 14424.4
+  },
+  {
+   "tage_zurueck": 56,
+   "start": "11:09",
+   "dauer_min": 75,
+   "kwh": 8.56,
+   "sonne_kwh": 6.54,
+   "netz_kwh": 2.02,
+   "km": 60029,
+   "zaehler_start": 14424.4,
+   "zaehler_ende": 14433
+  },
+  {
+   "tage_zurueck": 54,
+   "start": "12:53",
+   "dauer_min": 403,
+   "kwh": 34.01,
+   "sonne_kwh": 21.58,
+   "netz_kwh": 12.43,
+   "km": 60114,
+   "zaehler_start": 14433,
+   "zaehler_ende": 14467
+  },
+  {
+   "tage_zurueck": 53,
+   "start": "10:16",
+   "dauer_min": 721,
+   "kwh": 38.72,
+   "sonne_kwh": 27.84,
+   "netz_kwh": 10.88,
+   "km": 60156,
+   "zaehler_start": 14467,
+   "zaehler_ende": 14505.7
+  },
+  {
+   "tage_zurueck": 49,
+   "start": "12:34",
+   "dauer_min": 288,
+   "kwh": 18.87,
+   "sonne_kwh": 12.22,
+   "netz_kwh": 6.65,
+   "km": 60326,
+   "zaehler_start": 14505.7,
+   "zaehler_ende": 14524.6
+  },
+  {
+   "tage_zurueck": 48,
+   "start": "09:27",
+   "dauer_min": 96,
+   "kwh": 10.5,
+   "sonne_kwh": 6.22,
+   "netz_kwh": 4.28,
+   "km": null,
+   "zaehler_start": 14524.6,
+   "zaehler_ende": 14535.1
+  },
+  {
+   "tage_zurueck": 47,
+   "start": "11:29",
+   "dauer_min": 751,
+   "kwh": 32.57,
+   "sonne_kwh": 21.52,
+   "netz_kwh": 11.05,
+   "km": 60402,
+   "zaehler_start": 14535.1,
+   "zaehler_ende": 14567.6
+  },
+  {
+   "tage_zurueck": 36,
+   "start": "11:53",
+   "dauer_min": 371,
+   "kwh": 39.91,
+   "sonne_kwh": 23.63,
+   "netz_kwh": 16.28,
+   "km": 60846,
+   "zaehler_start": 14567.6,
+   "zaehler_ende": 14607.5
+  },
+  {
+   "tage_zurueck": 35,
+   "start": "12:49",
+   "dauer_min": 274,
+   "kwh": 36.06,
+   "sonne_kwh": 18.75,
+   "netz_kwh": 17.31,
+   "km": 60900,
+   "zaehler_start": 14607.5,
+   "zaehler_ende": 14643.6
+  },
+  {
+   "tage_zurueck": 32,
+   "start": "09:55",
+   "dauer_min": 799,
+   "kwh": 41.49,
+   "sonne_kwh": 29.55,
+   "netz_kwh": 11.94,
+   "km": 61003,
+   "zaehler_start": 14643.6,
+   "zaehler_ende": 14685.1
+  },
+  {
+   "tage_zurueck": 30,
+   "start": "12:49",
+   "dauer_min": 211,
+   "kwh": 25.02,
+   "sonne_kwh": 19.56,
+   "netz_kwh": 5.46,
+   "km": 61073,
+   "zaehler_start": 14685.1,
+   "zaehler_ende": 14710.1
+  },
+  {
+   "tage_zurueck": 29,
+   "start": "09:56",
+   "dauer_min": 263,
+   "kwh": 25.91,
+   "sonne_kwh": 22.17,
+   "netz_kwh": 3.74,
+   "km": null,
+   "zaehler_start": 14710.1,
+   "zaehler_ende": 14736
+  },
+  {
+   "tage_zurueck": 28,
+   "start": "11:17",
+   "dauer_min": 280,
+   "kwh": 27.45,
+   "sonne_kwh": 21.66,
+   "netz_kwh": 5.79,
+   "km": 61133,
+   "zaehler_start": 14736,
+   "zaehler_ende": 14763.5
+  },
+  {
+   "tage_zurueck": 26,
+   "start": "12:19",
+   "dauer_min": 536,
+   "kwh": 34.23,
+   "sonne_kwh": 24.97,
+   "netz_kwh": 9.26,
+   "km": null,
+   "zaehler_start": 14763.5,
+   "zaehler_ende": 14797.7
+  },
+  {
+   "tage_zurueck": 25,
+   "start": "11:26",
+   "dauer_min": 131,
+   "kwh": 20.55,
+   "sonne_kwh": 11.68,
+   "netz_kwh": 8.87,
+   "km": null,
+   "zaehler_start": 14797.7,
+   "zaehler_ende": 14818.3
+  },
+  {
+   "tage_zurueck": 23,
+   "start": "12:26",
+   "dauer_min": 354,
+   "kwh": 43.52,
+   "sonne_kwh": 33.38,
+   "netz_kwh": 10.14,
+   "km": 61319,
+   "zaehler_start": 14818.3,
+   "zaehler_ende": 14861.8
+  },
+  {
+   "tage_zurueck": 20,
+   "start": "12:26",
+   "dauer_min": 239,
+   "kwh": 26.17,
+   "sonne_kwh": 15.02,
+   "netz_kwh": 11.15,
+   "km": 61460,
+   "zaehler_start": 14861.8,
+   "zaehler_ende": 14887.9
+  },
+  {
+   "tage_zurueck": 19,
+   "start": "09:58",
+   "dauer_min": 271,
+   "kwh": 19.36,
+   "sonne_kwh": 12.4,
+   "netz_kwh": 6.96,
+   "km": 61504,
+   "zaehler_start": 14887.9,
+   "zaehler_ende": 14907.3
+  },
+  {
+   "tage_zurueck": 17,
+   "start": "10:14",
+   "dauer_min": 70,
+   "kwh": 9.16,
+   "sonne_kwh": 5.08,
+   "netz_kwh": 4.08,
+   "km": 61575,
+   "zaehler_start": 14907.3,
+   "zaehler_ende": 14916.5
+  },
+  {
+   "tage_zurueck": 15,
+   "start": "10:08",
+   "dauer_min": 120,
+   "kwh": 11.42,
+   "sonne_kwh": 8.09,
+   "netz_kwh": 3.33,
+   "km": 61630,
+   "zaehler_start": 14916.5,
+   "zaehler_ende": 14927.9
+  },
+  {
+   "tage_zurueck": 14,
+   "start": "09:16",
+   "dauer_min": 561,
+   "kwh": 30.93,
+   "sonne_kwh": 24.17,
+   "netz_kwh": 6.76,
+   "km": null,
+   "zaehler_start": 14927.9,
+   "zaehler_ende": 14958.8
+  },
+  {
+   "tage_zurueck": 13,
+   "start": "12:17",
+   "dauer_min": 188,
+   "kwh": 18.16,
+   "sonne_kwh": 13.26,
+   "netz_kwh": 4.9,
+   "km": null,
+   "zaehler_start": 14958.8,
+   "zaehler_ende": 14977
+  },
+  {
+   "tage_zurueck": 12,
+   "start": "09:58",
+   "dauer_min": 214,
+   "kwh": 38.47,
+   "sonne_kwh": 22.23,
+   "netz_kwh": 16.24,
+   "km": 61770,
+   "zaehler_start": 14977,
+   "zaehler_ende": 15015.4
+  },
+  {
+   "tage_zurueck": 11,
+   "start": "12:36",
+   "dauer_min": 276,
+   "kwh": 40.13,
+   "sonne_kwh": 21.43,
+   "netz_kwh": 18.7,
+   "km": 61799,
+   "zaehler_start": 15015.4,
+   "zaehler_ende": 15055.6
+  },
+  {
+   "tage_zurueck": 5,
+   "start": "11:15",
+   "dauer_min": 624,
+   "kwh": 26.29,
+   "sonne_kwh": 16.87,
+   "netz_kwh": 9.42,
+   "km": 62059,
+   "zaehler_start": 15055.6,
+   "zaehler_ende": 15081.9
+  },
+  {
+   "tage_zurueck": 4,
+   "start": "09:55",
+   "dauer_min": 283,
+   "kwh": 28.86,
+   "sonne_kwh": 14.71,
+   "netz_kwh": 14.15,
+   "km": null,
+   "zaehler_start": 15081.9,
+   "zaehler_ende": 15110.7
+  }
+ ]
+}

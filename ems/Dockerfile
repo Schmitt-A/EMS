@@ -4,7 +4,7 @@ COPY package.json package-lock.json* ./
 RUN npm install
 COPY tailwind.config.js ./
 COPY app ./app
-COPY bin/copy-assets.mjs ./bin/copy-assets.mjs
+COPY bin/copy-assets.mjs bin/build.mjs ./bin/
 RUN npm run build
 
 FROM php:8.3-fpm-bookworm

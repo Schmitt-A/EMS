@@ -12,7 +12,10 @@ if (getenv('EMS_DEBUG') === '1') {
 
 require EMS_APP . '/src/helpers.php';
 require EMS_APP . '/src/ConfigStore.php';
+require EMS_APP . '/src/HaSource.php';
 require EMS_APP . '/src/HaClient.php';
+require EMS_APP . '/src/DemoModel.php';
+require EMS_APP . '/src/DemoHaClient.php';
 require EMS_APP . '/src/Energy.php';
 require EMS_APP . '/src/Forecast.php';
 require EMS_APP . '/src/WeatherFeed.php';
@@ -41,12 +44,16 @@ function store(): ConfigStore
     return $store;
 }
 
-function ha(): HaClient
+function ha(): HaSource
 {
     static $client = null;
     if (!$client) {
-        $connection = connection();
-        $client = new HaClient($connection['url'], $connection['token']);
+        if (demo_mode()) {
+            $client = new DemoHaClient(DemoModel::load());
+        } else {
+            $connection = connection();
+            $client = new HaClient($connection['url'], $connection['token']);
+        }
     }
     return $client;
 }

@@ -70,6 +70,7 @@ final class ConfigStore
                 'battery_total' => '',
                 'car_soc' => '',
                 'car_capacity' => '',
+                'car_range' => '',
                 'grid_mode' => 'split',
                 'grid_import' => '',
                 'grid_export' => '',
@@ -89,7 +90,7 @@ final class ConfigStore
                 'weather_temp' => '',
                 'weather_station' => 'soonwald',
             ],
-            'tariffs' => ['import_ct' => 34.7, 'export_ct' => 11.0],
+            'tariffs' => ['import_ct' => 34.7, 'export_ct' => 11.0, 'co2_g_kwh' => 380.0],
             'plant' => [
                 'kwp' => 10.03,
                 'inverter_kw' => 10.0,
@@ -115,6 +116,8 @@ final class ConfigStore
                 'off_delay_s' => 60,
             ],
             'battery_strategy' => ['priority_soc' => 80.0, 'reserve_soc' => 100.0, 'car_buffer_soc' => 100.0, 'car_auto_soc' => 100.0],
+            'chargepoint' => ['name' => 'Wallbox'],
+            'vehicle' => ['name' => 'Auto', 'limit_soc' => 80.0],
             'weather' => ['url' => 'https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/single_stations/F9519/kml/MOSMIX_L_LATEST_F9519.kmz'],
             'ui' => ['theme' => 'system'],
         ];
