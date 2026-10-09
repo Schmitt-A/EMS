@@ -408,3 +408,129 @@
     grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
   }
 }
+
+/* Mehr: mobil die Liste oder ein Bereich, ab 1024 px die Liste links und der Bereich rechts. */
+.mehr {
+  display: grid;
+  gap: var(--s-6);
+  align-items: start;
+}
+
+.mehr-menu,
+.mehr-detail {
+  display: grid;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+.mehr[data-area] > .mehr-menu,
+.mehr:not([data-area]) > .mehr-detail {
+  display: none;
+}
+
+.mehr-back {
+  justify-self: start;
+}
+
+@media (min-width: 64rem) {
+  .mehr {
+    grid-template-columns: minmax(15rem, 20rem) minmax(0, 1fr);
+  }
+
+  .mehr[data-area] > .mehr-menu,
+  .mehr:not([data-area]) > .mehr-detail {
+    display: grid;
+  }
+
+  .mehr-menu {
+    position: sticky;
+    inset-block-start: var(--s-6);
+  }
+
+  .mehr .mehr-back {
+    display: none;
+  }
+
+  /* Auf /mehr steht rechts der Ladepunkt; sein Eintrag ist markiert, ohne die aktuelle Seite zu sein. */
+  .detail-item[data-default] {
+    background: var(--accent-soft);
+    color: var(--accent-on-soft);
+  }
+
+  .detail-item[data-default] .detail-item-text,
+  .detail-item[data-default] > .icon {
+    color: var(--accent-on-soft);
+  }
+}
+
+/* Laufender Text mit Links, etwa die Anleitung zur DWD-Adresse. */
+.prose {
+  display: grid;
+  gap: var(--s-1);
+  margin: 0;
+  padding-inline-start: 1.25rem;
+  color: var(--text-2);
+}
+
+.prose a {
+  color: var(--text);
+  text-underline-offset: 0.2em;
+}
+
+/* Assistent vor der Einrichtung: ohne Navigation, schmaler Inhalt. */
+.app-bare .page {
+  max-width: 42rem;
+  padding-block-end: var(--s-12);
+}
+
+@media (min-width: 64rem) {
+  .app-bare {
+    display: block;
+  }
+}
+
+/* Assistent: Schritte als Kapseln, mobil quer scrollbar; Weiter steht rechts. */
+.steps {
+  display: flex;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-4);
+  padding: 0 0 var(--s-1);
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: none;
+}
+
+.step-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  padding: 0 var(--s-4) 0 var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.step-link[aria-current="step"] {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.wizard-actions .btn-primary {
+  margin-inline-start: auto;
+}

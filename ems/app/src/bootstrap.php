@@ -23,8 +23,8 @@ require EMS_APP . '/src/Sessions.php';
 require EMS_APP . '/src/Snapshot.php';
 require EMS_APP . '/src/Series.php';
 require EMS_APP . '/src/Actions.php';
-require EMS_APP . '/views/ui.php';
 require EMS_APP . '/views/kit.php';
+require EMS_APP . '/views/forecast_method.php';
 
 if (PHP_SAPI !== 'cli') {
     session_set_cookie_params([

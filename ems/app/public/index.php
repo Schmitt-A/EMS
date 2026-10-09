@@ -119,7 +119,7 @@ if ($inWizard && $method === 'POST') {
     Actions::saveWizard($step);
 }
 
-if ($path === '/einstellungen' && $method === 'POST') {
+if (($path === '/einstellungen' || $path === '/mehr' || str_starts_with($path, '/mehr/')) && $method === 'POST') {
     Actions::saveSettings();
 }
 
@@ -145,37 +145,27 @@ if (($path === '/ladevorgaenge' || $path === '/statistik') && $method === 'POST'
     redirect('/ladevorgaenge' . sessions_query($params));
 }
 
-if ($path === '/batterie' && $method === 'POST') {
-    $_POST['section'] = 'battery';
-    $_POST['back'] = '/batterie';
-    Actions::saveSettings();
-}
-
 $snapshot = new Snapshot(store(), ha());
 $snap = $snapshot->build();
 $live = $snapshot->livePayload($snap);
 
 if ($path === '/komponenten' && demo_mode()) {
     $overview = energy_overview();
-    page('komponenten', compact('snap', 'live', 'overview') + ['title' => 'Komponenten', 'layout' => 'shell']);
+    page('komponenten', compact('snap', 'live', 'overview') + ['title' => 'Komponenten']);
 }
 if ($path === '/laden') {
     redirect('/');
 }
 if ($path === '/') {
     $overview = energy_overview();
-    page('laden', compact('snap', 'live', 'overview') + ['title' => 'Laden', 'layout' => 'shell']);
+    page('laden', compact('snap', 'live', 'overview') + ['title' => 'Laden']);
 }
 if ($path === '/batterie') {
     redirect('/speicher');
 }
 if ($path === '/speicher') {
     $overview = energy_overview();
-    page('speicher', compact('snap', 'live', 'overview') + ['title' => 'Speicher', 'layout' => 'shell']);
-}
-if ($path === '/laden') {
-    $session = $snap['session'];
-    page('charge', compact('snap', 'live', 'session') + ['title' => 'Laden']);
+    page('speicher', compact('snap', 'live', 'overview') + ['title' => 'Speicher']);
 }
 if ($path === '/statistik') {
     redirect('/ladevorgaenge' . sessions_query(sessions_params($_GET)));
@@ -217,7 +207,7 @@ if ($path === '/ladevorgaenge') {
     $detail = isset($_GET['vorgang']) ? $sessions->find((int) $_GET['vorgang']) : null;
     $hasAny = $params['span'] === 'all' ? (bool) $rows : (bool) $sessions->latest();
     $overview = energy_overview();
-    page('ladevorgaenge', compact('live', 'params', 'rows', 'summary', 'years', 'detail', 'tariffs', 'hasAny', 'overview') + ['title' => 'Ladevorgänge', 'layout' => 'shell']);
+    page('ladevorgaenge', compact('live', 'params', 'rows', 'summary', 'years', 'detail', 'tariffs', 'hasAny', 'overview') + ['title' => 'Ladevorgänge']);
 }
 if ($path === '/prognose') {
     $yield = safe_yield();
@@ -259,11 +249,17 @@ if ($path === '/prognose') {
     $overview = energy_overview();
     $captions = Forecast::captions(store()->pdo(), cfg()['plant']);
     $weather = (new WeatherFeed(store()))->meta();
-    page('prognose', compact('snap', 'live', 'yield', 'yesterday', 'scores', 'upcoming', 'past', 'modelRows', 'todayKey', 'lesson', 'overview', 'captions', 'weather') + ['title' => 'Prognose', 'layout' => 'shell']);
+    page('prognose', compact('snap', 'live', 'yield', 'yesterday', 'scores', 'upcoming', 'past', 'modelRows', 'todayKey', 'lesson', 'overview', 'captions', 'weather') + ['title' => 'Prognose']);
 }
 if ($path === '/einstellungen') {
-    $ping = ha()->ping();
-    page('settings', ['cfg' => cfg(), 'ping' => $ping, 'live' => $live, 'suggest' => known_suggestions(), 'title' => 'Einstellungen']);
+    redirect('/mehr');
+}
+if ($path === '/mehr' || str_starts_with($path, '/mehr/')) {
+    $area = trim(substr($path, strlen('/mehr')), '/');
+    if ($area !== '' && (!preg_match('/^[a-z]+$/', $area) || !is_file(EMS_APP . '/views/mehr/' . $area . '.php'))) {
+        redirect('/mehr');
+    }
+    page('mehr', ['area' => $area === '' ? null : $area, 'cfg' => cfg(), 'ping' => ha()->ping(), 'live' => $live, 'suggest' => known_suggestions(), 'title' => 'Mehr']);
 }
 if ($inWizard) {
     $step = trim(substr($path, strlen('/einrichten')), '/');
@@ -279,7 +275,7 @@ if ($inWizard) {
     $suggest = known_suggestions();
     $missing = Actions::missing(cfg()['mapping']);
     $review = review_lines(cfg()['mapping']);
-    page('wizard', [
+    page('einrichten', [
         'step' => $step,
         'cfg' => cfg(),
         'ping' => $ping,
@@ -287,8 +283,6 @@ if ($inWizard) {
         'suggest' => $suggest,
         'missing' => $missing,
         'review' => $review,
-        'showNav' => $wizard,
-        'live' => $wizard ? $live : null,
         'title' => 'Einrichten',
     ], $wizard);
 }

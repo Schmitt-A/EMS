@@ -252,7 +252,9 @@ final class Actions
                 }
                 $mapping[$key] = post_entity($key);
             }
-            $mapping['house_includes_wallbox'] = ($_POST['house_includes_wallbox'] ?? '0') === '1';
+            if (array_key_exists('house_includes_wallbox', $_POST)) {
+                $mapping['house_includes_wallbox'] = $_POST['house_includes_wallbox'] === '1';
+            }
             store()->put('mapping', $mapping);
         } elseif ($section === 'weather') {
             $url = trim((string) ($_POST['weather_url'] ?? ''));
@@ -324,8 +326,8 @@ final class Actions
             store()->put('wizard_done', true);
         }
         flash('Konfiguration übernommen.');
-        $back = (string) ($_POST['back'] ?? '/einstellungen');
-        if (!str_starts_with($back, '/') || (store()->get('wizard_done', false) && str_starts_with($back, '/einrichten'))) {
+        $back = (string) ($_POST['back'] ?? '/mehr');
+        if (!self::localPath($back) || (store()->get('wizard_done', false) && str_starts_with($back, '/einrichten'))) {
             $back = '/';
         }
         redirect($back);
@@ -554,10 +556,16 @@ final class Actions
 
     private static function redirectBack(): never
     {
-        $back = (string) ($_POST['back'] ?? '/einstellungen');
-        if (!str_starts_with($back, '/')) {
-            $back = '/einstellungen';
+        $back = (string) ($_POST['back'] ?? '/mehr');
+        if (!self::localPath($back)) {
+            $back = '/mehr';
         }
         redirect($back);
+    }
+
+    /** Nur Pfade dieser App, kein //andere-seite.de. */
+    private static function localPath(string $path): bool
+    {
+        return str_starts_with($path, '/') && !str_starts_with($path, '//') && !str_contains($path, '\\');
     }
 }

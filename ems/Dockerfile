@@ -2,9 +2,8 @@ FROM node:22-bookworm AS assets
 WORKDIR /src
 COPY package.json package-lock.json* ./
 RUN npm install
-COPY tailwind.config.js ./
 COPY app ./app
-COPY bin/copy-assets.mjs bin/build.mjs ./bin/
+COPY bin/build.mjs ./bin/
 RUN npm run build
 
 FROM php:8.3-fpm-bookworm

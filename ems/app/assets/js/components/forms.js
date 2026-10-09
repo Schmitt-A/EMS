@@ -108,16 +108,23 @@ function bindEntities(root) {
       } catch {
         payload = { results: [], error: 'Die Suche antwortet gerade nicht.' };
       }
+      // Eine ältere Antwort, die nach einer neueren eintrifft, zeigt nichts mehr an.
+      if (input.value.trim() !== query) return;
       list.replaceChildren();
       const rows = payload.results || [];
       if (!rows.length) {
+        // Ein Listbox-Kind muss eine Option sein; der Hinweis ist eine gesperrte.
         const empty = document.createElement('li');
         empty.className = 'entity-empty';
+        empty.setAttribute('role', 'option');
+        empty.setAttribute('aria-disabled', 'true');
+        empty.setAttribute('aria-selected', 'false');
         empty.textContent = payload.error || 'Keine passende Entität.';
         list.append(empty);
       }
       rows.forEach((row, i) => {
         const item = document.createElement('li');
+        item.setAttribute('role', 'none');
         const button = document.createElement('button');
         button.type = 'button';
         button.id = `${list.id}-${i}`;
@@ -142,7 +149,7 @@ function bindEntities(root) {
       timer = setTimeout(search, 180);
     });
     input.addEventListener('keydown', (event) => {
-      const options = $$('[role="option"]', list);
+      const options = $$('[role="option"]:not([aria-disabled="true"])', list);
       if (event.key === 'Escape') return close();
       if (!options.length || !['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
       event.preventDefault();

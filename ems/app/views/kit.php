@@ -198,6 +198,19 @@ function ui_toggle(string $name, bool $checked, string $label, array $attrs = []
         . '><span class="toggle-track"></span><span class="toggle-knob">' . icon('check', 'icon-16') . '</span></span></span>';
 }
 
+/** Zahl für ein Eingabefeld: Komma, ohne Tausenderpunkt (post_float liest den Punkt als Komma), ohne Nullen am Ende. */
+function ui_field_num(float $value, int $decimals = 2): string
+{
+    $text = number_format($value, $decimals, ',', '');
+    return str_contains($text, ',') ? rtrim(rtrim($text, '0'), ',') : $text;
+}
+
+/** Formularzeile mit Zahlenfeld, die Einheit steht im Hinweis. */
+function ui_number_row(string $name, string $label, float $value, int $decimals, string $hint, array $attrs = []): string
+{
+    return ui_form_row($label, ui_input($name, ui_field_num($value, $decimals), $attrs + ['class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off']), ['for' => 'f-' . $name, 'hint' => $hint]);
+}
+
 /** Regler mit Wertausgabe. */
 function ui_range(string $name, string $label, float $value, float $min, float $max, float $step, string $unit, string $hint = ''): string
 {
@@ -249,6 +262,19 @@ function ui_empty(string $icon, string $text, string $action = ''): string
 function ui_notice(string $icon, string $html, string $tone = ''): string
 {
     return '<div class="notice' . ($tone !== '' ? ' notice-' . e($tone) : '') . '">' . icon($icon, 'icon-20') . '<div class="body-sm">' . $html . '</div></div>';
+}
+
+/** Konfiguration als JSON: herunterladen, einfügen oder als Datei hochladen. */
+function ui_config_exchange(string $action, string $back): string
+{
+    return '<div class="stack">'
+        . '<p><a class="btn btn-secondary" href="' . e(url('/api/config.json')) . '" download>' . icon('arrow-down', 'icon-16') . 'JSON herunterladen</a></p>'
+        . '<form method="post" enctype="multipart/form-data" action="' . e(url($action)) . '" class="stack">' . csrf_field()
+        . '<input type="hidden" name="section" value="import"><input type="hidden" name="back" value="' . e($back) . '">'
+        . '<div class="form-rows">'
+        . ui_form_row('JSON einfügen', '<textarea class="field" id="f-config-json" name="config_json" rows="5" spellcheck="false" placeholder="{ &quot;version&quot;: 1, &quot;mapping&quot;: { } }"></textarea>', ['for' => 'f-config-json', 'stack' => true])
+        . ui_form_row('oder Datei', '<input class="field field-file" type="file" id="f-config-file" name="config_file" accept="application/json,.json">', ['for' => 'f-config-file', 'stack' => true])
+        . '</div><div class="form-actions"><button class="btn btn-primary" type="submit">JSON importieren</button></div></form></div>';
 }
 
 /**
@@ -365,7 +391,7 @@ function ui_battery_column(array $b, bool $editable = true): string
         'data-auto' => $b['auto'],
         'data-activity' => $b['flow'] ?? 'ruhe',
     ]) . '>'
-        . '<p class="bc-caption body">Speicherstand <strong data-live="soc_text">' . e(pct($soc)) . '</strong> · <span data-live="stored_text">' . e($b['stored_text']) . '</span></p>'
+        . '<p class="bc-caption body">Speicherstand <strong data-live="battery.soc_text">' . e(pct($soc)) . '</strong> · <span data-live="battery.stored_text">' . e($b['stored_text']) . '</span></p>'
         . '<div class="bc-figure"><div class="bc-scale">' . $mark('priority', (float) $b['priority']) . $mark('buffer', (float) $b['buffer']) . '</div>'
         . '<div class="bc-body" role="img" aria-label="' . e('Hausspeicher ' . pct($soc) . '. Haus bis ' . pct((float) $b['priority']) . ', Auto bis ' . pct((float) $b['buffer']) . ', darüber batteriegestützt.') . '" data-bc-body>'
         . '<span class="bc-nub"></span><span class="bc-clip">'
@@ -374,7 +400,7 @@ function ui_battery_column(array $b, bool $editable = true): string
         . '<span class="bc-zone bc-zone-boost" data-zone="boost">' . icon('zap', 'icon-24') . '</span>'
         . '<span class="bc-empty"></span><span class="bc-auto"' . ((float) $b['auto'] >= 99.5 ? ' data-off' : '') . '></span></span>'
         . '<span class="bc-level"></span></div>'
-        . '<div class="bc-side"><span class="bc-soc" aria-hidden="true" data-live="soc_text">' . e(pct($soc)) . '</span></div></div>'
+        . '<div class="bc-side"><span class="bc-soc" aria-hidden="true" data-live="battery.soc_text">' . e(pct($soc)) . '</span></div></div>'
         . '</div>';
 }
 

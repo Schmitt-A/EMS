@@ -63,19 +63,7 @@ $rows = [
 ob_start();
 ?>
 <p class="body muted">Der Vorschlag zeigt, was eine Regelung jetzt einstellen würde. Die App schreibt nichts an die Wallbox.</p>
-<form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack">
-  <?= csrf_field() ?>
-  <input type="hidden" name="section" value="charge"><input type="hidden" name="back" value="/">
-  <?= ui_range('solar_share', 'Mindest-Sonnenanteil', (float) $c['solar_share'], 0, 100, 1, '%', 'Bei 100 % bleibt die Ladeleistung auf dem Überschuss. Bei 50 % darf sie bis zum Doppelten gehen, der Rest käme aus dem Netz.') ?>
-  <?= ui_range('reserve_w', 'Regelreserve', (float) $c['reserve_w'], 0, 2000, 10, 'W', 'Abstand zur Nulllinie am Zähler, damit eine Wolke nicht gleich Netzbezug auslöst.') ?>
-  <?= ui_range('min_a', 'Mindeststrom', (float) $c['min_a'], 6, 16, 1, 'A', '1-phasig sind 6 A rund 1,4 kW, 3-phasig 4,1 kW.') ?>
-  <?= ui_range('max_a', 'Höchststrom', (float) $c['max_a'], 6, 16, 1, 'A') ?>
-  <?= ui_range('switch_s', 'Schütz-Schutzzeit', (float) $c['switch_s'], 60, 600, 10, 's') ?>
-  <?= ui_range('on_delay_s', 'Einschaltverzögerung', (float) $c['on_delay_s'], 60, 600, 10, 's') ?>
-  <?= ui_range('off_delay_s', 'Ausschaltverzögerung', (float) $c['off_delay_s'], 60, 600, 10, 's') ?>
-  <div class="form-rows"><?= ui_form_row('Phasen', ui_select('phase_mode', ['auto' => 'Automatisch', '1p' => '1-phasig', '3p' => '3-phasig'], (string) $c['phase_mode']), ['for' => 'f-phase_mode']) ?></div>
-  <div class="form-actions"><button class="btn btn-primary" type="submit">Ladeparameter speichern</button></div>
-</form>
+<?php view('partials/charge-form', ['charge' => $c, 'back' => '/']); ?>
 <?= ui_divider('Regelung im Detail') ?>
 <dl class="kv">
   <div><dt>PV</dt><dd data-live="pv"><?= e(kw($v['pv_kw'])) ?></dd></div>
@@ -92,7 +80,7 @@ ob_start();
 <?php endforeach; ?>
 </dl>
 <?= ui_divider('Ladepunkt') ?>
-<form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack">
+<form method="post" action="<?= e(url('/mehr')) ?>" class="stack">
   <?= csrf_field() ?>
   <input type="hidden" name="section" value="chargepoint"><input type="hidden" name="back" value="/">
   <div class="form-rows"><?= ui_form_row('Name', ui_input('chargepoint_name', (string) $cp['name'], ['id' => 'f-cp-name', 'maxlength' => '40', 'autocomplete' => 'off']), ['for' => 'f-cp-name']) ?></div>
@@ -102,19 +90,7 @@ ob_start();
 echo ui_dialog('cp-settings', 'Einstellungen: ' . $cp['name'], ob_get_clean());
 
 // Ebene 2: Fahrzeug
-$map = $snap['cfg']['mapping'];
 ob_start();
-?>
-<form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack">
-  <?= csrf_field() ?>
-  <input type="hidden" name="section" value="vehicle"><input type="hidden" name="back" value="/">
-  <div class="form-rows"><?= ui_form_row('Name', ui_input('vehicle_name', (string) $vehicle['name'], ['id' => 'f-vehicle-name', 'maxlength' => '40', 'autocomplete' => 'off']), ['for' => 'f-vehicle-name']) ?></div>
-  <?= ui_range('limit_soc', 'Ladelimit', (float) $vehicle['limit'], 20, 100, 5, '%', 'Ziel für Restzeit und Ladebalken. Die Wallbox wird nicht gestellt.') ?>
-  <?= ui_entity_field('car_soc', 'Ladestand des Autos', (string) ($map['car_soc'] ?? ''), 'Prozent, sobald das Fahrzeug ihn meldet.') ?>
-  <?= ui_entity_field('car_capacity', 'Kapazität des Autos', (string) ($map['car_capacity'] ?? ''), 'Wh oder kWh.') ?>
-  <?= ui_entity_field('car_range', 'Reichweite, optional', (string) ($map['car_range'] ?? ''), 'Kilometer. Die Reichweite beim Limit wird daraus geschätzt.') ?>
-  <div class="form-actions"><button class="btn btn-primary" type="submit">Fahrzeug speichern</button></div>
-</form>
-<?php
+view('partials/vehicle-form', ['name' => (string) $vehicle['name'], 'limit' => (float) $vehicle['limit'], 'mapping' => $snap['cfg']['mapping'], 'back' => '/']);
 echo ui_dialog('cp-vehicle', 'Fahrzeug: ' . $vehicle['name'], ob_get_clean());
 view('partials/overview', ['overview' => $overview]);

@@ -370,16 +370,13 @@ const VIEW_TRANSITION_CSS = '@view-transition{navigation:auto}@media (prefers-re
 function render(string $view, array $data = []): never
 {
     $data['flash'] = flash();
-    $layout = (string) ($data['layout'] ?? 'layout');
-    if ($layout === 'shell') {
-        header("Content-Security-Policy: default-src 'self'; style-src 'self' 'sha256-" . base64_encode(hash('sha256', VIEW_TRANSITION_CSS, true)) . "'");
-        header('X-Content-Type-Options: nosniff');
-    }
+    header("Content-Security-Policy: default-src 'self'; style-src 'self' 'sha256-" . base64_encode(hash('sha256', VIEW_TRANSITION_CSS, true)) . "'");
+    header('X-Content-Type-Options: nosniff');
     extract($data, EXTR_SKIP);
     ob_start();
     require EMS_APP . '/views/' . $view . '.php';
     $content = ob_get_clean();
-    require EMS_APP . '/views/' . ($layout === 'shell' ? 'shell' : 'layout') . '.php';
+    require EMS_APP . '/views/shell.php';
     exit;
 }
 

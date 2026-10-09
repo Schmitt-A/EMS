@@ -360,6 +360,19 @@
   transform: rotate(45deg);
 }
 
+/* Im Kopf eines Reglers steht der Knopf am Zeilenende: der Tooltip öffnet nach links und bleibt im Bild. */
+.range-head .tip-body {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+  transform: none;
+}
+
+.range-head .tip-body::before {
+  inset-inline-start: auto;
+  inset-inline-end: 1rem;
+  margin-inline-start: 0;
+}
+
 .tip:focus-within .tip-body,
 .tip.open .tip-body {
   opacity: 1;

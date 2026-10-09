@@ -273,64 +273,30 @@ final class Snapshot
         $v = $snap['values'];
         $b = $snap['balance'];
         $s = $snap['setpoint'];
-        $grid = $this->gridText($v['grid_import_kw'] ?? null, $v['grid_export_kw'] ?? null);
         $f = $snap['forecast'];
+        $flow = match ($snap['activity'] ?? '') {
+            'Laden' => 'laden',
+            'Entladen' => 'entladen',
+            default => 'ruhe',
+        };
         return [
             'connected' => $snap['connected'],
             'error' => $snap['error'],
             'fetched_at' => $snap['fetched_at'],
-            'connection' => $snap['connected'] ? 'verbunden' : 'getrennt',
+            'ts' => time(),
+            // Regelung im Detail (Ladepunkt-Sheet)
             'pv' => kw($v['pv_kw'] ?? null),
-            'soc' => pct(isset($v['battery_soc']) ? (float) $v['battery_soc'] : null, 0),
             'house' => kw($b['house_base_kw'] ?? null),
-            'grid' => $grid,
-            'wallbox' => kw($v['wallbox_kw'] ?? null),
-            'in' => kw($b['in_kw'] ?? null),
-            'out' => kw($b['out_kw'] ?? null),
-            'diff' => ($b['diff_kw'] ?? null) === null ? '—' : num((float) $b['diff_kw'], 2) . NNBSP . 'kW',
-            'charge' => kw($v['battery_charge_kw'] ?? null),
-            'discharge' => kw($v['battery_discharge_kw'] ?? null),
-            'import' => kw($v['grid_import_kw'] ?? null),
-            'export' => kw($v['grid_export_kw'] ?? null),
-            'surplus' => kw($b['surplus_kw'] ?? null),
             'storage' => kw($b['storage_priority_kw'] ?? null),
-            'psoll' => kw($s['p_soll_kw'] ?? null),
-            'delta' => kw($s['delta_kw'] ?? null),
-            'target' => kw($s['latched_kw'] ?? null),
-            'proposal' => $this->proposal($s),
-            'activity' => $snap['activity'],
-            'battery_flow' => match ($snap['activity'] ?? '') {
-                'Laden' => 'laden',
-                'Entladen' => 'entladen',
-                default => 'ruhe',
-            },
-            'car' => $snap['car_label'],
-            'phase' => $snap['phase_label'],
-            'amps' => amps(isset($v['wallbox_amps']) ? (float) $v['wallbox_amps'] : null),
-            'remaining' => kwh($f['remaining_kwh'] ?? null, 1),
-            'today_forecast' => kwh($f['today_kwh'] ?? null, 1),
-            'capacity' => kwh($v['battery_capacity_kwh'] ?? null, 1),
-            'capacity_line' => $this->capacityLine($v['battery_capacity_kwh'] ?? null, $v['battery_total_kwh'] ?? null),
-            'soc_fill' => isset($v['battery_soc']) ? (string) max(0, min(100, round((float) $v['battery_soc']))) : '0',
+            'surplus' => kw($b['surplus_kw'] ?? null),
+            'psoll' => kw($s['p_soll_kw'] ?? null, 2),
+            'delta' => kw($s['delta_kw'] ?? null, 2),
+            // Erklärliste des Speichers
+            'house_mean' => kw($snap['house_mean_kw'] ?? null),
             'battery_full' => $this->fullText($snap['storage'] ?? []),
             'battery_priority' => $this->priorityText($snap['storage'] ?? [], (float) ($v['priority_soc'] ?? 80)),
             'battery_buffer' => $this->bufferText($snap['storage'] ?? [], (float) ($snap['car_buffer_soc'] ?? 100)),
             'battery_surplus' => $this->surplusText($snap['storage'] ?? [], isset($snap['house_mean_kw']) && $snap['house_mean_kw'] !== null, $snap['house_mean_kw'] ?? null),
-            'house_mean' => kw($snap['house_mean_kw'] ?? null),
-            'plan_now' => $this->levelKwh($v['battery_capacity_kwh'] ?? null, isset($v['battery_soc']) ? (float) $v['battery_soc'] : null, $snap['storage']['full_kwh'] ?? null, true),
-            'plan_priority_kwh' => $this->levelKwh(null, (float) ($v['priority_soc'] ?? 80), $snap['storage']['full_kwh'] ?? null, false),
-            'plan_full_kwh' => $this->levelKwh(null, 100, $snap['storage']['full_kwh'] ?? null, false),
-            'plan_buffer_kwh' => $this->levelKwh(null, (float) ($snap['car_buffer_soc'] ?? 100), $snap['storage']['full_kwh'] ?? null, false),
-            'car_soc_fill' => isset($v['car_soc']) ? (string) max(0, min(100, (int) round((float) $v['car_soc']))) : '',
-            'car_soc_label' => isset($v['car_soc']) ? pct((float) $v['car_soc'], 0) : '—',
-            'car_capacity_line' => $this->carCapacityLine(isset($v['car_soc']) ? (float) $v['car_soc'] : null, $v['car_capacity_kwh'] ?? null),
-            'car_flow' => !empty($snap['car_charging']) ? 'laden' : 'ruhe',
-            'car_state' => $this->carState($v['car_soc'] ?? null, $v['car_capacity_kwh'] ?? null),
-            'car_outlook' => !empty($snap['car_charging'])
-                ? 'Die Wallbox lädt gerade ein Auto. Die Zeiten gelten wieder, sobald sie pausiert. Angesetzt ist kein Ladestrom.'
-                : 'Kein Auto an der Wallbox. Angesetzt ist kein Ladestrom an der go-e.',
-            'grid_kw' => $this->gridMagnitude($v['grid_import_kw'] ?? null, $v['grid_export_kw'] ?? null),
-            'ts' => time(),
             'remaining_kwh' => $f['remaining_kwh'] ?? null,
             'flow' => Energy::flowBar($v, $b),
             'flow_rows' => self::flowRows($v, $b),
@@ -338,29 +304,16 @@ final class Snapshot
             'vehicle' => $snap['vehicle'],
             'battery' => [
                 'soc' => isset($v['battery_soc']) ? round((float) $v['battery_soc'], 1) : null,
-                'flow' => match ($snap['activity'] ?? '') {
-                    'Laden' => 'laden',
-                    'Entladen' => 'entladen',
-                    default => 'ruhe',
-                },
+                'flow' => $flow,
                 'soc_text' => pct(isset($v['battery_soc']) ? (float) $v['battery_soc'] : null),
                 'stored_text' => self::storedText($v['battery_capacity_kwh'] ?? null, $v['battery_total_kwh'] ?? null),
-                'activity_text' => match ($snap['activity'] ?? '') {
-                    'Laden' => 'Lädt mit ' . kw($v['battery_charge_kw'] ?? null) . '.',
-                    'Entladen' => 'Entlädt mit ' . kw($v['battery_discharge_kw'] ?? null) . '.',
+                'activity_text' => match ($flow) {
+                    'laden' => 'Lädt mit ' . kw($v['battery_charge_kw'] ?? null) . '.',
+                    'entladen' => 'Entlädt mit ' . kw($v['battery_discharge_kw'] ?? null) . '.',
                     default => $snap['connected'] ? 'Ruht.' : '',
                 },
             ],
             'say' => self::sayText($snap),
-            'flows' => [
-                'pv' => max(0, (float) ($v['pv_kw'] ?? 0)),
-                'bat_charge' => max(0, (float) ($v['battery_charge_kw'] ?? 0)),
-                'bat_discharge' => max(0, (float) ($v['battery_discharge_kw'] ?? 0)),
-                'grid_import' => max(0, (float) ($v['grid_import_kw'] ?? 0)),
-                'grid_export' => max(0, (float) ($v['grid_export_kw'] ?? 0)),
-                'house' => max(0, (float) ($b['house_base_kw'] ?? 0)),
-                'wallbox' => max(0, (float) ($v['wallbox_kw'] ?? 0)),
-            ],
         ];
     }
 
@@ -484,63 +437,6 @@ final class Snapshot
         return implode(', ', $parts) . '.';
     }
 
-    private function capacityLine(?float $now, ?float $total): string
-    {
-        if ($now === null && ($total === null || $total <= 0)) {
-            return 'Kapazität —';
-        }
-        if ($total === null || $total <= 0) {
-            return 'aktuell ' . kwh($now, 1) . '. Gesamtkapazität fehlt in den Einstellungen.';
-        }
-        return 'aktuell ' . num($now, 1) . ' / ' . num($total, 1) . NNBSP . 'kWh';
-    }
-
-    private function levelKwh(?float $stored, ?float $soc, ?float $full, bool $preferStored): string
-    {
-        if ($preferStored && $stored !== null) {
-            return num($stored, 1) . NNBSP . 'kWh';
-        }
-        if ($full !== null && $full > 0 && $soc !== null) {
-            return num($full * max(0, min(100, $soc)) / 100, 1) . NNBSP . 'kWh';
-        }
-        if ($soc !== null) {
-            return num($soc, 0) . NNBSP . '%';
-        }
-        return '—';
-    }
-
-    private function carCapacityLine(?float $soc, ?float $capacity): string
-    {
-        if ($soc !== null && $capacity !== null && $capacity > 0) {
-            $stored = $capacity * max(0, min(100, $soc)) / 100;
-
-            return num($stored, 1) . ' / ' . num($capacity, 1) . NNBSP . 'kWh';
-        }
-        if ($capacity !== null && $capacity > 0) {
-            return 'Kapazität ' . num($capacity, 1) . NNBSP . 'kWh. Der Ladestand fehlt noch.';
-        }
-        if ($soc !== null) {
-            return 'Der Ladestand ist da. Die Kapazität fehlt noch.';
-        }
-
-        return 'Kapazität folgt, sobald das Fahrzeug sie meldet.';
-    }
-
-    private function carState(?float $soc, ?float $capacity): string
-    {
-        if ($soc === null && ($capacity === null || $capacity <= 0)) {
-            return 'Fahrzeugdaten fehlen noch. Ladestand und Kapazität des Autos lassen sich im Bereich Auto zuordnen.';
-        }
-        if ($soc !== null && $capacity !== null && $capacity > 0) {
-            $stored = $capacity * max(0, min(100, $soc)) / 100;
-            return 'Auto ' . num($soc, 0) . NNBSP . '% · ' . num($stored, 1) . ' / ' . num($capacity, 1) . NNBSP . 'kWh';
-        }
-        if ($soc !== null) {
-            return 'Auto ' . num($soc, 0) . NNBSP . '%. Die Kapazität fehlt noch.';
-        }
-        return 'Kapazität ' . num($capacity, 1) . NNBSP . 'kWh. Der Ladestand fehlt noch.';
-    }
-
     /** @param array{already_full?:bool, reachable?:bool, full_at?:?int, house_missing?:bool} $storage */
     private function fullText(array $storage): string
     {
@@ -613,38 +509,5 @@ final class Snapshot
             return '';
         }
         return 'Überschuss bis Mitternacht ' . kwh((float) $storage['surplus_kwh'], 1) . '. Hausverbrauch angesetzt mit ' . kw($houseKw) . '.';
-    }
-
-    private function gridText(?float $import, ?float $export): string
-    {
-        if ($import === null && $export === null) {
-            return '—';
-        }
-        $import = $import ?? 0;
-        $export = $export ?? 0;
-        if ($export > $import) {
-            return num($export, 2) . NNBSP . 'kW Einspeisung';
-        }
-        return num($import, 2) . NNBSP . 'kW Bezug';
-    }
-
-    private function gridMagnitude(?float $import, ?float $export): string
-    {
-        if ($import === null && $export === null) {
-            return '—';
-        }
-        return kw(max($import ?? 0, $export ?? 0));
-    }
-
-    private function proposal(array $setpoint): string
-    {
-        $amps = (int) ($setpoint['latched_amps'] ?? 0);
-        $phases = (int) ($setpoint['latched_phases'] ?? 1);
-        $text = $amps === 0 ? 'Vorschlag: aus' : 'Vorschlag: ' . $amps . NNBSP . 'A, ' . $phases . '-phasig';
-        $wait = (int) ($setpoint['wait_s'] ?? 0);
-        if ($wait > 0) {
-            $text .= ' in ' . $wait . ' s';
-        }
-        return $text;
     }
 }

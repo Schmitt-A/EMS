@@ -29,6 +29,15 @@
   min-width: 0;
 }
 
+/* Zahlenfelder und Toggles brauchen keine 60 %; das Label bekommt den Rest. */
+.form-row > .control:has(> .field-num) {
+  flex: 0 0 9rem;
+}
+
+.form-row > .control:has(> .toggle-wrap) {
+  flex: none;
+}
+
 .form-row-stack {
   display: grid;
   gap: var(--s-2);
@@ -78,6 +87,22 @@ textarea.field {
   border-color: var(--accent-strong);
 }
 
+.field-file {
+  padding-block: var(--s-2);
+  font-size: 0.875rem;
+}
+
+.field-file::file-selector-button {
+  margin-inline-end: var(--s-3);
+  padding: var(--s-1) var(--s-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+}
+
 .field-num {
   text-align: end;
   font-variant-numeric: tabular-nums;
@@ -124,8 +149,10 @@ textarea.field {
   min-height: 2.75rem;
 }
 
+/* Das unsichtbare Häkchen liegt über Spur und Knopf, damit Klick und Tippen es treffen. */
 .toggle input {
   position: absolute;
+  z-index: 1;
   inset: 0;
   width: 100%;
   height: 100%;
