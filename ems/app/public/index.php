@@ -15,7 +15,41 @@ if ($path === '/api/health') {
 if ($path === '/api/live') {
     $snapshot = new Snapshot(store(), ha());
     $snap = $snapshot->build();
+    if (demo_mode() && $snap['connected']) {
+        // Im Demo-Modus läuft kein Recorder; der laufende Ladevorgang wächst mit jeder Abfrage.
+        (new Sessions(store()))->tick(array_merge($snap['values'], [
+            'vehicle_name' => (string) ($snap['cfg']['vehicle']['name'] ?? ''),
+            'loadpoint_name' => (string) ($snap['cfg']['chargepoint']['name'] ?? 'Wallbox'),
+        ]), $snap['cfg']['charge'], time());
+    }
     json_out($snapshot->livePayload($snap));
+}
+
+// JSON-Endpunkte der Oberfläche. Das CSRF-Token kommt im Body, ingest_json_body() legt es in $_POST.
+$writes = ['/api/modus', '/api/limit', '/api/darstellung', '/api/grenzen'];
+if (in_array($path, $writes, true)) {
+    if ($method !== 'POST') {
+        json_out(['error' => 'Nur POST.'], 405);
+    }
+    csrf_check();
+    $fresh = static function (): array {
+        $snapshot = new Snapshot(store(), ha());
+        return $snapshot->livePayload($snapshot->build());
+    };
+    if ($path === '/api/modus') {
+        Actions::saveChargeMode();
+        json_out($fresh());
+    }
+    if ($path === '/api/limit') {
+        Actions::saveLimit();
+        json_out($fresh());
+    }
+    if ($path === '/api/darstellung') {
+        Actions::saveTheme();
+        json_out(['ok' => true]);
+    }
+    $zones = Actions::saveZones();
+    json_out(['zones' => $zones, 'live' => $fresh()]);
 }
 
 if ($path === '/api/config.json') {
@@ -110,9 +144,12 @@ $live = $snapshot->livePayload($snap);
 if ($path === '/komponenten' && demo_mode()) {
     page('komponenten', compact('snap', 'live') + ['title' => 'Komponenten', 'layout' => 'shell']);
 }
-if ($path === '/' ) {
-    $yield = safe_yield();
-    page('overview', compact('snap', 'live', 'yield') + ['title' => 'Übersicht']);
+if ($path === '/laden') {
+    redirect('/');
+}
+if ($path === '/') {
+    $overview = energy_overview();
+    page('laden', compact('snap', 'live', 'overview') + ['title' => 'Laden', 'layout' => 'shell']);
 }
 if ($path === '/batterie') {
     page('battery', compact('snap', 'live') + ['title' => 'Batterie']);
@@ -275,6 +312,26 @@ function known_suggestions(): array
         return [];
     }
     return $suggest;
+}
+
+/** Summen der Ladevorgänge für die Energieübersicht und die Kopf-Chips. */
+function energy_overview(): array
+{
+    $tariffs = cfg()['tariffs'];
+    $sessions = new Sessions(store());
+    $all = $sessions->all();
+    $tz = new DateTimeZone('Europe/Berlin');
+    $since30 = (new DateTimeImmutable('today', $tz))->modify('-30 days')->format('c');
+    $yearStart = (new DateTimeImmutable('first day of january this year', $tz))->setTime(0, 0)->format('c');
+    $within = static fn (string $from): array => array_values(array_filter($all, static fn (array $row): bool => strcmp((string) $row['started_at'], $from) >= 0));
+    return [
+        'tariffs' => $tariffs,
+        'periods' => [
+            '30' => Sessions::summary($within($since30), $tariffs),
+            'year' => Sessions::summary($within($yearStart), $tariffs),
+            'all' => Sessions::summary($all, $tariffs),
+        ],
+    ];
 }
 
 function page(string $view, array $data, bool $nav = true): never

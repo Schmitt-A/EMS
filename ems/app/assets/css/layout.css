@@ -316,3 +316,26 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Seiten */
+.home-grid {
+  display: grid;
+  gap: var(--s-4);
+  align-items: start;
+}
+
+@media (min-width: 80rem) {
+  .home-grid {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  }
+}
+
+.overview-panel {
+  display: none;
+}
+
+.overview:has(input[value="30"]:checked) [data-ov-panel="30"],
+.overview:has(input[value="year"]:checked) [data-ov-panel="year"],
+.overview:has(input[value="all"]:checked) [data-ov-panel="all"] {
+  display: grid;
+}

@@ -58,10 +58,12 @@ function render(figure, flow) {
 function renderRows(figure, rows) {
   if (!rows) return;
   for (const side of ['in', 'out']) {
-    const sum = $(`[data-live-flow-sum="${side === 'in' ? 'rein' : 'raus'}"]`, figure);
+    const column = $(`[data-flow-side="${side}"]`, figure);
+    if (!column) continue;
+    const sum = $('[data-flow-sum]', column);
     if (sum && rows[`${side}_kw`] !== undefined) sum.textContent = withUnit(rows[`${side}_kw`], 'kW');
     for (const [key, kw] of Object.entries(rows[side] || {})) {
-      const row = $(`[data-flow-row="${key}"]`, $(`#${figure.id}-details`) || figure);
+      const row = $(`[data-flow-row="${key}"]`, column);
       if (!row) continue;
       const cell = $('.flow-row-kw', row);
       if (cell) cell.textContent = withUnit(kw, 'kW');

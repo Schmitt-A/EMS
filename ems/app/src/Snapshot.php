@@ -97,6 +97,7 @@ final class Snapshot
         }
         $carSocRow = $read('car_soc');
         $carCapRow = $read('car_capacity');
+        $carRangeRow = $read('car_range');
         $carCap = Energy::energyToKwh(is_array($carCapRow) ? $carCapRow['num'] : null, is_array($carCapRow) ? ($carCapRow['unit'] ?? null) : null);
         if ($carCap[1]) {
             $base['warnings'][] = $carCap[1];
@@ -114,6 +115,7 @@ final class Snapshot
             'battery_total_kwh' => $total[0],
             'car_soc' => is_array($carSocRow) ? ($carSocRow['num'] ?? null) : null,
             'car_capacity_kwh' => $carCap[0],
+            'car_range_km' => is_array($carRangeRow) ? ($carRangeRow['num'] ?? null) : null,
             'grid_import_kw' => $import,
             'grid_export_kw' => $export,
             'house_kw' => $house,
@@ -156,7 +158,7 @@ final class Snapshot
     {
         $values = array_merge([
             'pv_kw' => null, 'battery_soc' => null, 'battery_charge_kw' => null, 'battery_discharge_kw' => null,
-            'battery_capacity_kwh' => null, 'battery_total_kwh' => null, 'car_soc' => null, 'car_capacity_kwh' => null,
+            'battery_capacity_kwh' => null, 'battery_total_kwh' => null, 'car_soc' => null, 'car_capacity_kwh' => null, 'car_range_km' => null,
             'grid_import_kw' => null, 'grid_export_kw' => null, 'house_kw' => null,
             'house_includes_wallbox' => true, 'wallbox_kw' => null, 'wallbox_amps' => null, 'wallbox_car_raw' => null,
             'wallbox_phases_raw' => null, 'priority_soc' => 80, 'radiation_rows' => [],
@@ -260,6 +262,8 @@ final class Snapshot
         $base['car_label'] = Energy::carLabel($values['wallbox_car_raw'] ?? null);
         $base['phase_label'] = Energy::phaseLabel($values['wallbox_phases_raw'] ?? null);
         $base['activity'] = Energy::activity($values['battery_charge_kw'] ?? null, $values['battery_discharge_kw'] ?? null);
+        $base['vehicle'] = $this->vehicleView($base, $cfg);
+        $base['chargepoint'] = $this->chargepointView($base, $cfg);
         $base['warnings'] = array_values(array_unique($base['warnings']));
         return $base;
     }
@@ -326,6 +330,22 @@ final class Snapshot
                 ? 'Die Wallbox lädt gerade ein Auto. Die Zeiten gelten wieder, sobald sie pausiert. Angesetzt ist kein Ladestrom.'
                 : 'Kein Auto an der Wallbox. Angesetzt ist kein Ladestrom an der go-e.',
             'grid_kw' => $this->gridMagnitude($v['grid_import_kw'] ?? null, $v['grid_export_kw'] ?? null),
+            'ts' => time(),
+            'flow' => Energy::flowBar($v, $b),
+            'flow_rows' => self::flowRows($v, $b),
+            'chargepoint' => $snap['chargepoint'],
+            'vehicle' => $snap['vehicle'],
+            'battery' => [
+                'soc' => isset($v['battery_soc']) ? round((float) $v['battery_soc'], 1) : null,
+                'flow' => match ($snap['activity'] ?? '') {
+                    'Laden' => 'laden',
+                    'Entladen' => 'entladen',
+                    default => 'ruhe',
+                },
+                'soc_text' => pct(isset($v['battery_soc']) ? (float) $v['battery_soc'] : null),
+                'stored_text' => self::storedText($v['battery_capacity_kwh'] ?? null, $v['battery_total_kwh'] ?? null),
+            ],
+            'say' => self::sayText($snap),
             'flows' => [
                 'pv' => max(0, (float) ($v['pv_kw'] ?? 0)),
                 'bat_charge' => max(0, (float) ($v['battery_charge_kw'] ?? 0)),
@@ -336,6 +356,126 @@ final class Snapshot
                 'wallbox' => max(0, (float) ($v['wallbox_kw'] ?? 0)),
             ],
         ];
+    }
+
+    /** Fahrzeug unter der Ladepunkt-Karte: Name, Status, Ladestand, Reichweite und Limit. */
+    private function vehicleView(array $base, array $cfg): array
+    {
+        $v = $base['values'];
+        $raw = strtolower(str_replace([' ', '-'], '_', (string) ($v['wallbox_car_raw'] ?? '')));
+        $soc = $v['car_soc'] !== null ? (float) $v['car_soc'] : null;
+        $limit = (float) ($cfg['vehicle']['limit_soc'] ?? 80);
+        $range = $v['car_range_km'] !== null ? (float) $v['car_range_km'] : null;
+        return [
+            'name' => trim((string) ($cfg['vehicle']['name'] ?? '')) ?: 'Auto',
+            'status' => self::vehicleStatus($raw, (bool) $base['car_charging']),
+            'connected' => (bool) $base['car_charging'] || in_array($raw, ['charging', 'wait_car', 'waitcar', 'complete', 'completed'], true),
+            'soc' => $soc === null ? null : round($soc, 1),
+            'capacity_kwh' => $v['car_capacity_kwh'] ?? null,
+            'range_km' => $range,
+            'limit' => $limit,
+            'range_at_limit' => Energy::rangeAt($range, $soc, $limit),
+        ];
+    }
+
+    public static function vehicleStatus(string $raw, bool $charging): string
+    {
+        if ($charging || $raw === 'charging') {
+            return 'Lädt …';
+        }
+        return match ($raw) {
+            'wait_car', 'waitcar' => 'Verbunden',
+            'complete', 'completed' => 'Bereit, Ladung beendet',
+            'error' => 'Fehler an der Wallbox',
+            'initializing' => 'Wallbox startet …',
+            'idle' => 'Nicht verbunden',
+            '', 'unknown' => 'Kein Fahrzeugstatus',
+            default => $raw,
+        };
+    }
+
+    /** Ladepunkt-Karte: Leistung, aktive Phasen, Sitzung, Restzeit und Vorschlag. Geschrieben wird nichts. */
+    private function chargepointView(array $base, array $cfg): array
+    {
+        $v = $base['values'];
+        $setpoint = $base['setpoint'];
+        $charging = (bool) $base['car_charging'];
+        $vehicle = $base['vehicle'];
+        $session = $base['session'] ?? null;
+        $open = is_array($session) && empty($session['ended_at']);
+        $power = $v['wallbox_kw'] === null ? null : (float) $v['wallbox_kw'];
+        $phases = $charging ? (Energy::reportedPhases($v['wallbox_phases_raw'] ?? null) ?? (int) ($setpoint['latched_phases'] ?? 1)) : 0;
+        $energy = null;
+        if ($open || ($vehicle['connected'] && is_array($session))) {
+            $energy = round((float) $session['energy_kwh'], 3);
+        } elseif ($power !== null) {
+            $energy = 0.0;
+        }
+        $remaining = $charging ? Energy::timeToLimit($vehicle['soc'], $vehicle['limit'], $vehicle['capacity_kwh'], $power) : null;
+        return [
+            'name' => trim((string) ($cfg['chargepoint']['name'] ?? '')) ?: 'Wallbox',
+            'mode' => (string) ($cfg['charge']['mode'] ?? 'smart'),
+            'charging' => $charging,
+            'solar_only' => $charging && (float) ($v['grid_import_kw'] ?? 0) < 0.05 && (float) ($v['battery_discharge_kw'] ?? 0) < 0.05,
+            'power_kw' => $power === null ? null : round($power, 3),
+            'phases' => $phases,
+            'session_kwh' => $energy,
+            'session_s' => $open ? (int) $session['duration_s'] : null,
+            'remaining_s' => $remaining,
+            'remaining_text' => $remaining === null ? '—' : duration_clock($remaining),
+            'suggestion' => self::suggestionText($setpoint),
+        ];
+    }
+
+    public static function suggestionText(array $setpoint): string
+    {
+        $amps = (int) ($setpoint['latched_amps'] ?? 0);
+        $text = $amps === 0
+            ? 'Vorschlag: aus'
+            : 'Vorschlag: ' . $amps . NNBSP . 'A, ' . (int) ($setpoint['latched_phases'] ?? 1) . '-phasig (' . kw((float) ($setpoint['latched_kw'] ?? 0)) . ')';
+        $wait = (int) ($setpoint['wait_s'] ?? 0);
+        if ($wait > 0) {
+            $text .= ', wechselt in ' . $wait . NNBSP . 's';
+        }
+        $reason = trim((string) ($setpoint['reason'] ?? ''));
+        return $text . '.' . ($reason !== '' ? ' ' . $reason : '');
+    }
+
+    /** Leistungen für die Detail-Liste „Rein“ und „Raus“ unter dem Energiefluss-Balken. */
+    public static function flowRows(array $v, array $b): array
+    {
+        $kw = static fn (mixed $value): ?float => $value === null ? null : round(max(0.0, (float) $value), 3);
+        return [
+            'in_kw' => $kw($b['in_kw'] ?? null),
+            'out_kw' => $kw($b['out_kw'] ?? null),
+            'in' => ['pv' => $kw($v['pv_kw'] ?? null), 'battery' => $kw($v['battery_discharge_kw'] ?? null), 'grid' => $kw($v['grid_import_kw'] ?? null)],
+            'out' => ['house' => $kw($b['house_base_kw'] ?? null), 'wallbox' => $kw($v['wallbox_kw'] ?? null), 'battery' => $kw($v['battery_charge_kw'] ?? null), 'grid' => $kw($v['grid_export_kw'] ?? null)],
+        ];
+    }
+
+    public static function storedText(?float $stored, ?float $total): string
+    {
+        if ($stored === null) {
+            return $total !== null ? 'Gesamt ' . kwh($total) : 'Kapazität unbekannt';
+        }
+        return $total !== null && $total > 0 ? num($stored, 1) . ' von ' . kwh($total) : kwh($stored);
+    }
+
+    /** Kurze Ansage für Screenreader, höchstens alle 30 s. */
+    public static function sayText(array $snap): string
+    {
+        if (empty($snap['connected'])) {
+            return 'Keine Verbindung zu Home Assistant.';
+        }
+        $v = $snap['values'];
+        $parts = ['PV ' . kw($v['pv_kw'] ?? null), 'Haus ' . kw($snap['balance']['house_base_kw'] ?? null)];
+        if (($v['wallbox_kw'] ?? 0) > 0.05) {
+            $parts[] = 'Auto ' . kw($v['wallbox_kw']);
+        }
+        if (isset($v['battery_soc'])) {
+            $parts[] = 'Speicher ' . pct((float) $v['battery_soc']);
+        }
+        return implode(', ', $parts) . '.';
     }
 
     private function capacityLine(?float $now, ?float $total): string

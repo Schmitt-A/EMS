@@ -313,8 +313,8 @@ function ui_flow(array $flow, array $rows, string $id = 'flow'): string
         }
         return $html . '</div>';
     };
-    $column = static function (string $title, ?float $sum, array $items): string {
-        $html = '<div><div class="flow-col-head"><h3 class="label">' . e($title) . '</h3><span class="metric-sm" data-live-flow-sum="' . e(strtolower($title)) . '">' . e(kw($sum)) . '</span></div><ul class="plain-list" role="list">';
+    $column = static function (string $title, string $side, ?float $sum, array $items): string {
+        $html = '<div data-flow-side="' . $side . '"><div class="flow-col-head"><h3 class="label">' . e($title) . '</h3><span class="metric-sm" data-flow-sum>' . e(kw($sum)) . '</span></div><ul class="plain-list" role="list">';
         foreach ($items as $item) {
             $idle = ($item['kw'] ?? 0) < 0.01;
             $html .= '<li class="flow-row"' . ($idle ? ' data-idle' : '') . ' data-flow-row="' . e($item['key']) . '">' . icon($item['icon'], 'icon-20 tone-' . $item['tone'])
@@ -330,7 +330,7 @@ function ui_flow(array $flow, array $rows, string $id = 'flow'): string
         . '<div class="flow-sides" aria-hidden="true"><span>Rein</span><span>Raus</span></div>'
         . '<figcaption class="flow-legend caption"><span class="legend-item"><span class="swatch swatch-solar"></span>Eigenverbrauch</span><span class="legend-item">Einspeisung<span class="swatch swatch-grid-out"></span></span></figcaption>'
         . '<button type="button" class="flow-toggle" aria-expanded="false" aria-controls="' . e($id) . '-details" data-flow-toggle>Rein und Raus im Detail' . icon('chevron-down', 'icon-16') . '</button>'
-        . '<div class="flow-columns" id="' . e($id) . '-details" data-collapsed>' . $column('Rein', $rows['in_kw'] ?? null, $rows['in']) . $column('Raus', $rows['out_kw'] ?? null, $rows['out']) . '</div>'
+        . '<div class="flow-columns" id="' . e($id) . '-details" data-collapsed>' . $column('Rein', 'in', $rows['in_kw'] ?? null, $rows['in']) . $column('Raus', 'out', $rows['out_kw'] ?? null, $rows['out']) . '</div>'
         . '</figure>';
 }
 

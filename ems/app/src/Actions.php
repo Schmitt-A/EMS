@@ -130,9 +130,11 @@ final class Actions
         csrf_check();
         $section = (string) ($_POST['section'] ?? '');
         if ($section === 'tariffs') {
+            $current = store()->get('tariffs', []);
             store()->merge('tariffs', [
                 'import_ct' => post_float('import_ct', 0, 200, 34.7),
                 'export_ct' => post_float('export_ct', 0, 200, 11),
+                'co2_g_kwh' => post_float('co2_g_kwh', 0, 1500, (float) ($current['co2_g_kwh'] ?? 380)),
             ]);
         } elseif ($section === 'plant') {
             $plant = store()->get('plant', []);
@@ -205,30 +207,28 @@ final class Actions
                 store()->merge('battery_strategy', array_merge($patch, self::zonesFrom($current, $patch)));
             }
         } elseif ($section === 'charge') {
-            $min = post_int('min_a', 6, 16, 6);
-            $max = post_int('max_a', 6, 16, 16);
-            if ($max < $min) {
-                $max = $min;
+            store()->merge('charge', self::chargePatch());
+        } elseif ($section === 'vehicle') {
+            $mapping = store()->get('mapping', []);
+            $mapping = is_array($mapping) ? $mapping : [];
+            foreach (['car_soc', 'car_capacity', 'car_range'] as $key) {
+                if (array_key_exists($key, $_POST)) {
+                    $mapping[$key] = post_entity($key);
+                }
             }
-            $mode = (string) ($_POST['mode'] ?? 'smart');
-            if (!in_array($mode, ['aus', 'smart', 'smart_dauerhaft', 'schnell'], true)) {
-                $mode = 'smart';
+            store()->put('mapping', $mapping);
+            $patch = [];
+            if (array_key_exists('vehicle_name', $_POST)) {
+                $patch['name'] = self::name((string) $_POST['vehicle_name'], 'Auto');
             }
-            $phase = (string) ($_POST['phase_mode'] ?? 'auto');
-            if (!in_array($phase, ['auto', '1p', '3p'], true)) {
-                $phase = 'auto';
+            if (array_key_exists('limit_soc', $_POST)) {
+                $patch['limit_soc'] = max(20.0, snap_percent(post_float('limit_soc', 20, 100, 80)));
             }
-            store()->merge('charge', [
-                'mode' => $mode,
-                'phase_mode' => $phase,
-                'solar_share' => post_float('solar_share', 0, 100, 100),
-                'reserve_w' => post_float('reserve_w', 0, 2000, 200),
-                'min_a' => $min,
-                'max_a' => $max,
-                'switch_s' => post_int('switch_s', 60, 600, 60),
-                'on_delay_s' => post_int('on_delay_s', 60, 600, 60),
-                'off_delay_s' => post_int('off_delay_s', 60, 600, 60),
-            ]);
+            if ($patch) {
+                store()->merge('vehicle', $patch);
+            }
+        } elseif ($section === 'chargepoint') {
+            store()->merge('chargepoint', ['name' => self::name((string) ($_POST['chargepoint_name'] ?? ''), 'Wallbox')]);
         } elseif ($section === 'mapping') {
             $mapping = store()->get('mapping', []);
             if (!is_array($mapping)) {
@@ -241,7 +241,7 @@ final class Actions
                 'grid_sign' => ['positive_import', 'positive_export'],
                 'weather_station' => ['soonwald', 'hahn', 'kreuznach'],
             ];
-            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'car_soc', 'car_capacity', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'];
+            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'car_soc', 'car_capacity', 'car_range', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'];
             foreach ($enums as $key => $allowed) {
                 $value = (string) ($_POST[$key] ?? ($mapping[$key] ?? ''));
                 $mapping[$key] = in_array($value, $allowed, true) ? $value : (string) ($mapping[$key] ?? $allowed[0]);
@@ -289,6 +289,8 @@ final class Actions
             'plant' => $cfg['plant'],
             'charge' => $cfg['charge'],
             'battery_strategy' => $cfg['battery_strategy'],
+            'vehicle' => $cfg['vehicle'],
+            'chargepoint' => $cfg['chargepoint'],
             'weather' => ['url' => (new WeatherFeed(store()))->url()],
             'ui' => ['theme' => $cfg['ui']['theme'] ?? 'system'],
         ];
@@ -343,7 +345,7 @@ final class Actions
                 'grid_sign' => ['positive_import', 'positive_export'],
                 'weather_station' => ['soonwald', 'hahn', 'kreuznach'],
             ];
-            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'car_soc', 'car_capacity', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'];
+            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'car_soc', 'car_capacity', 'car_range', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'];
             foreach ($enums as $key => $allowed) {
                 if (!array_key_exists($key, $data['mapping'])) {
                     continue;
@@ -369,7 +371,17 @@ final class Actions
             store()->merge('tariffs', [
                 'import_ct' => self::clamped($data['tariffs']['import_ct'] ?? null, 0, 200, 34.7),
                 'export_ct' => self::clamped($data['tariffs']['export_ct'] ?? null, 0, 200, 11),
+                'co2_g_kwh' => self::clamped($data['tariffs']['co2_g_kwh'] ?? null, 0, 1500, 380),
             ]);
+        }
+        if (isset($data['vehicle']) && is_array($data['vehicle'])) {
+            store()->merge('vehicle', [
+                'name' => self::name((string) ($data['vehicle']['name'] ?? ''), 'Auto'),
+                'limit_soc' => max(20.0, snap_percent(self::clamped($data['vehicle']['limit_soc'] ?? null, 20, 100, 80))),
+            ]);
+        }
+        if (isset($data['chargepoint']['name'])) {
+            store()->merge('chargepoint', ['name' => self::name((string) $data['chargepoint']['name'], 'Wallbox')]);
         }
         if (isset($data['plant']) && is_array($data['plant'])) {
             $plant = $data['plant'];
@@ -438,6 +450,86 @@ final class Actions
                 store()->merge('ui', ['theme' => $theme]);
             }
         }
+    }
+
+    /** Ladeparameter aus dem Formular: nur gesendete Felder, damit ein einzelner Modus die übrigen Werte behält. */
+    private static function chargePatch(): array
+    {
+        $current = store()->get('charge', []);
+        $current = is_array($current) ? $current : [];
+        $patch = [];
+        if (array_key_exists('mode', $_POST)) {
+            $mode = (string) $_POST['mode'];
+            $patch['mode'] = in_array($mode, ['aus', 'smart', 'smart_dauerhaft', 'schnell'], true) ? $mode : 'smart';
+        }
+        if (array_key_exists('phase_mode', $_POST)) {
+            $phase = (string) $_POST['phase_mode'];
+            $patch['phase_mode'] = in_array($phase, ['auto', '1p', '3p'], true) ? $phase : 'auto';
+        }
+        $ranges = [
+            'solar_share' => [0, 100, 100, false],
+            'reserve_w' => [0, 2000, 200, false],
+            'min_a' => [6, 16, 6, true],
+            'max_a' => [6, 16, 16, true],
+            'switch_s' => [60, 600, 60, true],
+            'on_delay_s' => [60, 600, 60, true],
+            'off_delay_s' => [60, 600, 60, true],
+        ];
+        foreach ($ranges as $key => [$min, $max, $fallback, $int]) {
+            if (!array_key_exists($key, $_POST)) {
+                continue;
+            }
+            $patch[$key] = $int ? post_int($key, $min, $max, $fallback) : post_float($key, $min, $max, $fallback);
+        }
+        $minA = (int) ($patch['min_a'] ?? $current['min_a'] ?? 6);
+        $maxA = (int) ($patch['max_a'] ?? $current['max_a'] ?? 16);
+        if ($maxA < $minA) {
+            $patch['max_a'] = $minA;
+        }
+        return $patch;
+    }
+
+    /** Modus aus dem Segment-Umschalter (POST /api/modus). */
+    public static function saveChargeMode(): void
+    {
+        $mode = (string) ($_POST['mode'] ?? '');
+        if (!in_array($mode, ['aus', 'smart', 'smart_dauerhaft', 'schnell'], true)) {
+            json_out(['error' => 'Unbekannter Modus.'], 422);
+        }
+        store()->merge('charge', ['mode' => $mode]);
+    }
+
+    /** Ladelimit aus der Marke im Ladebalken (POST /api/limit), auf 5 % gerastert. */
+    public static function saveLimit(): void
+    {
+        store()->merge('vehicle', ['limit_soc' => max(20.0, snap_percent(post_float('limit', 20, 100, 80)))]);
+    }
+
+    /** Hell, Dunkel oder System (POST /api/darstellung). */
+    public static function saveTheme(): void
+    {
+        $theme = (string) ($_POST['theme'] ?? 'system');
+        store()->merge('ui', ['theme' => in_array($theme, ['system', 'light', 'dark'], true) ? $theme : 'system']);
+    }
+
+    /** Grenzen der Speicher-Säule (POST /api/grenzen). Gibt die geordneten Werte zurück. */
+    public static function saveZones(): array
+    {
+        $current = store()->get('battery_strategy', []);
+        $current = is_array($current) ? $current : [];
+        $zones = zone_thresholds(
+            post_float('priority_soc', 0, 100, (float) ($current['priority_soc'] ?? 80)),
+            post_float('car_buffer_soc', 0, 100, (float) ($current['car_buffer_soc'] ?? 100)),
+            post_float('car_auto_soc', 0, 100, (float) ($current['car_auto_soc'] ?? 100)),
+        );
+        store()->merge('battery_strategy', $zones);
+        return $zones;
+    }
+
+    private static function name(string $value, string $fallback): string
+    {
+        $value = trim(preg_replace('/\s+/u', ' ', $value) ?? '');
+        return $value === '' ? $fallback : mb_substr($value, 0, 40);
     }
 
     /** @param array<string, mixed> $current @param array<string, mixed> $overlay */

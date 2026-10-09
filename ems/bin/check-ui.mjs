@@ -122,6 +122,21 @@ try {
           return run.violations.map((v) => `${v.id} (${v.impact}, ${v.nodes.length}×): ${v.nodes[0]?.target?.join(' ')}`);
         });
         for (const line of result) fail(where, line);
+        // Jeder Dialog geöffnet: axe nur auf den Dialog.
+        const dialogs = await page.evaluate(() => [...new Set([...document.querySelectorAll('[data-open-dialog]')].map((b) => b.dataset.openDialog))]);
+        for (const id of dialogs) {
+          const found = await page.evaluate(async (dialogId) => {
+            const dialog = document.getElementById(dialogId);
+            if (!dialog) return null;
+            dialog.showModal();
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            const run = await window.axe.run(dialog, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] } });
+            dialog.close();
+            return run.violations.map((v) => `${v.id} (${v.impact}, ${v.nodes.length}×): ${v.nodes[0]?.target?.join(' ')}`);
+          }, id);
+          if (found === null) fail(where, `Dialog #${id} fehlt`);
+          for (const line of found || []) fail(`${where} #${id}`, line);
+        }
         await context.close();
       }
     }

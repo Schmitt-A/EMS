@@ -5,6 +5,7 @@ require dirname(__DIR__) . '/app/src/bootstrap.php';
 
 $snapshot = new Snapshot(store(), ha());
 $sessions = new Sessions(store());
+$sessions->repairVehicleNames((string) (cfg()['vehicle']['name'] ?? ''));
 $series = new Series(store(), ha());
 
 while (true) {
@@ -14,7 +15,11 @@ while (true) {
         $snap = $snapshot->build();
         if ($snap['connected']) {
             $sessions->tick(
-                array_merge($snap['values'], ['car_label' => $snap['car_label']]),
+                array_merge($snap['values'], [
+                    'car_label' => $snap['car_label'],
+                    'vehicle_name' => (string) ($snap['cfg']['vehicle']['name'] ?? ''),
+                    'loadpoint_name' => (string) ($snap['cfg']['chargepoint']['name'] ?? 'Wallbox'),
+                ]),
                 $snap['cfg']['charge'],
                 time()
             );
