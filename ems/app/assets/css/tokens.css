@@ -1,0 +1,126 @@
+/*
+ * Solar Amber 2.0 – Design Tokens (Abschnitte 3, 4, 5 und 10.1 der Vorgabe).
+ * Komponenten benutzen nur diese Custom Properties, nie Hex-Werte.
+ * Jede Farbe steht einmal als light-dark(hell, dunkel). Umgeschaltet wird über color-scheme:
+ * automatisch per prefers-color-scheme, fest über data-theme am <html> oder an einem Unterelement.
+ * Die Tokens stehen auf :root und auf jedem [data-theme], damit ein Unterelement neu rechnet.
+ */
+:root,
+[data-theme] {
+  /* 3.1 Oberflächen und Text */
+  --bg: light-dark(#FAF8F5, #12100E);
+  --surface: light-dark(#FFFFFF, #1C1A17);
+  --surface-2: light-dark(#F4EFE6, #27241F);
+  --border: light-dark(#ECE5DA, #332F29);
+  --text: light-dark(#1C1917, #F5F2EE);
+  --text-2: light-dark(#6B645D, #A8A29E);
+  --text-3: light-dark(#A8A29E, #6B645D);
+  --ink: light-dark(#292524, #F5F2EE);
+  --on-ink: light-dark(#FFFFFF, #1C1917);
+
+  /* 3.2 Akzent und Status */
+  --accent: light-dark(#D97706, #F59E0B);
+  --accent-strong: light-dark(#B45309, #FBBF24);
+  --accent-soft: light-dark(rgb(217 119 6 / 0.14), rgb(245 158 11 / 0.18));
+  --on-accent: light-dark(#1C1917, #1C1917);
+  --success: light-dark(#15803D, #4ADE80);
+  --danger: light-dark(#DC2626, #F87171);
+  --info: light-dark(#0369A1, #38BDF8);
+
+  /*
+   * AA-Ergänzungen zur Vorgabe:
+   * --accent-strong auf --accent-soft erreicht hell nur 4,3:1. Text auf weichem Amber (Status-Pill,
+   * aktiver Navigationseintrag) nimmt deshalb --accent-on-soft (5,8:1).
+   * --border reicht als Rahmen von Eingabefeldern und Schaltern nicht (1,2:1). Bedienelemente nehmen
+   * --border-control mit mindestens 3:1.
+   */
+  --accent-on-soft: light-dark(#92400E, #FBBF24);
+  --border-control: light-dark(#948B83, #7A736C);
+  --danger-soft: light-dark(rgb(220 38 38 / 0.1), rgb(248 113 113 / 0.14));
+
+  /* 3.3 Datenfarben, nur in Diagrammen und im Energiefluss-Balken */
+  --data-solar: light-dark(#D97706, #F59E0B);
+  --data-grid-in: light-dark(#292524, #D6D3D1);
+  --data-grid-out: light-dark(#0F9D8A, #2DD4BF);
+  --data-battery: light-dark(#7C6F64, #A8A29E);
+  --data-price: light-dark(#EA580C, #FB923C);
+  --data-vehicle-1: light-dark(#0284C7, #38BDF8);
+  --data-vehicle-2: light-dark(#7C3AED, #A78BFA);
+  --data-vehicle-3: light-dark(#DB2777, #F472B6);
+  --data-vehicle-4: light-dark(#0D9488, #5EEAD4);
+  --data-vehicle-5: light-dark(#65A30D, #A3E635);
+
+  /* 5.3 Elevation: hell kaum sichtbare warme Schatten, dunkel eine Kante statt Schatten */
+  --shadow-card: 0 1px 2px light-dark(rgb(41 37 36 / 0.04), transparent), 0 8px 24px -8px light-dark(rgb(41 37 36 / 0.06), transparent);
+  --shadow-pill: 0 2px 8px rgb(41 37 36 / 0.18);
+  --shadow-dialog: 0 24px 64px -16px rgb(41 37 36 / 0.25);
+  --card-edge: light-dark(transparent, #332F29);
+  --backdrop: rgb(28 25 23 / 0.4);
+}
+
+:root {
+  color-scheme: light dark;
+
+  /* 4 Typografie */
+  --font: "Inter", "Inter Fallback", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* 5.1 Radien */
+  --r-card: 1.5rem;
+  --r-sheet: 1.75rem;
+  --r-field: 0.75rem;
+  --r-badge: 0.5rem;
+  --r-pill: 9999px;
+
+  /* 5.2 Abstände im 4-px-Raster */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.25rem;
+  --s-6: 1.5rem;
+  --s-8: 2rem;
+  --s-12: 3rem;
+  --gutter: var(--s-4);
+  --card-pad: var(--s-5);
+  --section-gap: var(--s-8);
+  --content-max: 80rem;
+  --tabbar-h: 4rem;
+  --rail: 5.5rem;
+  --rail-wide: 15rem;
+  --hit: 2.75rem;
+
+  /* 10.1 Bewegung */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    --ease-spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067, 1.099 24.3%, 1.106 26.4%, 1.098, 1.072 31.5%, 0.966 40.8%, 0.951, 0.946 47.3%, 0.954 51.5%, 1.003 65.2%, 1.011 71.5%, 0.999 93.4%, 1);
+  }
+}
+
+@media (min-width: 40rem) {
+  :root {
+    --gutter: var(--s-6);
+    --card-pad: var(--s-6);
+  }
+}
+
+@media (min-width: 64rem) {
+  :root {
+    --gutter: var(--s-8);
+    --r-card: 1.75rem;
+  }
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}

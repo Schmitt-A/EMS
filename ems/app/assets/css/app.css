@@ -1,1 +1,3 @@
-/* Solar Amber: Einstieg, Phase 1 füllt die Tokens. */
+/* Solar Amber 2.0: Einstieg. bin/build.mjs bündelt die Kette mit lightningcss. */
+@import "tokens.css";
+@import "base.css";
