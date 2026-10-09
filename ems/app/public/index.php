@@ -263,7 +263,10 @@ if ($path === '/prognose') {
     usort($past, static fn (array $a, array $b): int => strcmp((string) $b['day'], (string) $a['day']));
     $modelRows = $pack['board'] ?? [];
     $lesson = $pack['lesson'] ?? null;
-    page('forecast', compact('snap', 'live', 'yield', 'yesterday', 'scores', 'upcoming', 'past', 'modelRows', 'todayKey', 'lesson') + ['title' => 'Prognose']);
+    $overview = energy_overview();
+    $captions = Forecast::captions(store()->pdo(), cfg()['plant']);
+    $weather = (new WeatherFeed(store()))->meta();
+    page('prognose', compact('snap', 'live', 'yield', 'yesterday', 'scores', 'upcoming', 'past', 'modelRows', 'todayKey', 'lesson', 'overview', 'captions', 'weather') + ['title' => 'Prognose', 'layout' => 'shell']);
 }
 if ($path === '/einstellungen') {
     $ping = ha()->ping();

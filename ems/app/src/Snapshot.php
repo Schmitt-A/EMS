@@ -331,6 +331,7 @@ final class Snapshot
                 : 'Kein Auto an der Wallbox. Angesetzt ist kein Ladestrom an der go-e.',
             'grid_kw' => $this->gridMagnitude($v['grid_import_kw'] ?? null, $v['grid_export_kw'] ?? null),
             'ts' => time(),
+            'remaining_kwh' => $f['remaining_kwh'] ?? null,
             'flow' => Energy::flowBar($v, $b),
             'flow_rows' => self::flowRows($v, $b),
             'chargepoint' => $snap['chargepoint'],

@@ -96,13 +96,15 @@ function forecast_method_dialog(array $lesson, array $plant, array $modelRows, f
     $sampleCount = count($samples);
     $wouldBe = $sampleMean !== null ? round($sampleMean, 3) : null;
     ?>
-<dialog id="forecast-method" class="sheet">
-  <div class="sheet-head flex items-center gap-2 px-4 pb-3 pt-4">
-    <h2 class="mr-auto text-sm font-medium">Rechnung für <?= e($day !== '' ? day_label($day) : 'den laufenden Tag') ?></h2>
-    <button type="button" class="btn-ghost min-h-11" data-close-dialog>Schließen</button>
+<dialog id="forecast-method" class="dialog dialog-wide" aria-labelledby="forecast-method-title">
+  <div class="dialog-grip" data-grip aria-hidden="true"></div>
+  <div class="dialog-head" data-grip>
+    <h2 class="card-title" id="forecast-method-title">Rechnung für <?= e($day !== '' ? day_label($day) : 'den laufenden Tag') ?></h2>
+    <button type="button" class="icon-btn" data-close-dialog aria-label="Schließen"><?= icon('x', 'icon-20') ?></button>
   </div>
-  <div class="method-note text-sm text-foreground">
-    <p><span class="font-medium">Eichfaktor <?= e(num($factor, $factorDecimals)) ?>.</span>
+  <div class="dialog-body method">
+  <div class="method-note body">
+    <p><strong>Eichfaktor <?= e(num($factor, $factorDecimals)) ?>.</strong>
       <?php if ($locked): ?>
         Der Wert ist in den Einstellungen festgehalten.
       <?php elseif ($regression && $wouldBe !== null): ?>
@@ -113,20 +115,20 @@ function forecast_method_dialog(array $lesson, array $plant, array $modelRows, f
         <?= e(paired_days_sentence($sampleCount)) ?> Bis fünf solcher Tage vorliegen, gilt der Anlagenwert <?= e(num($defaultFactor, 2)) ?>.
       <?php endif; ?>
     </p>
-    <p><span class="font-medium">Streuung und Abweichung.</span>
+    <p><strong>Streuung und Abweichung.</strong>
       <?php if ($sdRaw !== null && $spread !== null): ?>
-        Die Streuung ist <?= e(num($sdRaw, 2)) ?> kWh. Sie misst, wie weit die <?= (int) max($runs, count($issues)) ?> gespeicherten DWD-Läufe um das Rohmodell liegen. Die Abweichung ist dieselbe Streuung auf der Skala der Prognose: <?= e(num($sdRaw, $sdDecimals)) ?> × <?= e(num($scale, $factorDecimals)) ?> = <?= e(num($spread, 2)) ?> kWh, angezeigt ± <?= e(num($spread, 1)) ?> kWh.
+        Die Streuung ist <?= e(num($sdRaw, 2)) ?> kWh. Sie misst, wie weit die <?= (int) max($runs, count($issues)) ?> gespeicherten DWD-Läufe um das Rohmodell liegen. Die Abweichung ist dieselbe Streuung auf der Skala der Prognose: <?= e(num($sdRaw, $sdDecimals)) ?> × <?= e(num($scale, $factorDecimals)) ?> = <?= e(num($spread, 2)) ?> kWh, angezeigt ± <?= e(num($spread, 1)) ?> kWh.
       <?php else: ?>
         Die Streuung entsteht ab dem zweiten vollständigen DWD-Lauf. Bis dahin bleibt die Abweichung leer.
       <?php endif; ?>
     </p>
-    <p><span class="font-medium">Güte<?php if ($gute !== null): ?> <?= e(num($gute, 2)) ?><?php endif; ?>.</span>
+    <p><strong>Güte<?php if ($gute !== null): ?> <?= e(num($gute, 2)) ?><?php endif; ?>.</strong>
       Standard sind die letzten drei abgeschlossenen Tage. 7 Tage, Monat und Quartal stellen dasselbe Fenster für die Kachel und für das Diagramm um. Der laufende Tag kommt erst dazu, wenn er vorbei ist.
       <?php if ($gute !== null): ?>
         In diesem Standardfenster ist die Güte <?= e(num($sumModel, 2)) ?> ÷ <?= e(num($sumActual, 2)) ?> = <?= e(num($gute, 2)) ?>.
       <?php endif; ?>
     </p>
-    <p><span class="font-medium">Kommende Tage.</span>
+    <p><strong>Kommende Tage.</strong>
       <?php if ($regression): ?>
         Jeder kommende Tag behält sein eigenes Rohmodell. Die Prognose wird daraus <?= e(num($regressA, 2)) ?> + <?= e(num($regressB, 2)) ?> × Rohmodell. Die Güte fließt in die kommenden Tage nicht ein.
       <?php else: ?>
@@ -134,49 +136,49 @@ function forecast_method_dialog(array $lesson, array $plant, array $modelRows, f
       <?php endif; ?>
     </p>
   </div>
-  <div class="method-steps px-4 pb-6 text-sm text-muted-foreground">
+  <div class="method-steps body-sm">
     <section>
       <h3>1. Was der DWD schickt</h3>
-      <p>Die Prognose beginnt mit der MOSMIX-L-Datei des Deutschen Wetterdienstes<?= $where !== '' ? ' (' . e($where) . ')' : '' ?>. Darin steht keine Kilowattstunde. <span class="text-foreground">Rad1h</span> ist die Strahlungsenergie der vorangegangenen Stunde in kJ/m². Geteilt durch 3,6 wird daraus die mittlere Bestrahlungsstärke in W/m². Der Zeitstempel in der Datei markiert das Ende der Stunde, gespeichert wird der Beginn, eine Stunde früher. Daneben kommen Bewölkung in Prozent, Sonnenscheindauer und Temperatur.</p>
-      <p class="mt-2">Jeder Modelllauf bleibt eine eigene Zeile, sobald der Tag ab den frühen Morgenstunden in der Datei steht und die Summe über 0,05 kWh liegt. Ein späterer Lauf überschreibt den früheren nicht. Die Strahlung in der Tabelle ist die Summe der Stundenwerte in W/m², umgerechnet in kWh/m². Sonnenschein, Bewölkung und Temperatur sind die Werte dieses Laufs.</p>
+      <p>Die Prognose beginnt mit der MOSMIX-L-Datei des Deutschen Wetterdienstes<?= $where !== '' ? ' (' . e($where) . ')' : '' ?>. Darin steht keine Kilowattstunde. <strong>Rad1h</strong> ist die Strahlungsenergie der vorangegangenen Stunde in kJ/m². Geteilt durch 3,6 wird daraus die mittlere Bestrahlungsstärke in W/m². Der Zeitstempel in der Datei markiert das Ende der Stunde, gespeichert wird der Beginn, eine Stunde früher. Daneben kommen Bewölkung in Prozent, Sonnenscheindauer und Temperatur.</p>
+      <p>Jeder Modelllauf bleibt eine eigene Zeile, sobald der Tag ab den frühen Morgenstunden in der Datei steht und die Summe über 0,05 kWh liegt. Ein späterer Lauf überschreibt den früheren nicht. Die Strahlung in der Tabelle ist die Summe der Stundenwerte in W/m², umgerechnet in kWh/m². Sonnenschein, Bewölkung und Temperatur sind die Werte dieses Laufs.</p>
       <?php if ($issues): ?>
-        <div class="touch-x mt-2">
-          <table class="w-full text-left text-sm">
-            <thead class="text-xs"><tr>
-              <th class="py-2 pr-3 font-medium">Lauf</th>
-              <th class="py-2 pr-3 font-medium">Rohmodell</th>
-              <th class="py-2 pr-3 font-medium">Strahlung</th>
-              <th class="py-2 pr-3 font-medium">Sonne</th>
-              <th class="py-2 pr-3 font-medium">Wolken</th>
-              <th class="py-2 pr-3 font-medium">Temperatur</th>
-              <th class="py-2 font-medium">Stunden</th>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Rechentabelle">
+          <table class="table table-compact">
+            <thead><tr>
+              <th scope="col">Lauf</th>
+              <th scope="col">Rohmodell</th>
+              <th scope="col">Strahlung</th>
+              <th scope="col">Sonne</th>
+              <th scope="col">Wolken</th>
+              <th scope="col">Temperatur</th>
+              <th scope="col">Stunden</th>
             </tr></thead>
             <tbody>
               <?php foreach ($issues as $issue): ?>
                 <?php $stamp = (new DateTimeImmutable('@' . (int) ($issue['issue'] ?? 0)))->setTimezone($tz); ?>
-                <tr class="border-t border-border">
-                  <td class="whitespace-nowrap py-2 pr-3"><?= e($stamp->format('d.m. H:i')) ?></td>
-                  <td class="py-2 pr-3 tabular-nums"><?= e(kwh(isset($issue['kwh']) ? (float) $issue['kwh'] : null, 3)) ?></td>
-                  <td class="py-2 pr-3 tabular-nums"><?= isset($issue['radiation']) && $issue['radiation'] !== null ? e(num((float) $issue['radiation'] / 1000, 2)) . ' kWh/m²' : '—' ?></td>
-                  <td class="py-2 pr-3 tabular-nums"><?= isset($issue['sunshine_s']) && $issue['sunshine_s'] !== null ? e(num((float) $issue['sunshine_s'] / 3600, 1)) . ' h' : '—' ?></td>
-                  <td class="py-2 pr-3 tabular-nums"><?= isset($issue['cloud']) && $issue['cloud'] !== null ? e(num((float) $issue['cloud'], 0)) . ' %' : '—' ?></td>
-                  <td class="py-2 pr-3 tabular-nums"><?= isset($issue['temp_c']) && $issue['temp_c'] !== null ? e(num((float) $issue['temp_c'], 1)) . ' °C' : '—' ?></td>
-                  <td class="py-2 tabular-nums"><?= (int) ($issue['hours'] ?? 0) ?></td>
+                <tr>
+                  <td class="nowrap"><?= e($stamp->format('d.m. H:i')) ?></td>
+                  <td class="num"><?= e(kwh(isset($issue['kwh']) ? (float) $issue['kwh'] : null, 3)) ?></td>
+                  <td class="num"><?= isset($issue['radiation']) && $issue['radiation'] !== null ? e(num((float) $issue['radiation'] / 1000, 2)) . NNBSP . 'kWh/m²' : '—' ?></td>
+                  <td class="num"><?= isset($issue['sunshine_s']) && $issue['sunshine_s'] !== null ? e(num((float) $issue['sunshine_s'] / 3600, 1)) . NNBSP . 'h' : '—' ?></td>
+                  <td class="num"><?= isset($issue['cloud']) && $issue['cloud'] !== null ? e(num((float) $issue['cloud'], 0)) . NNBSP . '%' : '—' ?></td>
+                  <td class="num"><?= isset($issue['temp_c']) && $issue['temp_c'] !== null ? e(num((float) $issue['temp_c'], 1)) . NNBSP . '°C' : '—' ?></td>
+                  <td class="num"><?= (int) ($issue['hours'] ?? 0) ?></td>
                 </tr>
               <?php endforeach; ?>
             </tbody>
           </table>
         </div>
-        <p class="mt-2"><?= count($issues) === 1 ? 'Für diesen Tag ist ein Lauf gespeichert.' : 'Für diesen Tag sind ' . count($issues) . ' Läufe gespeichert.' ?> Die Kilowattstunden darin sind das Rohmodell, gerechnet mit Eichfaktor 1.</p>
+        <p><?= count($issues) === 1 ? 'Für diesen Tag ist ein Lauf gespeichert.' : 'Für diesen Tag sind ' . count($issues) . ' Läufe gespeichert.' ?> Die Kilowattstunden darin sind das Rohmodell, gerechnet mit Eichfaktor 1.</p>
       <?php else: ?>
-        <p class="mt-2">Für diesen Tag liegt noch kein gespeicherter Modelllauf vor, der den Morgen mit abdeckt.</p>
+        <p>Für diesen Tag liegt noch kein gespeicherter Modelllauf vor, der den Morgen mit abdeckt.</p>
       <?php endif; ?>
     </section>
     <section>
       <h3>2. Aus einer Stunde wird Leistung</h3>
-      <p>Jede Stunde mit der Bestrahlungsstärke G in W/m² wird zur Leistung P. Die Anlage hat <?= e(num($kwp, 2)) ?> kWp, das Wechselrichter-Limit liegt bei <?= e(num($inverter, 1)) ?> kW. Die festen Faktoren 1,04, 0,90 und 0,975 bilden die Verlustkette.</p>
+      <p>Jede Stunde mit der Bestrahlungsstärke G in W/m² wird zur Leistung P. Die Anlage hat <?= e(num($kwp, 2)) ?> kWp, das Wechselrichter-Limit liegt bei <?= e(num($inverter, 1)) ?> kW. Die festen Faktoren 1,04, 0,90 und 0,975 bilden die Verlustkette.</p>
       <?php formula('<mrow><mi>P</mi><mo>=</mo><mo>min</mo><mo>(</mo><msub><mi>P</mi><mtext>WR</mtext></msub><mo>,</mo><mi>G</mi><mo>×</mo><mo>(</mo>' . mnum($kwp, 2) . '<mo>×</mo><mn>1,04</mn><mo>×</mo><mn>0,90</mn><mo>×</mo><mn>0,975</mn><mo>/</mo><mn>1000</mn><mo>)</mo><mo>×</mo><mi>f</mi><mo>)</mo></mrow>'); ?>
-      <p>Mit Eichfaktor 1 ist die Kette <?= e(num($chain1, 6)) ?> kW je W/m². Eine Stunde mit 1000 W/m² ergibt im Rohmodell <?= e(num($hourRaw, 2)) ?> kW und damit <?= e(num($hourRaw, 2)) ?> kWh in dieser Stunde. Mit dem aktuellen Eichfaktor <?= e(num($factor, $factorDecimals)) ?> wird dieselbe Stunde auf der Kurve zu <?= e(num($hourNow, 2)) ?> kW.</p>
+      <p>Mit Eichfaktor 1 ist die Kette <?= e(num($chain1, 6)) ?> kW je W/m². Eine Stunde mit 1000 W/m² ergibt im Rohmodell <?= e(num($hourRaw, 2)) ?> kW und damit <?= e(num($hourRaw, 2)) ?> kWh in dieser Stunde. Mit dem aktuellen Eichfaktor <?= e(num($factor, $factorDecimals)) ?> wird dieselbe Stunde auf der Kurve zu <?= e(num($hourNow, 2)) ?> kW.</p>
       <?php formula('<mrow><msub><mi>K</mi><mn>1</mn></msub><mo>=</mo>' . mnum($chain1, 6) . '<mtext> kW je W/m²</mtext></mrow><mspace width="1.2em"></mspace><mrow><msub><mi>K</mi><mi>f</mi></msub><mo>=</mo>' . mnum($chain1, 6) . '<mo>×</mo>' . mnum($factor, $factorDecimals) . '<mo>=</mo>' . mnum($chainF, 6) . '</mrow>'); ?>
       <p>Der gespeicherte Lauf summiert die Stunden mit Faktor 1. Eine Stunde, die über dem Wechselrichter-Limit liegt, wird auf dieses Limit gekürzt. Die Kurve im Energiediagramm zeichnet den zuletzt geladenen Lauf und hat den Eichfaktor schon in jeder Stunde.</p>
     </section>
@@ -195,9 +197,9 @@ function forecast_method_dialog(array $lesson, array $plant, array $modelRows, f
         <?php else: ?>
           <?php formula('<mrow><mi>Rohmodell</mi><mo>=</mo><mfrac><mn>1</mn><mi>n</mi></mfrac><mo>∑</mo><msub><mi>E</mi><mi>i</mi></msub><mo>=</mo>' . mnum($raw, 2) . '<mtext> kWh</mtext><mspace width="1em"></mspace><mrow><mi>n</mi><mo>=</mo><mn>' . count($issues) . '</mn></mrow></mrow>'); ?>
         <?php endif; ?>
-        <p>In der Spalte Rohmodell steht dieser Mittelwert auf einer Nachkommastelle: <?= e(kwh($raw, 1)) ?>. Die weitere Rechnung benutzt <?= e(num($raw, $rawDecimals)) ?> kWh, damit die Multiplikation zu der angezeigten Prognose passt.</p>
+        <p>In der Spalte Rohmodell steht dieser Mittelwert auf einer Nachkommastelle: <?= e(kwh($raw, 1)) ?>. Die weitere Rechnung benutzt <?= e(num($raw, $rawDecimals)) ?> kWh, damit die Multiplikation zu der angezeigten Prognose passt.</p>
       <?php elseif ($raw !== null): ?>
-        <p>Das Rohmodell für <?= e(day_label($day)) ?> ist der Mittelwert der gespeicherten Läufe: <?= e(num($raw, 2)) ?> kWh.</p>
+        <p>Das Rohmodell für <?= e(day_label($day)) ?> ist der Mittelwert der gespeicherten Läufe: <?= e(num($raw, 2)) ?> kWh.</p>
         <?php formula('<mrow><mi>Rohmodell</mi><mo>=</mo>' . mnum($raw, 2) . '<mtext> kWh</mtext></mrow>'); ?>
       <?php else: ?>
         <p>Für <?= e($day !== '' ? day_label($day) : 'diesen Tag') ?> liegt kein Rohmodell aus DWD-Läufen vor<?php if ($prognosis !== null): ?>. Die Prognose ist der festgeschriebene Tageswert <?= e(kwh($prognosis, 1)) ?>. Der Eichfaktor ändert diese Zahl nicht, und eine Abweichung aus Läufen gibt es dabei nicht<?php endif; ?>.</p>
@@ -221,16 +223,16 @@ function forecast_method_dialog(array $lesson, array $plant, array $modelRows, f
           }
         ?>
         <?php if (count($values) <= 4): ?>
-          <p>Mit den gespeicherten Summen, Mittelwert <?= e(num($meanIssue, 3)) ?> kWh:</p>
-          <ul class="mt-2 list-disc space-y-1 pl-5">
+          <p>Mit den gespeicherten Summen, Mittelwert <?= e(num($meanIssue, 3)) ?> kWh:</p>
+          <ul class="method-list">
             <?php foreach ($values as $index => $value): ?>
-              <li class="tabular-nums">(<?= e(num($value, 3)) ?> − <?= e(num($meanIssue, 3)) ?>)² = <?= e(num($squares[$index], 5)) ?></li>
+              <li class="num">(<?= e(num($value, 3)) ?> − <?= e(num($meanIssue, 3)) ?>)² = <?= e(num($squares[$index], 5)) ?></li>
             <?php endforeach; ?>
           </ul>
           <?php $squareSum = array_sum($squares); ?>
-          <p class="mt-2">Summe der Quadrate <?= e(num($squareSum, 5)) ?>. Geteilt durch <?= count($values) ?> − 1 = <?= e(num($squareSum / (count($values) - 1), 5)) ?>. Die Wurzel ist die Streuung <?= e(num($sdRaw, $sdDecimals)) ?> kWh, auf zwei Stellen <?= e(num($sdRaw, 2)) ?> kWh.</p>
+          <p>Summe der Quadrate <?= e(num($squareSum, 5)) ?>. Geteilt durch <?= count($values) ?> − 1 = <?= e(num($squareSum / (count($values) - 1), 5)) ?>. Die Wurzel ist die Streuung <?= e(num($sdRaw, $sdDecimals)) ?> kWh, auf zwei Stellen <?= e(num($sdRaw, 2)) ?> kWh.</p>
         <?php else: ?>
-          <p class="mt-2">Aus den <?= count($values) ?> Läufen der Tabelle wird die Streuung <?= e(num($sdRaw, $sdDecimals)) ?> kWh, auf zwei Stellen <?= e(num($sdRaw, 2)) ?> kWh.</p>
+          <p>Aus den <?= count($values) ?> Läufen der Tabelle wird die Streuung <?= e(num($sdRaw, $sdDecimals)) ?> kWh, auf zwei Stellen <?= e(num($sdRaw, 2)) ?> kWh.</p>
         <?php endif; ?>
       <?php elseif ($runs <= 1): ?>
         <p>Für heute liegt <?= $runs === 1 ? 'ein vollständiger Lauf' : 'noch kein zweiter Lauf' ?> vor. Die Streuung braucht mindestens zwei Läufe. Bis dahin bleibt die Abweichung leer.</p>
@@ -244,47 +246,47 @@ function forecast_method_dialog(array $lesson, array $plant, array $modelRows, f
       <?php formula('<mrow><mi>f</mi><mo>=</mo><mfrac><mn>1</mn><mi>n</mi></mfrac><mo>∑</mo><mfrac><mi>Ist</mi><mi>Rohmodell</mi></mfrac></mrow>'); ?>
       <p><?= e(paired_days_sentence($sampleCount)) ?> Ab fünf Tagen schreibt die Anwendung diesen Mittelwert als Eichfaktor, sofern er in den Einstellungen nicht festgehalten ist. Ein von Hand geänderter Faktor bleibt stehen, bis er dort wieder freigegeben wird.</p>
       <?php if ($samples): ?>
-        <div class="touch-x mt-2">
-          <table class="w-full text-left text-sm">
-            <thead class="text-xs"><tr>
-              <th class="py-2 pr-3 font-medium">Tag</th>
-              <th class="py-2 pr-3 font-medium">Ist</th>
-              <th class="py-2 pr-3 font-medium">Rohmodell</th>
-              <th class="py-2 font-medium">Ist ÷ Rohmodell</th>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Rechentabelle">
+          <table class="table table-compact">
+            <thead><tr>
+              <th scope="col">Tag</th>
+              <th scope="col">Ist</th>
+              <th scope="col">Rohmodell</th>
+              <th scope="col">Ist ÷ Rohmodell</th>
             </tr></thead>
             <tbody>
               <?php foreach ($samples as $sample): ?>
-                <tr class="border-t border-border">
-                  <td class="py-2 pr-3"><?= e(day_label((string) $sample['day'])) ?></td>
-                  <td class="py-2 pr-3 tabular-nums"><?= e(kwh((float) $sample['actual'], 2)) ?></td>
-                  <td class="py-2 pr-3 tabular-nums"><?= e(kwh((float) $sample['raw'], 2)) ?></td>
-                  <td class="py-2 tabular-nums"><?= e(num((float) $sample['ratio'], 3)) ?></td>
+                <tr>
+                  <td><?= e(day_label((string) $sample['day'])) ?></td>
+                  <td class="num"><?= e(kwh((float) $sample['actual'], 2)) ?></td>
+                  <td class="num"><?= e(kwh((float) $sample['raw'], 2)) ?></td>
+                  <td class="num"><?= e(num((float) $sample['ratio'], 3)) ?></td>
                 </tr>
               <?php endforeach; ?>
               <?php if ($wouldBe !== null): ?>
-                <tr class="border-t border-border font-medium text-foreground">
-                  <td class="py-2 pr-3" colspan="3">Mittelwert<?= (!$regression || $locked) ? ', noch ungenutzt' : '' ?></td>
-                  <td class="py-2 tabular-nums"><?= e(num($wouldBe, 3)) ?></td>
+                <tr class="sum-row">
+                  <td colspan="3">Mittelwert<?= (!$regression || $locked) ? ', noch ungenutzt' : '' ?></td>
+                  <td class="num"><?= e(num($wouldBe, 3)) ?></td>
                 </tr>
               <?php endif; ?>
             </tbody>
           </table>
         </div>
         <?php if ($locked): ?>
-          <p class="mt-2">Der Eichfaktor <?= e(num($factor, $factorDecimals)) ?> ist festgehalten. Die Verhältnisse ändern ihn nicht.</p>
+          <p>Der Eichfaktor <?= e(num($factor, $factorDecimals)) ?> ist festgehalten. Die Verhältnisse ändern ihn nicht.</p>
         <?php elseif ($regression): ?>
-          <p class="mt-2">Fünf Tage sind erreicht. Der gerundete Mittelwert ist der Eichfaktor <?= e(num($factor, $factorDecimals)) ?>.</p>
+          <p>Fünf Tage sind erreicht. Der gerundete Mittelwert ist der Eichfaktor <?= e(num($factor, $factorDecimals)) ?>.</p>
         <?php else: ?>
-          <p class="mt-2">Der gerundete Mittelwert <?= $wouldBe !== null ? e(num($wouldBe, 3)) . ' ' : '' ?>bleibt noch ungenutzt. Der Eichfaktor bleibt <?= e(num($factor, $factorDecimals)) ?>.</p>
+          <p>Der gerundete Mittelwert <?= $wouldBe !== null ? e(num($wouldBe, 3)) . ' ' : '' ?>bleibt noch ungenutzt. Der Eichfaktor bleibt <?= e(num($factor, $factorDecimals)) ?>.</p>
         <?php endif; ?>
       <?php endif; ?>
       <?php if ($held): ?>
-        <p class="mt-2">Festgeschriebene Tage behalten ihre Kilowattstunde und liefern kein Verhältnis: <?php foreach ($held as $index => $row): ?><?= $index > 0 ? ', ' : '' ?><?= e(day_label((string) $row['day'])) ?> <?= e(kwh((float) $row['model'], 1)) ?><?php endforeach; ?>.</p>
+        <p>Festgeschriebene Tage behalten ihre Kilowattstunde und liefern kein Verhältnis: <?php foreach ($held as $index => $row): ?><?= $index > 0 ? ', ' : '' ?><?= e(day_label((string) $row['day'])) ?> <?= e(kwh((float) $row['model'], 1)) ?><?php endforeach; ?>.</p>
       <?php endif; ?>
       <?php if ($regression): ?>
-        <p class="mt-2">Ab fünf Tagen kann die Prognose zusätzlich die Regression verwenden: Ist = <?= e(num($regressA, 2)) ?> + <?= e(num($regressB, 2)) ?> × Rohmodell. Die Spalte Faktor zeigt weiterhin Rohmodell × Eichfaktor.</p>
+        <p>Ab fünf Tagen kann die Prognose zusätzlich die Regression verwenden: Ist = <?= e(num($regressA, 2)) ?> + <?= e(num($regressB, 2)) ?> × Rohmodell. Die Spalte Faktor zeigt weiterhin Rohmodell × Eichfaktor.</p>
       <?php else: ?>
-        <p class="mt-2">Die Regression löst den Eichfaktor ab fünf solchen Tagen ab. <?= $sampleCount === 0 ? 'Bisher liegt keiner vor.' : ($sampleCount === 1 ? 'Bisher liegt ein Tag vor.' : 'Bisher liegen ' . $sampleCount . ' Tage vor.') ?> Bis dahin bleibt die Spalte Regression leer, und Prognose und Faktor sind dieselbe Multiplikation.</p>
+        <p>Die Regression löst den Eichfaktor ab fünf solchen Tagen ab. <?= $sampleCount === 0 ? 'Bisher liegt keiner vor.' : ($sampleCount === 1 ? 'Bisher liegt ein Tag vor.' : 'Bisher liegen ' . $sampleCount . ' Tage vor.') ?> Bis dahin bleibt die Spalte Regression leer, und Prognose und Faktor sind dieselbe Multiplikation.</p>
       <?php endif; ?>
     </section>
     <section>
@@ -297,7 +299,7 @@ function forecast_method_dialog(array $lesson, array $plant, array $modelRows, f
           <p>Die Prognose ist das Rohmodell mal dem Eichfaktor. Der Faktor steckt im Rohmodell noch nicht, deshalb wird er hier genau einmal angewendet. Für <?= e(day_label($day)) ?>:</p>
           <?php formula('<mrow><mi>Prognose</mi><mo>=</mo>' . mnum($raw, $rawDecimals) . '<mtext> kWh</mtext><mo>×</mo>' . mnum($factor, $factorDecimals) . '<mo>=</mo>' . mnum($product, 2) . '<mtext> kWh</mtext></mrow>'); ?>
         <?php endif; ?>
-        <p>Kachel, Zahl über der Kurve und die Spalte Prognose runden auf eine Nachkommastelle: <?= e(kwh($prognosis, 1)) ?>. Die Spalte Rohmodell zeigt den unskalierten Mittelwert auf einer Stelle, <?= e(kwh($raw, 1)) ?>. Die Prognose multipliziert den Mittelwert mit <?= e(num($raw, $rawDecimals)) ?> kWh und rundet erst das Ergebnis.</p>
+        <p>Kachel, Zahl über der Kurve und die Spalte Prognose runden auf eine Nachkommastelle: <?= e(kwh($prognosis, 1)) ?>. Die Spalte Rohmodell zeigt den unskalierten Mittelwert auf einer Stelle, <?= e(kwh($raw, 1)) ?>. Die Prognose multipliziert den Mittelwert mit <?= e(num($raw, $rawDecimals)) ?> kWh und rundet erst das Ergebnis.</p>
       <?php elseif ($prognosis !== null): ?>
         <p>Die Prognose für <?= e(day_label($day)) ?> ist der festgeschriebene Wert <?= e(kwh($prognosis, 1)) ?>.</p>
       <?php else: ?>
@@ -309,7 +311,7 @@ function forecast_method_dialog(array $lesson, array $plant, array $modelRows, f
       <?php if ($sdRaw !== null && $spread !== null && $prognosis !== null): ?>
         <p>Die Abweichung nimmt die Streuung von der Skala des Rohmodells und multipliziert sie mit demselben Faktor wie die Prognose<?php if ($regression): ?>, hier mit dem Betrag der Steigung <?= e(num($scale, $factorDecimals)) ?><?php endif; ?>. So bleibt das ± in derselben Einheit wie die angezeigte Prognose.</p>
         <?php formula('<mrow><mi>Abweichung</mi><mo>=</mo><mi>s</mi><mo>×</mo>' . mnum($scale, $factorDecimals) . '<mo>=</mo>' . mnum($sdRaw, $sdDecimals) . '<mo>×</mo>' . mnum($scale, $factorDecimals) . '<mo>=</mo>' . mnum($spread, 2) . '<mtext> kWh</mtext></mrow>'); ?>
-        <p>Angezeigt wird auf eine Nachkommastelle: ± <?= e(num($spread, 1)) ?> kWh. Über der Kurve steht damit <?= e(Forecast::captionText($prognosis, $spread)) ?>. Die Streuung sagt, wie weit die DWD-Läufe auseinanderliegen. Die Abweichung ist diese Spanne nach der Skalierung. Der Vergleich mit dem Zähler ist die Güte im nächsten Schritt.</p>
+        <p>Angezeigt wird auf eine Nachkommastelle: ± <?= e(num($spread, 1)) ?> kWh. Über der Kurve steht damit <?= e(Forecast::captionText($prognosis, $spread)) ?>. Die Streuung sagt, wie weit die DWD-Läufe auseinanderliegen. Die Abweichung ist diese Spanne nach der Skalierung. Der Vergleich mit dem Zähler ist die Güte im nächsten Schritt.</p>
       <?php else: ?>
         <p>Ohne zweiten Lauf gibt es keine Streuung und damit keine Abweichung. In der Tabelle steht dann nur die Prognose, ohne ±.</p>
       <?php endif; ?>
@@ -320,25 +322,25 @@ function forecast_method_dialog(array $lesson, array $plant, array $modelRows, f
       <?php formula('<mrow><mi>Güte</mi><mo>=</mo><mfrac><mrow><mo>∑</mo><mi>Prognose</mi></mrow><mrow><mo>∑</mo><mi>Ist</mi></mrow></mfrac></mrow>'); ?>
       <p>Der laufende Tag<?php if ($actual !== null): ?>, bisher <?= e(kwh($actual, 1)) ?> gemessen,<?php endif; ?> bleibt außen vor, bis er abgeschlossen ist. Eine Güte über 1 heißt, die Prognose lag über die gewählten Tage höher als der Zähler. Eine Güte unter 1 heißt, der Zähler lag höher.</p>
       <?php if ($pairs): ?>
-        <div class="touch-x mt-2">
-          <table class="w-full text-left text-sm">
-            <thead class="text-xs"><tr>
-              <th class="py-2 pr-4 font-medium">Tag</th>
-              <th class="py-2 pr-4 font-medium">Ist</th>
-              <th class="py-2 font-medium">Prognose</th>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Rechentabelle">
+          <table class="table table-compact">
+            <thead><tr>
+              <th scope="col">Tag</th>
+              <th scope="col">Ist</th>
+              <th scope="col">Prognose</th>
             </tr></thead>
             <tbody>
               <?php foreach ($pairs as $pair): ?>
-                <tr class="border-t border-border">
-                  <td class="py-2 pr-4"><?= e(day_label((string) $pair['day'])) ?></td>
-                  <td class="py-2 pr-4 tabular-nums"><?= e(kwh((float) $pair['actual'], 1)) ?></td>
-                  <td class="py-2 tabular-nums"><?= e(kwh((float) $pair['model'], 1)) ?></td>
+                <tr>
+                  <td><?= e(day_label((string) $pair['day'])) ?></td>
+                  <td class="num"><?= e(kwh((float) $pair['actual'], 1)) ?></td>
+                  <td class="num"><?= e(kwh((float) $pair['model'], 1)) ?></td>
                 </tr>
               <?php endforeach; ?>
-              <tr class="border-t border-border font-medium text-foreground">
-                <td class="py-2 pr-4">Summe</td>
-                <td class="py-2 pr-4 tabular-nums"><?= e(kwh($sumActual, 2)) ?></td>
-                <td class="py-2 tabular-nums"><?= e(kwh($sumModel, 2)) ?></td>
+              <tr class="sum-row">
+                <td>Summe</td>
+                <td class="num"><?= e(kwh($sumActual, 2)) ?></td>
+                <td class="num"><?= e(kwh($sumModel, 2)) ?></td>
               </tr>
             </tbody>
           </table>
@@ -348,7 +350,7 @@ function forecast_method_dialog(array $lesson, array $plant, array $modelRows, f
         <?php endif; ?>
         <p>Im Fenster <?= count($pairs) === 1 ? 'liegt ein abgeschlossener Tag' : 'liegen ' . count($pairs) . ' abgeschlossene Tage' ?>. Die Güte fließt in die kommenden Tage nicht ein. Sie ersetzt den Eichfaktor nicht.</p>
       <?php else: ?>
-        <p class="mt-2">Für die Güte liegt noch kein abgeschlossener Tag mit Ist und Prognose vor. Die Güte fließt in die kommenden Tage nicht ein.</p>
+        <p>Für die Güte liegt noch kein abgeschlossener Tag mit Ist und Prognose vor. Die Güte fließt in die kommenden Tage nicht ein.</p>
       <?php endif; ?>
     </section>
     <section>
@@ -359,13 +361,13 @@ function forecast_method_dialog(array $lesson, array $plant, array $modelRows, f
         <p>Jeder der nächsten Tage hat sein eigenes Rohmodell aus seinen eigenen DWD-Läufen. Die Prognose ist dieses Rohmodell mal dem aktuellen Eichfaktor <?= e(num($factor, $factorDecimals)) ?>. Die Abweichung ist die Streuung dieses Tages mal demselben Faktor. Die Güte der vergangenen Tage wird darauf nicht noch einmal multipliziert.</p>
       <?php endif; ?>
       <?php if ($ahead): ?>
-        <div class="touch-x mt-2">
-          <table class="w-full text-left text-sm">
-            <thead class="text-xs"><tr>
-              <th class="py-2 pr-3 font-medium">Tag</th>
-              <th class="py-2 pr-3 font-medium">Rohmodell</th>
-              <th class="py-2 pr-3 font-medium">Rechnung</th>
-              <th class="py-2 font-medium">Prognose</th>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Rechentabelle">
+          <table class="table table-compact">
+            <thead><tr>
+              <th scope="col">Tag</th>
+              <th scope="col">Rohmodell</th>
+              <th scope="col">Rechnung</th>
+              <th scope="col">Prognose</th>
             </tr></thead>
             <tbody>
               <?php foreach ($ahead as $row): ?>
@@ -380,21 +382,22 @@ function forecast_method_dialog(array $lesson, array $plant, array $modelRows, f
                       $walk = num($rowRaw, 2) . ' × ' . num($factor, $factorDecimals);
                   }
                 ?>
-                <tr class="border-t border-border">
-                  <td class="whitespace-nowrap py-2 pr-3"><?= e(day_label((string) $row['day'])) ?></td>
-                  <td class="py-2 pr-3 tabular-nums"><?= e(kwh($rowRaw, 2)) ?></td>
-                  <td class="py-2 pr-3 tabular-nums"><?= e($walk) ?></td>
-                  <td class="py-2 tabular-nums"><?= e(Forecast::captionText($rowModel, $rowSd) ?? '—') ?></td>
+                <tr>
+                  <td class="nowrap"><?= e(day_label((string) $row['day'])) ?></td>
+                  <td class="num"><?= e(kwh($rowRaw, 2)) ?></td>
+                  <td class="num"><?= e($walk) ?></td>
+                  <td class="num"><?= e(Forecast::captionText($rowModel, $rowSd) ?? '—') ?></td>
                 </tr>
               <?php endforeach; ?>
             </tbody>
           </table>
         </div>
-        <p class="mt-2">Dieselbe Prognose steht in der Kachel, über der Energiekurve und in der Spalte Prognose. Die Kurve selbst folgt dem letzten Lauf, Stunde für Stunde. Die Zahl darüber ist der Mittelwert der Läufe nach dieser Rechnung.</p>
+        <p>Dieselbe Prognose steht in der Kachel, über der Energiekurve und in der Spalte Prognose. Die Kurve selbst folgt dem letzten Lauf, Stunde für Stunde. Die Zahl darüber ist der Mittelwert der Läufe nach dieser Rechnung.</p>
       <?php else: ?>
-        <p class="mt-2">Für die kommenden Tage liegt noch kein gespeicherter Lauf vor.</p>
+        <p>Für die kommenden Tage liegt noch kein gespeicherter Lauf vor.</p>
       <?php endif; ?>
     </section>
+  </div>
   </div>
 </dialog>
     <?php

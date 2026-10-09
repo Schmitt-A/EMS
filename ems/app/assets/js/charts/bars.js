@@ -161,7 +161,7 @@ export function renderBars(figure, payload, state) {
       const values = indices.map((i) => value(series, i)).filter((v) => v !== null);
       let sum = '';
       if (series.type === 'bar') sum = `${fmt(values.reduce((a, b) => a + b, 0), decimals)}${unit ? NNBSP + unit : ''}`;
-      else if (values.length) sum = `Ø ${fmtValue(series, values.reduce((a, b) => a + b, 0) / values.length)}`;
+      else if (values.length && series.legendSum !== false) sum = `Ø ${fmtValue(series, values.reduce((a, b) => a + b, 0) / values.length)}`;
       const item = html('li', { class: colorClass(series.color) });
       item.append(html('span', { class: 'swatch swatch-dot' }), html('span', {}, series.label), html('span', { class: 'sum' }, sum));
       legend.append(item);

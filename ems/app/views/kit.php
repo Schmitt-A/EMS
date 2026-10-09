@@ -7,6 +7,17 @@ declare(strict_types=1);
  * gesetzt, nie als style-Attribut, damit die CSP default-src 'self' hält.
  */
 
+/** MathML-Formel in einer eigenen, per Tastatur scrollbaren Region. */
+function formula(string $mathml): void
+{
+    echo '<div class="formula-scroll" tabindex="0" role="region" aria-label="Formel"><math xmlns="http://www.w3.org/1998/Math/MathML">' . $mathml . '</math></div>';
+}
+
+function mnum(?float $value, int $decimals = 2): string
+{
+    return '<mn>' . e(num($value, $decimals)) . '</mn>';
+}
+
 function ui_attrs(array $attrs): string
 {
     $out = '';

@@ -363,3 +363,12 @@
     inset-block-start: var(--s-4);
   }
 }
+
+.page > .section:not(:first-child),
+.page > .page-head + .notice + .section {
+  margin-block-start: var(--section-gap);
+}
+
+.page > .notice {
+  margin-block-end: var(--s-4);
+}

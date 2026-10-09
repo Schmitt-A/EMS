@@ -52,8 +52,10 @@ export function hideTip(f) {
 
 /** Visuell versteckte Tabelle mit denselben Daten für Screenreader. */
 export function dataTable(figure, caption, head, rows) {
-  figure.querySelector('table[data-chart-table]')?.remove();
-  const table = html('table', { class: 'sr-only', 'data-chart-table': '' });
+  figure.querySelector('[data-chart-table]')?.remove();
+  // Tabellen schrumpfen nicht auf 1 px, deshalb steckt die Tabelle in einem versteckten div.
+  const wrap = html('div', { class: 'sr-only', 'data-chart-table': '' });
+  const table = html('table');
   table.append(html('caption', {}, caption));
   const thead = html('thead');
   const tr = html('tr');
@@ -66,7 +68,8 @@ export function dataTable(figure, caption, head, rows) {
     tbody.append(line);
   }
   table.append(thead, tbody);
-  figure.append(table);
+  wrap.append(table);
+  figure.append(wrap);
 }
 
 /** Achsenbeschriftung links (oder rechts) mit Teilstrichen. */
