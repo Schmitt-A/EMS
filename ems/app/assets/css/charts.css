@@ -324,9 +324,19 @@
 }
 
 .chart-tools {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--s-2);
   min-width: 0;
+}
+
+.chart-tools > .seg {
+  flex: 1 1 16rem;
+  max-width: 28rem;
+}
+
+.chart-tools > .seg-fit {
+  flex: 0 0 auto;
 }
 
 .chart-toggles {

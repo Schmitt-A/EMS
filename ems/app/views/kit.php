@@ -252,6 +252,7 @@ function ui_chart(string $type, string $src, string $label, array $opts = []): s
         'data-label' => $label,
         'data-style' => isset($opts['style']) ? ui_json($opts['style']) : null,
         'data-window' => $opts['window'] ?? null,
+        'data-anchor' => $opts['anchor'] ?? null,
         'data-empty' => $opts['empty'] ?? null,
         'id' => $opts['id'] ?? null,
     ]) . '>' . ($opts['tools'] ?? '') . '<div class="chart-frame" data-loading></div><figcaption class="sr-only">' . e($label) . '</figcaption></figure>';

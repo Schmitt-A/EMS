@@ -152,7 +152,11 @@ if ($path === '/') {
     page('laden', compact('snap', 'live', 'overview') + ['title' => 'Laden', 'layout' => 'shell']);
 }
 if ($path === '/batterie') {
-    page('battery', compact('snap', 'live') + ['title' => 'Batterie']);
+    redirect('/speicher');
+}
+if ($path === '/speicher') {
+    $overview = energy_overview();
+    page('speicher', compact('snap', 'live', 'overview') + ['title' => 'Speicher', 'layout' => 'shell']);
 }
 if ($path === '/laden') {
     $session = $snap['session'];

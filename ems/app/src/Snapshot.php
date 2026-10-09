@@ -344,6 +344,11 @@ final class Snapshot
                 },
                 'soc_text' => pct(isset($v['battery_soc']) ? (float) $v['battery_soc'] : null),
                 'stored_text' => self::storedText($v['battery_capacity_kwh'] ?? null, $v['battery_total_kwh'] ?? null),
+                'activity_text' => match ($snap['activity'] ?? '') {
+                    'Laden' => 'Lädt mit ' . kw($v['battery_charge_kw'] ?? null) . '.',
+                    'Entladen' => 'Entlädt mit ' . kw($v['battery_discharge_kw'] ?? null) . '.',
+                    default => $snap['connected'] ? 'Ruht.' : '',
+                },
             ],
             'say' => self::sayText($snap),
             'flows' => [

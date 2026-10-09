@@ -339,3 +339,27 @@
 .overview:has(input[value="all"]:checked) [data-ov-panel="all"] {
   display: grid;
 }
+
+.storage-grid {
+  display: grid;
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.storage-figure {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-4);
+  text-align: center;
+}
+
+@media (min-width: 48rem) {
+  .storage-grid {
+    grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+  }
+
+  .storage-figure {
+    position: sticky;
+    inset-block-start: var(--s-4);
+  }
+}

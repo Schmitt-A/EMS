@@ -153,7 +153,7 @@ $section('Sheets und Dialoge', 'Mobil Bottom Sheet mit Griff, ab 640 px zentrier
 
 $section('Tabelle und Listenkarten', 'Ab Tablet eine Tabelle mit Sticky-Kopf und Summenzeile, auf dem Handy Listenkarten.', static function (string $s): void {
     $data = [['Fr 10.10.', 22.4, 71, 4.12], ['Mi 08.10.', 9.8, 100, 0.8], ['Mo 06.10.', 31.2, 34, 9.85]];
-    echo '<div class="card card-flush only-wide"><div class="table-wrap"><table class="table"><thead><tr><th scope="col"><button type="button" class="sort-btn">Datum' . icon('arrow-down', 'icon-16') . '</button></th><th scope="col" class="num-col">Geladen<span class="th-unit">kWh</span></th><th scope="col" class="num-col">Sonne<span class="th-unit">%</span></th><th scope="col" class="num-col">Kosten<span class="th-unit">€</span></th></tr></thead><tbody>';
+    echo '<div class="card card-flush only-wide"><div class="table-wrap" tabindex="0" role="region" aria-label="Ladevorgänge"><table class="table"><thead><tr><th scope="col"><button type="button" class="sort-btn">Datum' . icon('arrow-down', 'icon-16') . '</button></th><th scope="col" class="num-col">Geladen<span class="th-unit">kWh</span></th><th scope="col" class="num-col">Sonne<span class="th-unit">%</span></th><th scope="col" class="num-col">Kosten<span class="th-unit">€</span></th></tr></thead><tbody>';
     foreach ($data as [$day, $energy, $solar, $cost]) {
         echo '<tr><td>' . e($day) . '</td><td class="num-col">' . e(num($energy, 1)) . '</td><td class="num-col">' . e(num($solar, 0)) . '</td><td class="num-col">' . e(num($cost, 2)) . '</td></tr>';
     }
