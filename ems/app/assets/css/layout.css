@@ -1,0 +1,318 @@
+/* App-Rahmen (Abschnitt 6): Tab-Leiste unten bis 1023 px, Navigationsleiste links ab 1024 px. */
+.app {
+  min-height: 100dvh;
+}
+
+.app-main {
+  min-width: 0;
+}
+
+.page {
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding-inline: max(var(--gutter), env(safe-area-inset-left)) max(var(--gutter), env(safe-area-inset-right));
+  padding-block: var(--s-4) calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--s-8));
+  outline: none;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-height: 3rem;
+  margin-block-end: var(--s-4);
+}
+
+.page-head h1 {
+  min-width: 0;
+}
+
+.page-head .head-chip {
+  flex: none;
+}
+
+.section {
+  display: grid;
+  gap: var(--s-4);
+}
+
+.section + .section {
+  margin-block-start: var(--section-gap);
+}
+
+.section-title {
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.stack {
+  display: grid;
+  gap: var(--s-4);
+  align-content: start;
+  min-width: 0;
+}
+
+.stack-tight {
+  display: grid;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.split {
+  display: grid;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.wrap {
+  flex-wrap: wrap;
+}
+
+/* Navigation: ein Markup, unten als Tab-Leiste, ab 1024 px links als Leiste. */
+.nav {
+  position: fixed;
+  z-index: 40;
+  inset-inline: 0;
+  inset-block-end: 0;
+  height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  padding-block-end: env(safe-area-inset-bottom);
+  padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+  background: var(--surface);
+  border-block-start: 1px solid var(--border);
+}
+
+.nav-brand {
+  display: none;
+}
+
+.nav-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav-link {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  min-height: 3rem;
+  height: 100%;
+  padding-inline: 0.125rem;
+  color: var(--text-2);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.nav-link .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.tab-label {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.tab-label-short {
+  display: none;
+}
+
+@media (max-width: 24.99rem) {
+  .nav-link:has(.tab-label-short) .tab-label-long {
+    display: none;
+  }
+
+  .nav-link .tab-label-short {
+    display: inline;
+  }
+}
+
+.nav-link[aria-current="page"] {
+  color: var(--accent-strong);
+}
+
+.nav-link[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 50%;
+  width: 2rem;
+  height: 3px;
+  margin-inline-start: -1rem;
+  border-radius: 0 0 var(--r-pill) var(--r-pill);
+  background: var(--accent-strong);
+  view-transition-name: nav-indicator;
+}
+
+@media (hover: hover) {
+  .nav-link:hover {
+    color: var(--text);
+  }
+}
+
+@media (min-width: 64rem) {
+  .app {
+    display: grid;
+    grid-template-columns: var(--rail) minmax(0, 1fr);
+  }
+
+  .page {
+    padding-block: var(--s-6) var(--s-12);
+  }
+
+  .nav {
+    position: sticky;
+    inset-block: 0;
+    inset-inline: auto;
+    height: 100dvh;
+    padding: var(--s-4) var(--s-2);
+    border-block-start: 0;
+    border-inline-end: 1px solid var(--border);
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    height: auto;
+  }
+
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-2);
+    height: 3rem;
+    margin-block-end: var(--s-4);
+    color: var(--accent-strong);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+
+  .nav-brand span {
+    display: none;
+  }
+
+  .nav-link {
+    height: auto;
+    min-height: 3.5rem;
+    padding: var(--s-2) var(--s-1);
+    border-radius: var(--r-pill);
+  }
+
+  .nav-link .tab-label {
+    font-size: 0.75rem;
+  }
+
+  .nav-link[aria-current="page"] {
+    background: var(--accent-soft);
+    color: var(--accent-on-soft);
+    border-radius: 1rem;
+  }
+
+  .nav-link[aria-current="page"]::before {
+    display: none;
+  }
+
+  @media (hover: hover) {
+    .nav-link:not([aria-current="page"]):hover {
+      background: var(--surface-2);
+      border-radius: 1rem;
+    }
+  }
+}
+
+@media (min-width: 90rem) {
+  .app {
+    grid-template-columns: var(--rail-wide) minmax(0, 1fr);
+  }
+
+  .nav {
+    padding: var(--s-6) var(--s-4);
+  }
+
+  .nav-brand {
+    justify-content: flex-start;
+    padding-inline: var(--s-4);
+  }
+
+  .nav-brand span {
+    display: inline;
+  }
+
+  .nav-link {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--s-3);
+    min-height: 3rem;
+    padding: var(--s-2) var(--s-4);
+  }
+
+  .nav-link .tab-label {
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+
+  .nav-link[aria-current="page"],
+  .nav-link:not([aria-current="page"]):hover {
+    border-radius: var(--r-pill);
+  }
+}
+
+/* Seitenwechsel blenden über, der Tab-Indikator gleitet mit Federkurve. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 200ms;
+}
+
+::view-transition-group(nav-indicator) {
+  animation-duration: 280ms;
+  animation-timing-function: var(--ease-spring);
+}
+
+/* Breiten ab Tablet und Desktop */
+@media (min-width: 40rem) {
+  .split {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 80rem) {
+  .split-wide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

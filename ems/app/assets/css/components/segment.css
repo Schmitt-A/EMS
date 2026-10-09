@@ -1,0 +1,150 @@
+/*
+ * 7.2 Segment-Umschalter. Ein <fieldset> mit Radios: funktioniert ohne JS als Formular,
+ * Pfeiltasten wechseln die Option. Die aktive Kapsel liegt per :has() an der richtigen Stelle
+ * und gleitet per transform, ganz ohne Inline-Styles.
+ */
+.seg {
+  --seg-count: 2;
+  --seg-index: 0;
+  position: relative;
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  min-width: 0;
+  min-height: 2.75rem;
+  margin: 0;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  container-type: inline-size;
+}
+
+.seg > legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.seg-thumb {
+  position: absolute;
+  z-index: 0;
+  inset-block: 4px;
+  inset-inline-start: 4px;
+  width: calc((100% - 8px) / var(--seg-count));
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  box-shadow: var(--shadow-pill);
+  transform: translateX(calc(100% * var(--seg-index)));
+  transition: transform 280ms var(--ease-spring);
+  pointer-events: none;
+}
+
+.seg:not(:has(input:checked)) .seg-thumb {
+  opacity: 0;
+}
+
+.seg input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.seg label {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-width: 0;
+  min-height: 2.75rem;
+  margin-block: -4px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-pill);
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.125rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-base);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.seg input:checked + label {
+  color: var(--on-ink);
+}
+
+.seg input:focus-visible + label {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+.seg input:disabled + label {
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+
+@media (hover: hover) {
+  .seg input:not(:checked):not(:disabled) + label:hover {
+    color: var(--text);
+  }
+}
+
+.seg-short {
+  display: none;
+  align-items: center;
+  gap: 1px;
+}
+
+.seg-short .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+@container (max-width: 21rem) {
+  .seg-long {
+    display: none;
+  }
+
+  .seg-short {
+    display: inline-flex;
+  }
+}
+
+/* Anzahl und Position der Optionen ohne Inline-Styles */
+.seg:has(> input:nth-of-type(3)) { --seg-count: 3; }
+.seg:has(> input:nth-of-type(4)) { --seg-count: 4; }
+.seg:has(> input:nth-of-type(5)) { --seg-count: 5; }
+.seg:has(> input:nth-of-type(2):checked) { --seg-index: 1; }
+.seg:has(> input:nth-of-type(3):checked) { --seg-index: 2; }
+.seg:has(> input:nth-of-type(4):checked) { --seg-index: 3; }
+.seg:has(> input:nth-of-type(5):checked) { --seg-index: 4; }
+
+/* Varianten */
+.seg-compact {
+  min-height: 2.25rem;
+}
+
+.seg-compact label {
+  min-height: 2.75rem;
+  margin-block: -8px;
+  font-size: 0.75rem;
+}
+
+.seg-fit {
+  display: inline-grid;
+  width: auto;
+  container-type: normal;
+}
+
+.seg-fit label {
+  padding: 0 var(--s-4);
+}

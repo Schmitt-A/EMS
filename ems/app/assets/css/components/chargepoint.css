@@ -1,0 +1,246 @@
+/* 7.3 Ladepunkt-Karte und 7.4 Ladebalken */
+.cp {
+  container: cp / inline-size;
+  display: grid;
+  gap: var(--s-5);
+}
+
+.cp-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.cp-head .card-title {
+  overflow-wrap: anywhere;
+}
+
+.cp-mode {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-width: 0;
+}
+
+.cp-head > .icon-btn {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+@container cp (min-width: 30rem) {
+  .cp-head {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .cp-mode {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    width: min(100%, 24rem);
+  }
+
+  .cp-head > .icon-btn {
+    grid-column: 3;
+  }
+}
+
+.cp-power {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.cp-power .icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--accent);
+}
+
+.cp[data-charging="false"] .cp-power .icon {
+  display: none;
+}
+
+.cp[data-solar-only="true"] .cp-power .icon {
+  animation: bolt-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes bolt-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.phases {
+  display: flex;
+  gap: 4px;
+  margin-block-start: var(--s-1);
+}
+
+.phases span {
+  width: 12px;
+  height: 3px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+}
+
+.phases[data-active="1"] span:nth-child(1),
+.phases[data-active="3"] span {
+  background: var(--accent);
+}
+
+.metrics-3 > :nth-child(2) .phases {
+  justify-content: center;
+}
+
+.cp-suggest {
+  color: var(--text-2);
+}
+
+.cp-suggest strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.cp-vehicle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0 var(--s-3);
+}
+
+.cp-vehicle > .icon {
+  grid-row: span 2;
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--text-2);
+}
+
+.cp-vehicle .inline-action {
+  justify-content: flex-start;
+  font-weight: 600;
+}
+
+.cp-status {
+  color: var(--text-2);
+}
+
+/* Ladebalken: 32 px Kapsel, SoC in --accent, Ziel mit 35 % Deckkraft, Limit-Marke ziehbar. */
+.chargebar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.chargebar-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent-on-soft);
+}
+
+.chargebar-track {
+  --soc: 0%;
+  --limit: 100%;
+  position: relative;
+  height: 2rem;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  touch-action: none;
+}
+
+.chargebar-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.chargebar-fill,
+.chargebar-target {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  transition: width 400ms var(--ease-out), inset-inline-start 400ms var(--ease-out);
+}
+
+.chargebar-fill {
+  width: var(--soc);
+  background-color: var(--accent);
+}
+
+.chargebar-target {
+  inset-inline-start: var(--soc);
+  width: max(0%, calc(var(--limit) - var(--soc)));
+  background: var(--accent);
+  opacity: 0.35;
+}
+
+.chargebar[data-charging="true"] .chargebar-fill {
+  background-image: repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.28) 0 5px, transparent 5px 10px);
+  background-size: 14.14px 14.14px;
+  animation: stripes 1.2s linear infinite;
+}
+
+@keyframes stripes {
+  to { background-position: 14.14px 0; }
+}
+
+.limit-mark {
+  position: absolute;
+  inset-block: -6px;
+  inset-inline-start: var(--limit);
+  width: 2.75rem;
+  margin-inline-start: -1.375rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.limit-mark::before {
+  content: "";
+  width: 10px;
+  height: 2.5rem;
+  border: 2px solid var(--surface);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+
+.limit-mark:focus-visible {
+  outline: none;
+}
+
+.limit-mark:focus-visible::before {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+.chargebar[data-unknown] .chargebar-fill,
+.chargebar[data-unknown] .chargebar-target {
+  display: none;
+}
+
+.chargebar[data-unknown] .chargebar-track {
+  background: repeating-linear-gradient(-45deg, var(--surface-2) 0 6px, transparent 6px 12px);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.cp-values .metric .value {
+  flex-wrap: wrap;
+}
+
+.cp-values .sub {
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+/* Hinweis unter den Kennzahlen: nichts geht an die Wallbox */
+.cp-note {
+  color: var(--text-2);
+}

@@ -1,0 +1,133 @@
+/* 7.12 Leer-, Lade- und Fehlerzustände */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-field);
+  background: var(--surface-2);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 55%, transparent), transparent);
+  transform: translateX(-100%);
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  to { transform: translateX(100%); }
+}
+
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-3);
+  padding: var(--s-8) var(--s-4);
+  text-align: center;
+}
+
+.empty > .icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  color: var(--text-3);
+}
+
+.empty p {
+  max-width: 32rem;
+  color: var(--text-2);
+}
+
+.notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-field);
+  background: var(--surface-2);
+}
+
+.notice > .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-block-start: 1px;
+  color: var(--text-2);
+}
+
+.notice-list {
+  display: grid;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notice-warn > .icon {
+  color: var(--accent-strong);
+}
+
+.notice-error {
+  background: var(--danger-soft);
+}
+
+.notice-error > .icon {
+  color: var(--danger);
+}
+
+/* Verbindung verloren: Banner oben mit der Zeit des letzten Werts */
+.banner {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 2.75rem;
+  padding: var(--s-2) var(--gutter);
+  padding-block-start: max(var(--s-2), env(safe-area-inset-top));
+  background: var(--danger-soft);
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.banner .icon {
+  color: var(--danger);
+}
+
+.stamp {
+  display: none;
+  color: var(--text-2);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+[data-offline] .stamp {
+  display: inline;
+}
+
+.flash {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-block-end: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-field);
+  background: var(--accent-soft);
+  color: var(--accent-on-soft);
+  font-weight: 600;
+}
+
+/* Live-Werte blenden beim Wechsel kurz über */
+[data-changed] {
+  animation: value-fade 150ms ease-out;
+}
+
+@keyframes value-fade {
+  from { opacity: 0.35; }
+}
+
+.sk-bar { height: 2.25rem; border-radius: var(--r-pill); }
+.sk-line { height: 1.5rem; width: 60%; }
+.sk-block { height: 6rem; }

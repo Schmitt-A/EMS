@@ -1,0 +1,304 @@
+/*
+ * 7.1 Energiefluss-Balken. Breiten setzt JS per flex-grow (CSSOM), Klammern per left/width.
+ * Oben spannen Klammern die Quellen, unten die Verbraucher; die Icons sitzen in der Lücke.
+ */
+.flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 var(--s-2);
+  min-width: 0;
+  margin: 0;
+}
+
+.flow-track {
+  position: relative;
+  min-width: 0;
+  padding-block: 2rem;
+}
+
+.flow-bar {
+  display: flex;
+  gap: 2px;
+  height: 2.25rem;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+}
+
+.flow-seg {
+  position: relative;
+  display: flex;
+  flex: 0 1 0%;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: flex-grow 400ms var(--ease-out);
+}
+
+.flow-seg[data-zero] {
+  display: none;
+}
+
+.flow-seg .flow-val {
+  padding-inline: var(--s-2);
+  opacity: 0;
+  transition: opacity var(--dur-fast);
+}
+
+.flow-seg[data-fits] .flow-val {
+  opacity: 1;
+}
+
+.flow-seg-grid-in {
+  background: var(--data-grid-in);
+  color: var(--on-ink);
+}
+
+.flow-seg-battery {
+  background-color: var(--data-battery);
+  background-image: repeating-linear-gradient(45deg, rgb(255 255 255 / 0.18) 0 4px, transparent 4px 8px);
+  color: var(--on-ink);
+}
+
+.flow-seg-solar {
+  background: var(--data-solar);
+  color: var(--on-accent);
+}
+
+.flow-seg-grid-out {
+  background: var(--data-grid-out);
+  color: var(--on-accent);
+}
+
+.flow-seg-rest {
+  background: transparent;
+}
+
+.flow:not([data-ready]) .flow-seg {
+  flex-grow: 1;
+  background: var(--surface-2);
+  color: transparent;
+}
+
+/* Klammern: 1 px in --border mit gerundeten Endhaken, Icon in der Lücke. */
+.flow-brackets {
+  position: absolute;
+  inset-inline: 0;
+  height: 1.25rem;
+  pointer-events: none;
+}
+
+.flow-brackets-top {
+  inset-block-start: 0.375rem;
+}
+
+.flow-brackets-bottom {
+  inset-block-end: 0.375rem;
+}
+
+.bracket {
+  position: absolute;
+  inset-block: 0;
+  min-width: 0.5rem;
+  color: var(--text-2);
+}
+
+.bracket::before,
+.bracket::after {
+  content: "";
+  position: absolute;
+  inset-block: 0.5rem 0;
+  width: calc(50% - 0.875rem);
+  border: 1px solid var(--border-control);
+  border-block-end: 0;
+}
+
+.bracket::before {
+  inset-inline-start: 0;
+  border-inline-end: 0;
+  border-start-start-radius: 6px;
+}
+
+.bracket::after {
+  inset-inline-end: 0;
+  border-inline-start: 0;
+  border-start-end-radius: 6px;
+}
+
+.flow-brackets-bottom .bracket::before,
+.flow-brackets-bottom .bracket::after {
+  inset-block: 0 0.5rem;
+  border-block-start: 0;
+  border-block-end: 1px solid var(--border-control);
+  border-radius: 0;
+}
+
+.flow-brackets-bottom .bracket::before {
+  border-end-start-radius: 6px;
+}
+
+.flow-brackets-bottom .bracket::after {
+  border-end-end-radius: 6px;
+}
+
+.bracket .icon {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 50%;
+  width: 1rem;
+  height: 1rem;
+  margin-inline-start: -0.5rem;
+}
+
+.flow-brackets-bottom .bracket .icon {
+  inset-block: auto 0;
+}
+
+.bracket[data-narrow] .icon {
+  display: none;
+}
+
+.bracket[data-narrow]::before,
+.bracket[data-narrow]::after {
+  width: 50%;
+}
+
+.bracket[data-gone] {
+  display: none;
+}
+
+.flow:not([data-ready]) .flow-brackets {
+  visibility: hidden;
+}
+
+.flow-sides {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  padding-block: 0.25rem;
+  color: var(--text-2);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1rem;
+}
+
+.flow-sides span {
+  align-self: center;
+  justify-self: center;
+  writing-mode: vertical-rl;
+}
+
+.flow-legend {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+  color: var(--text-2);
+}
+
+/* Detail-Liste „Rein“ und „Raus“: mobil per Knopf, ab 640 px immer offen. */
+.flow-toggle {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-1);
+  width: 100%;
+  min-height: 2.75rem;
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.flow-toggle[aria-expanded="true"] .icon {
+  transform: rotate(180deg);
+}
+
+.flow-columns[data-collapsed] {
+  display: none;
+}
+
+.flow-columns {
+  display: grid;
+  gap: var(--s-5);
+}
+
+.flow-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding-block-end: var(--s-2);
+  border-block-end: 1px solid var(--border);
+}
+
+.flow-row {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 2.75rem;
+  border-block-end: 1px solid var(--border);
+}
+
+.flow-row:last-child {
+  border-block-end: 0;
+}
+
+.flow-row .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.flow-row-main {
+  display: grid;
+  justify-items: start;
+  min-width: 0;
+  padding-block: var(--s-2);
+}
+
+.flow-row-name {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.flow-row-context {
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+}
+
+.flow-row-context .inline-action {
+  min-height: 2.75rem;
+  margin-block: -0.875rem;
+}
+
+.flow-row-kw {
+  min-width: 4.5rem;
+  text-align: end;
+}
+
+.flow-row[data-idle] .flow-row-kw,
+.flow-row[data-idle] .flow-row-name {
+  color: var(--text-2);
+}
+
+@media (min-width: 40rem) {
+  .flow-toggle {
+    display: none;
+  }
+
+  .flow-columns[data-collapsed] {
+    display: grid;
+  }
+
+  .flow-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-8);
+  }
+}

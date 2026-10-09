@@ -1,0 +1,188 @@
+/* 7.6 Sheets und Dialoge: mobil als Bottom Sheet, ab 640 px zentriert. */
+.dialog {
+  width: 100%;
+  max-width: 100%;
+  max-height: 92dvh;
+  margin: auto auto 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-dialog);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.dialog[open] {
+  display: flex;
+  flex-direction: column;
+  animation: sheet-in var(--dur-slow) var(--ease-out);
+}
+
+.dialog[data-closing] {
+  animation: sheet-out 220ms ease-in forwards;
+}
+
+.dialog::backdrop {
+  background: var(--backdrop);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: fade-in var(--dur-slow) var(--ease-out);
+}
+
+.dialog[data-closing]::backdrop {
+  animation: fade-out 220ms ease-in forwards;
+}
+
+.dialog-grip {
+  display: flex;
+  justify-content: center;
+  padding-block: var(--s-2) 0;
+  touch-action: none;
+}
+
+.dialog-grip::before {
+  content: "";
+  width: 2.5rem;
+  height: 0.25rem;
+  border-radius: var(--r-pill);
+  background: var(--border-control);
+}
+
+.dialog-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--card-pad);
+  touch-action: none;
+}
+
+.dialog-head .card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.dialog-body {
+  display: grid;
+  gap: var(--s-5);
+  padding: var(--s-2) var(--card-pad) calc(var(--card-pad) + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dialog-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--card-pad) calc(var(--s-3) + env(safe-area-inset-bottom));
+  border-block-start: 1px solid var(--border);
+}
+
+@keyframes sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
+@keyframes sheet-out {
+  to { transform: translateY(100%); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes fade-out {
+  to { opacity: 0; }
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes pop-out {
+  to { opacity: 0; transform: scale(0.96); }
+}
+
+@media (min-width: 40rem) {
+  .dialog {
+    width: calc(100% - 2 * var(--s-6));
+    max-width: 32.5rem;
+    max-height: min(88dvh, 52rem);
+    margin: auto;
+    border: 1px solid var(--card-edge);
+    border-radius: var(--r-card);
+  }
+
+  .dialog-wide {
+    max-width: 48rem;
+  }
+
+  .dialog[open] {
+    animation-name: pop-in;
+  }
+
+  .dialog[data-closing] {
+    animation-name: pop-out;
+  }
+
+  .dialog-grip {
+    display: none;
+  }
+
+  .dialog-head {
+    padding-block-start: var(--s-3);
+  }
+
+  .dialog-body {
+    padding-block-end: var(--card-pad);
+  }
+}
+
+@media (min-width: 64rem) {
+  .dialog {
+    max-width: 35rem;
+  }
+
+  .dialog-wide {
+    max-width: 52rem;
+  }
+}
+
+/* Inhalt in Dialogen: Schlüssel-Wert-Tabellen */
+.kv {
+  display: grid;
+  margin: 0;
+}
+
+.kv > div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 40%) minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: baseline;
+  min-height: 2.75rem;
+  padding-block: var(--s-2);
+  border-block-end: 1px solid var(--border);
+}
+
+.kv > div:last-child {
+  border-block-end: 0;
+}
+
+.kv dt {
+  color: var(--text-2);
+}
+
+.kv dd {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.kv dd .sub {
+  display: block;
+  color: var(--text-2);
+  font-size: 0.8125rem;
+}

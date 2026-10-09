@@ -83,6 +83,83 @@ final class Energy
     }
 
     /**
+     * Energiefluss-Balken: Quellen (Netzbezug, Speicher, PV) und Verbraucher (Haus, Wallbox, Speicher, Einspeisung)
+     * liegen auf einer gemeinsamen Breite. Die Einspeisung steht in beiden Zerlegungen rechts, so treffen sich
+     * die Klammern oben und unten. Eine Messdifferenz über 50 W wird zur neutralen Restfläche ohne Klammer.
+     *
+     * @return array{total_kw: ?float, segments: list<array{key: string, kw: float}>, sources: list<array{key: string, kw: float, from: float, to: float}>, sinks: list<array{key: string, kw: float, from: float, to: float}>}
+     */
+    public static function flowBar(array $values, array $balance): array
+    {
+        $read = static fn (mixed $value): ?float => $value === null ? null : max(0.0, (float) $value);
+        $parts = [
+            'pv' => $read($values['pv_kw'] ?? null),
+            'discharge' => $read($values['battery_discharge_kw'] ?? null),
+            'import' => $read($values['grid_import_kw'] ?? null),
+            'house' => $read($balance['house_base_kw'] ?? null),
+            'wallbox' => $read($values['wallbox_kw'] ?? null),
+            'charge' => $read($values['battery_charge_kw'] ?? null),
+            'export' => $read($values['grid_export_kw'] ?? null),
+        ];
+        if (count(array_filter($parts, static fn (?float $v): bool => $v !== null)) === 0) {
+            return ['total_kw' => null, 'segments' => [], 'sources' => [], 'sinks' => []];
+        }
+        $kw = array_map(static fn (?float $v): float => ($v ?? 0.0) < 0.01 ? 0.0 : (float) $v, $parts);
+        $self = max(0.0, $kw['pv'] - $kw['export']);
+        $in = $kw['import'] + $kw['discharge'] + $self + $kw['export'];
+        $out = $kw['house'] + $kw['wallbox'] + $kw['charge'] + $kw['export'];
+        $restTop = $out - $in > 0.05 ? $out - $in : 0.0;
+        $restBottom = $in - $out > 0.05 ? $in - $out : 0.0;
+        $total = $in + $restTop;
+        if ($total <= 0.0) {
+            return ['total_kw' => 0.0, 'segments' => [], 'sources' => [], 'sinks' => []];
+        }
+        $span = static function (array $items) use ($total): array {
+            $out = [];
+            $cursor = 0.0;
+            foreach ($items as [$key, $value]) {
+                $from = $cursor / $total;
+                $cursor += $value;
+                if ($key !== 'rest' && $value > 0) {
+                    $out[] = ['key' => $key, 'kw' => round($value, 3), 'from' => round($from, 4), 'to' => round(min(1, $cursor / $total), 4)];
+                }
+            }
+            return $out;
+        };
+        return [
+            'total_kw' => round($total, 3),
+            'segments' => [
+                ['key' => 'grid_in', 'kw' => round($kw['import'], 3)],
+                ['key' => 'battery', 'kw' => round($kw['discharge'], 3)],
+                ['key' => 'rest', 'kw' => round($restTop, 3)],
+                ['key' => 'solar', 'kw' => round($self, 3)],
+                ['key' => 'grid_out', 'kw' => round($kw['export'], 3)],
+            ],
+            'sources' => $span([['grid', $kw['import']], ['battery', $kw['discharge']], ['rest', $restTop], ['pv', $self + $kw['export']]]),
+            'sinks' => $span([['house', $kw['house']], ['wallbox', $kw['wallbox']], ['battery', $kw['charge']], ['rest', $restBottom + max(0.0, $total - $out - $restBottom)], ['grid', $kw['export']]]),
+        ];
+    }
+
+    /** Sekunden bis zum Limit bei gleicher Leistung, null wenn etwas fehlt oder nicht geladen wird. */
+    public static function timeToLimit(?float $soc, ?float $limit, ?float $capacityKwh, ?float $powerKw): ?int
+    {
+        if ($soc === null || $limit === null || $capacityKwh === null || $powerKw === null || $capacityKwh <= 0 || $powerKw < 0.05) {
+            return null;
+        }
+        $missing = max(0.0, $limit - $soc) / 100 * $capacityKwh;
+        return (int) round($missing / ($powerKw * 0.92) * 3600);
+    }
+
+    /** Reichweite beim Limit, linear aus der aktuellen Reichweite geschätzt. */
+    public static function rangeAt(?float $rangeKm, ?float $soc, ?float $limit): ?float
+    {
+        if ($rangeKm === null || $soc === null || $limit === null || $soc < 1) {
+            return null;
+        }
+        return round($rangeKm / $soc * $limit);
+    }
+
+    /**
      * Mittel der Hausleistung. Enthält der Hauszähler die Wallbox, wird sie Stunde für Stunde abgezogen.
      *
      * @param array<int, array{start?:int, kw?:float}> $house
@@ -350,8 +427,8 @@ final class Energy
         return match ($mode) {
             'aus' => 'Aus',
             'schnell' => 'Schnell',
-            'smart_dauerhaft' => 'Smart (+ Dauerhaft)',
-            default => 'Smart',
+            'smart_dauerhaft' => 'Min+Solar',
+            default => 'Solar',
         };
     }
 
@@ -360,8 +437,8 @@ final class Energy
         return match ($mode) {
             'aus' => 'Ladestrom 0 A. Die Wallbox bliebe aus.',
             'schnell' => 'Maximale Ladeleistung ohne Rücksicht auf den Solarüberschuss.',
-            'smart_dauerhaft' => 'Es wird mindestens mit 6 A geladen. Überschuss hebt die Leistung an.',
-            default => 'PV-Überschuss, Ziel nahe 0 W am Zähler. Unter 1,38 kW setzt der Vorschlag aus.',
+            'smart_dauerhaft' => 'Lädt immer mit dem Mindeststrom. Sonnenüberschuss hebt die Leistung an.',
+            default => 'Nur Sonnenüberschuss, Ziel nahe 0 W am Zähler. Unter 1,38 kW setzt der Vorschlag aus.',
         };
     }
 }

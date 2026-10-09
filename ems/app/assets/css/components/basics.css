@@ -1,0 +1,422 @@
+/* Karten, Buttons, Chips, unterstrichene Werte, Kennzahlen, Badges, Tooltips (Abschnitt 7.8, 7.9, 7.11). */
+.card {
+  min-width: 0;
+  padding: var(--card-pad);
+  border: 1px solid var(--card-edge);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.card-flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-height: 2.75rem;
+}
+
+.rule {
+  height: 1px;
+  margin: 0;
+  border: 0;
+  background: var(--border);
+}
+
+.card > .rule {
+  margin-inline: calc(var(--card-pad) * -1);
+}
+
+/* Buttons: Kapseln, Primär in --ink, Sekundär auf --surface-2. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  padding: 0 var(--s-5);
+  border: 0;
+  border-radius: var(--r-pill);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
+}
+
+.btn-primary {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.btn-secondary {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.btn-accent {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ink) 88%, var(--accent));
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--surface-2) 80%, var(--border));
+  }
+}
+
+.text-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.text-danger {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  .text-action:hover {
+    color: var(--text);
+  }
+}
+
+.icon-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--r-pill);
+  color: var(--text-2);
+  transition: background-color var(--dur-fast), color var(--dur-fast);
+}
+
+.icon-btn .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+@media (hover: hover) {
+  .icon-btn:hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+}
+
+/* Kopf-Chip: Icon und Wert in --text-2, öffnet die Energieübersicht. */
+.head-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-pill);
+  color: var(--text-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: background-color var(--dur-fast), color var(--dur-fast);
+}
+
+@media (hover: hover) {
+  .head-chip:hover {
+    background: var(--surface);
+    color: var(--text);
+  }
+}
+
+/* 7.8 Unterstrichene Werte: bedienbar, öffnen einen Dialog. Trefferfläche mindestens 44 × 44 px. */
+.inline-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  margin: -0.75rem -0.25rem;
+  padding: 0 0.25rem;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  text-decoration-color: var(--border-control);
+  transition: text-decoration-color var(--dur-fast), color var(--dur-fast);
+}
+
+.inline-action.align-start {
+  justify-content: flex-start;
+}
+
+.inline-action.align-end {
+  justify-content: flex-end;
+}
+
+@media (hover: hover) {
+  .inline-action:hover {
+    text-decoration-color: var(--accent-strong);
+  }
+}
+
+.inline-action:focus-visible {
+  text-decoration-color: var(--accent-strong);
+}
+
+/* Kennzahl: Label in Versalien darüber, Wert groß. */
+.metric {
+  display: grid;
+  gap: var(--s-1);
+  align-content: start;
+  min-width: 0;
+}
+
+.metric .value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.num-unit {
+  white-space: nowrap;
+}
+
+.metrics-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+
+.metrics-3 > :nth-child(2) {
+  text-align: center;
+  justify-items: center;
+}
+
+.metrics-3 > :nth-child(3) {
+  text-align: end;
+  justify-items: end;
+}
+
+.metrics-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+
+.metrics-2 > :nth-child(2) {
+  text-align: end;
+  justify-items: end;
+}
+
+/* 7.9 Kennzahl-Block für Übersichten */
+.metric-block {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-1) var(--s-4);
+  align-items: center;
+}
+
+.metric-block > .icon {
+  grid-row: span 2;
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.metric-block .block-label {
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  font-weight: 600;
+}
+
+.metric-block .block-lines {
+  grid-column: 2;
+  color: var(--text-2);
+}
+
+@media (min-width: 40rem) {
+  .metric-block {
+    grid-template-columns: auto auto minmax(0, 1fr);
+  }
+
+  .metric-block .block-lines {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+}
+
+.tone-solar { color: var(--accent-strong); }
+.tone-grid-in { color: var(--text); }
+.tone-grid-out { color: var(--data-grid-out); }
+.tone-battery { color: var(--data-battery); }
+.tone-muted { color: var(--text-2); }
+
+/* 7.11 Badges, Pills, Tooltips */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 1.5rem;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-badge);
+  background: var(--data-solar);
+  color: var(--on-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 1.5rem;
+  padding: 0.125rem var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent-on-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pill .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.pill-neutral {
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.tip {
+  position: relative;
+  display: inline-flex;
+}
+
+.tip-body {
+  position: absolute;
+  z-index: 30;
+  inset-block-start: calc(100% + 0.5rem);
+  inset-inline-start: 50%;
+  width: min(17rem, calc(100vw - 2rem));
+  padding: var(--s-3);
+  border-radius: var(--r-field);
+  background: var(--surface);
+  box-shadow: var(--shadow-dialog);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.125rem;
+  text-align: start;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  transform: translateX(-50%);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--dur-fast);
+  pointer-events: none;
+}
+
+.tip-body::before {
+  content: "";
+  position: absolute;
+  inset-block-start: -6px;
+  inset-inline-start: 50%;
+  width: 12px;
+  height: 12px;
+  margin-inline-start: -6px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+
+.tip:focus-within .tip-body,
+.tip.open .tip-body {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (hover: hover) {
+  .tip:hover .tip-body {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+
+/* Zwischenüberschrift zwischen zwei Linien */
+.divider-label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--text-2);
+}
+
+.divider-label::before,
+.divider-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Legende mit Quadraten oder Punkten */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-4);
+  color: var(--text-2);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.swatch {
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 3px;
+  background: currentColor;
+}
+
+.swatch-dot {
+  border-radius: 50%;
+}
+
+.swatch-solar { color: var(--data-solar); }
+.swatch-grid-in { color: var(--data-grid-in); }
+.swatch-grid-out { color: var(--data-grid-out); }
+.swatch-battery { color: var(--data-battery); }
+.swatch-ink { color: var(--text); }

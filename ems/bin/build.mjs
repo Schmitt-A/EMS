@@ -50,6 +50,12 @@ const sprite = `<svg xmlns="http://www.w3.org/2000/svg">${symbols.join('')}</svg
 writeFileSync(join(out, 'icons.svg'), sprite);
 manifest['icons.svg'] = hash(sprite);
 
+// Favicon: Blitz auf Amber, lokal statt aus einem CDN.
+const favicon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#D97706"/>'
+  + '<path transform="translate(4 4)" fill="#1C1917" d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>\n';
+writeFileSync(join(out, 'favicon.svg'), favicon);
+manifest['favicon.svg'] = hash(favicon);
+
 // CSS: @import-Kette bündeln, Nesting für ältere WebViews absenken, minifizieren.
 const css = bundle({
   filename: join(root, 'app/assets/css/app.css'),

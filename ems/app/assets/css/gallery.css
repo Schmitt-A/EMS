@@ -1,0 +1,78 @@
+/* Komponentenübersicht (nur im Demo-Modus): jede Komponente hell und dunkel nebeneinander. */
+.gallery {
+  display: grid;
+  gap: var(--s-12);
+}
+
+.gallery-section {
+  display: grid;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+.gallery-section > header {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.gallery-pair {
+  display: grid;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+.gallery-pane {
+  display: grid;
+  gap: var(--s-5);
+  align-content: start;
+  min-width: 0;
+  padding: var(--s-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.gallery-states {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-4);
+}
+
+.gallery-state {
+  display: grid;
+  gap: var(--s-2);
+  justify-items: start;
+  min-width: 0;
+}
+
+.gallery-state > .caption {
+  color: var(--text-2);
+}
+
+.gallery-narrow {
+  width: 17.5rem;
+  max-width: 100%;
+}
+
+@media (min-width: 64rem) {
+  .gallery-pair {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Erzwungene Zustände, damit die Übersicht Hover, Fokus und Aktiv zeigen kann */
+.is-hover.btn-primary { background: color-mix(in srgb, var(--ink) 88%, var(--accent)); }
+.is-hover.btn-secondary { background: color-mix(in srgb, var(--surface-2) 80%, var(--border)); }
+.is-hover.icon-btn,
+.is-hover.head-chip { background: var(--surface-2); color: var(--text); }
+.is-hover.inline-action { text-decoration-color: var(--accent-strong); }
+.is-hover.text-action { color: var(--text); }
+.is-focus { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+.is-active.btn { transform: scale(0.98); }
+
+.gallery-card {
+  width: 100%;
+  max-width: 36rem;
+}

@@ -86,8 +86,9 @@ try {
           }
           for (const el of document.querySelectorAll('a[href], button, input:not([type=hidden]), select, textarea, [role=slider], summary')) {
             if (!visible(el) || el.closest('p, .prose, .sr-only, .skip-link') || el.matches('input[type=radio], input[type=checkbox]')) continue;
-            const box = el.getBoundingClientRect();
-            if (box.width < 43.5 || box.height < 43.5) out.small.push(`${el.tagName.toLowerCase()} „${(el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 30)}“ ${Math.round(box.width)}×${Math.round(box.height)}`);
+            const w = el.offsetWidth || el.getBoundingClientRect().width;
+            const h = el.offsetHeight || el.getBoundingClientRect().height;
+            if (w < 43.5 || h < 43.5) out.small.push(`${el.tagName.toLowerCase()} „${(el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 30)}“ ${Math.round(w)}×${Math.round(h)}`);
           }
           return out;
         });

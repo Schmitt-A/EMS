@@ -1,0 +1,227 @@
+/*
+ * 7.5 Heimspeicher-Säule. Drei Zonen von unten: Haus (--ink 90 %), Auto (--ink 60 %), Stützung (--accent).
+ * Schwellen und Füllstand kommen als Custom Properties per CSSOM aus battery-column.js.
+ */
+.battery-col {
+  --soc: 0%;
+  --s1: 50%;
+  --s2: 80%;
+  --auto: 100%;
+  display: grid;
+  justify-items: center;
+  gap: var(--s-4);
+}
+
+.bc-figure {
+  display: grid;
+  grid-template-columns: 4rem auto 4rem;
+  align-items: stretch;
+}
+
+.bc-scale {
+  position: relative;
+}
+
+.bc-mark {
+  position: absolute;
+  inset-inline-end: var(--s-2);
+  inset-block-end: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  touch-action: none;
+  transform: translateY(50%);
+  transition: inset-block-end 120ms linear;
+}
+
+.bc-mark[data-mark="priority"] { inset-block-end: var(--s1); }
+.bc-mark[data-mark="buffer"] { inset-block-end: var(--s2); }
+
+.bc-mark[data-dragging] {
+  transition: none;
+  text-decoration-color: var(--accent-strong);
+}
+
+.bc-body {
+  position: relative;
+  width: 7.5rem;
+  height: 15rem;
+  margin-block-start: 0.5rem;
+  border-radius: 1.5rem;
+  background: var(--surface-2);
+  isolation: isolate;
+}
+
+.bc-nub {
+  position: absolute;
+  inset-block-start: -0.5rem;
+  inset-inline-start: 50%;
+  width: 2.5rem;
+  height: 0.5rem;
+  margin-inline-start: -1.25rem;
+  border-radius: 0.375rem 0.375rem 0 0;
+  background: color-mix(in srgb, var(--ink) 90%, transparent);
+}
+
+.bc-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.bc-zone {
+  position: absolute;
+  inset-inline: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: bottom 200ms var(--ease-out), height 200ms var(--ease-out), top 200ms var(--ease-out);
+}
+
+.bc-zone .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.bc-zone[data-small] .icon {
+  display: none;
+}
+
+.bc-zone-house {
+  inset-block-end: 0;
+  height: var(--s1);
+  background: color-mix(in srgb, var(--ink) 90%, transparent);
+  color: var(--on-ink);
+}
+
+.bc-zone-car {
+  inset-block-end: var(--s1);
+  height: max(0%, calc(var(--s2) - var(--s1)));
+  background: color-mix(in srgb, var(--ink) 60%, transparent);
+  color: var(--on-ink);
+}
+
+.bc-zone-boost {
+  inset-block: 0 var(--s2);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.bc-empty {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+  height: calc(100% - var(--soc));
+  background: var(--surface);
+  opacity: 0.55;
+  transition: height 600ms var(--ease-out);
+}
+
+.bc-auto {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: var(--auto);
+  border-block-start: 2px dashed var(--on-accent);
+  opacity: 0.6;
+}
+
+.bc-auto[data-off] {
+  display: none;
+}
+
+.bc-level {
+  position: absolute;
+  inset-inline: -0.25rem;
+  inset-block-end: var(--soc);
+  height: 3px;
+  margin-block-end: -1.5px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 35%, transparent);
+  transition: bottom 600ms var(--ease-out);
+}
+
+.bc-side {
+  position: relative;
+}
+
+.bc-soc {
+  position: absolute;
+  inset-inline-start: var(--s-2);
+  inset-block-end: var(--soc);
+  transform: translateY(50%);
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: bottom 600ms var(--ease-out);
+}
+
+.bc-caption {
+  text-align: center;
+}
+
+.bc-caption strong {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 40rem) {
+  .bc-body {
+    width: 8.75rem;
+    height: 17.5rem;
+  }
+}
+
+/* Erklärliste unter der Säule */
+.zone-list {
+  display: grid;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.zone-item {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+  padding-block: var(--s-3);
+  border-block-end: 1px solid var(--border);
+}
+
+.zone-item:last-child {
+  border-block-end: 0;
+}
+
+.zone-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--r-pill);
+}
+
+.zone-icon .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.zone-icon-house {
+  background: color-mix(in srgb, var(--ink) 90%, transparent);
+  color: var(--on-ink);
+}
+
+.zone-icon-car {
+  background: color-mix(in srgb, var(--ink) 60%, transparent);
+  color: var(--on-ink);
+}
+
+.zone-icon-boost {
+  background: var(--accent);
+  color: var(--on-accent);
+}

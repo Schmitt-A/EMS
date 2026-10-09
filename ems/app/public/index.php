@@ -107,6 +107,9 @@ $snapshot = new Snapshot(store(), ha());
 $snap = $snapshot->build();
 $live = $snapshot->livePayload($snap);
 
+if ($path === '/komponenten' && demo_mode()) {
+    page('komponenten', compact('snap', 'live') + ['title' => 'Komponenten', 'layout' => 'shell']);
+}
 if ($path === '/' ) {
     $yield = safe_yield();
     page('overview', compact('snap', 'live', 'yield') + ['title' => 'Übersicht']);
