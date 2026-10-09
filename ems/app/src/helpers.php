@@ -361,12 +361,18 @@ function save_connection(string $url, ?string $token): void
     @chmod($file, 0600);
 }
 
+/**
+ * Freigabe der Seitenübergänge. Steht inline im Kopf (per CSP-Hash erlaubt), weil Chrome sie beim
+ * Einfügen von <body> liest; app.css lädt dann womöglich noch, und der Übergang bräche ab.
+ */
+const VIEW_TRANSITION_CSS = '@view-transition{navigation:auto}@media (prefers-reduced-motion:reduce){@view-transition{navigation:none}}';
+
 function render(string $view, array $data = []): never
 {
     $data['flash'] = flash();
     $layout = (string) ($data['layout'] ?? 'layout');
     if ($layout === 'shell') {
-        header("Content-Security-Policy: default-src 'self'");
+        header("Content-Security-Policy: default-src 'self'; style-src 'self' 'sha256-" . base64_encode(hash('sha256', VIEW_TRANSITION_CSS, true)) . "'");
         header('X-Content-Type-Options: nosniff');
     }
     extract($data, EXTR_SKIP);

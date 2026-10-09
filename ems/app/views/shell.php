@@ -20,6 +20,7 @@ $isActive = static fn (string $href): bool => $href === '/' ? $current === '/' :
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <style><?= VIEW_TRANSITION_CSS ?></style>
 <?php if ($theme === 'system'): ?>
   <meta name="theme-color" content="#FAF8F5" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#12100E" media="(prefers-color-scheme: dark)">

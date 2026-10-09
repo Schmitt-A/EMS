@@ -307,6 +307,7 @@
 .chart-legend-sums li {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: var(--s-2);
   min-height: 2rem;
   border-block-end: 1px solid var(--border);
 }
@@ -344,16 +345,23 @@
 }
 
 /* Ring */
+/* Ring und Legende nebeneinander, sobald die Legende 14 rem bekommt; sonst darunter. */
 .ring {
-  display: grid;
-  gap: var(--s-4);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-items: center;
+  justify-content: center;
+  gap: var(--s-4);
 }
 
 .ring svg {
+  flex: none;
   width: 11rem;
   height: 11rem;
+}
+
+.ring .chart-legend-sums {
+  flex: 1 1 14rem;
 }
 
 .ring .ring-seg {
@@ -378,13 +386,6 @@
 .ring .ring-sub {
   fill: var(--text-2);
   font-size: 12px;
-}
-
-@media (min-width: 40rem) {
-  .ring {
-    grid-template-columns: auto minmax(0, 1fr);
-    justify-items: start;
-  }
 }
 
 /* Tageswerte unter der Solarprognose */

@@ -5,6 +5,7 @@ declare(strict_types=1);
  * hell und dunkel nebeneinander. Nur im Demo-Modus erreichbar.
  * @var array $snap
  * @var array $live
+ * @var array $overview
  */
 $v = $snap['values'];
 $flow = Energy::flowBar($v, $snap['balance']);
@@ -119,7 +120,13 @@ $section('Energiefluss-Balken', 'Signatur-Komponente: Quellen oben, Verbraucher 
 $section('Ladepunkt-Karte mit Ladebalken', 'Modus, Leistung mit Phasen, Fahrzeug, Ladebalken mit ziehbarem Limit. Zustände: lädt, wartet, Daten fehlen.', static function (string $s) use ($cards, $state): void {
     $i = 0;
     foreach ($cards as $name => $card) {
-        echo $state($name, '<div class="gallery-card">' . ui_chargepoint($card, ['id' => 'g-cp-' . $s . (++$i), 'editable' => $i < 3]) . '</div>');
+        $id = 'g-cp-' . $s . (++$i);
+        echo $state($name, '<div class="gallery-card">' . ui_chargepoint($card, ['id' => $id, 'editable' => $i < 3]) . '</div>');
+        if ($i < 3) {
+            // Rahmen der Sheets; die echten Formulare stehen auf der Seite Laden.
+            echo ui_dialog($id . '-settings', 'Einstellungen: ' . $card['name'], '<p class="body muted">Hier stehen in der App die Ladeparameter, die Regelung im Detail und die Modi.</p>');
+            echo ui_dialog($id . '-vehicle', 'Fahrzeug: ' . $card['vehicle']['name'], '<p class="body muted">Hier stehen in der App Name, Ladelimit und die Entitäten des Fahrzeugs.</p>');
+        }
     }
 });
 
@@ -143,11 +150,11 @@ $section('Formularzeilen', 'Label links, Steuerelement rechts. Select und Eingab
 
 $section('Sheets und Dialoge', 'Mobil Bottom Sheet mit Griff, ab 640 px zentriert. Esc schließt, der Fokus kehrt zurück.', static function (string $s): void {
     echo '<button type="button" class="btn btn-secondary" data-open-dialog="g-dialog-' . $s . '">Dialog öffnen</button>';
-    $body = '<div class="kv">'
+    $body = '<dl class="kv">'
         . '<div><dt>Ladepunkt</dt><dd>Garage</dd></div>'
         . '<div><dt>Geladen</dt><dd>' . e(kwh(7.5)) . '<span class="sub">3:03' . NNBSP . 'h, Ø ' . e(kw(2.4)) . '</span></dd></div>'
         . '<div><dt>Solar</dt><dd>' . ui_pill('100' . NNBSP . '% Solar') . '</dd></div>'
-        . '</div>' . ui_segment('dir-' . $s, 'Richtung', ['dep' => 'Abfahrt', 'arr' => 'Ankunft'], 'dep', ['id' => 'g-dir-' . $s]);
+        . '</dl>' . ui_segment('dir-' . $s, 'Richtung', ['dep' => 'Abfahrt', 'arr' => 'Ankunft'], 'dep', ['id' => 'g-dir-' . $s]);
     echo ui_dialog('g-dialog-' . $s, 'Ladevorgang', $body, ['foot' => '<button type="button" class="text-action text-danger">' . icon('trash-2', 'icon-16') . 'Löschen</button><button type="button" class="btn btn-primary" data-close-dialog>Fertig</button>']);
 });
 
@@ -189,3 +196,4 @@ $section('Diagramme', 'Eigene SVG-Diagramme: Solarprognose als Fläche, Ladevorg
 });
 ?>
 </div>
+<?php view('partials/overview', ['overview' => $overview]);

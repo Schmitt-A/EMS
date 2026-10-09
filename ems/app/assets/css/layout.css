@@ -372,3 +372,39 @@
 .page > .notice {
   margin-block-end: var(--s-4);
 }
+
+/* Ladevorgänge */
+.filters {
+  display: grid;
+  gap: var(--s-3);
+  margin-block-end: var(--s-4);
+}
+
+.period-nav {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+}
+
+.period-label {
+  grid-column: 2;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.sort-form .form-row {
+  border-block-end: 0;
+}
+
+@media (min-width: 64rem) {
+  .filters {
+    grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr) minmax(16rem, 22rem);
+    align-items: center;
+  }
+
+  .split-sessions {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  }
+}

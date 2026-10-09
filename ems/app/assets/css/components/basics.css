@@ -420,3 +420,14 @@
 .swatch-grid-out { color: var(--data-grid-out); }
 .swatch-battery { color: var(--data-battery); }
 .swatch-ink { color: var(--text); }
+
+.btn-danger {
+  background: var(--danger);
+  color: var(--on-ink);
+}
+
+@media (hover: hover) {
+  .btn-danger:hover {
+    background: color-mix(in srgb, var(--danger) 88%, var(--ink));
+  }
+}

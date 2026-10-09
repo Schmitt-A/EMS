@@ -17,10 +17,6 @@
   line-gap-override: 0%;
 }
 
-@view-transition {
-  navigation: auto;
-}
-
 *,
 *::before,
 *::after {
@@ -242,9 +238,5 @@ a {
     animation-iteration-count: 1 !important;
     transition-property: opacity, color, background-color, border-color !important;
     scroll-behavior: auto !important;
-  }
-
-  @view-transition {
-    navigation: none;
   }
 }
