@@ -1,5 +1,5 @@
 // Zeitreihen (9.1, 9.2): Fläche mit monotoner Kurve, Tagesgrenzen gestrichelt, Tag unter der Achse,
-// heute hinterlegt, „Jetzt“-Linie, Peak-Badges mit Tagesenergie, Tages-Min/Max.
+// heute hinterlegt, „Jetzt“-Linie, über dem Plot die Tageswerte (Prognose und Gemessen), Tages-Min/Max.
 // Lange Reihen scrollen waagerecht, die y-Achse bleibt stehen.
 import { svg } from '../core/dom.js';
 import { dayLabel, fmt, NNBSP, timeLabel, weekday } from '../core/format.js';
@@ -8,7 +8,10 @@ import { colorClass, curve, linear, nearest, nice, runs, ticks, unitFromTitle } 
 
 const DAY = 86400000;
 const TOP = 36;
+const BADGE_ROW = 28;
 const MAX_WIDTH = 16000;
+// Breite einer Tages-Kapsel in 12-px-Inter, fett.
+const badgeWidth = (text) => String(text).length * 6.4 + 16;
 let uid = 0;
 
 // Breite einer Beschriftung in 12-px-Inter, grob geschätzt, damit nichts am Rand klebt.
@@ -70,6 +73,20 @@ export function renderTime(figure, payload, state) {
   const hours = dayPx >= 260;
   const bottom = hours ? 46 : 30;
 
+  // Tageswerte über dem Plot: Prognose (Orange) und Gemessen (Schwarz). Passen beide nicht nebeneinander in einen
+  // Tag, stehen sie untereinander; dann bekommt der Plot oben eine zweite Zeile Platz.
+  const peakSeries = visible.find((series) => series.peak) || null;
+  const actualSeries = visible.find((series) => series.key === 'actual') || null;
+  const dayValues = (payload.marks || []).map((mark) => {
+    const full = mark.text && peakSeries ? String(mark.text) : null;
+    const energy = full ? full.split(' ± ')[0] : null;
+    const short = energy ? (/kWh$/.test(energy) ? energy : `${energy}${NNBSP}kWh`) : null;
+    return { mark, full, short, actual: mark.actual && actualSeries ? String(mark.actual) : null };
+  });
+  const pairWidth = (v, text) => (text ? badgeWidth(text) : 0) + (text && v.actual ? 6 : 0) + (v.actual ? badgeWidth(v.actual) : 0);
+  const stacked = dayValues.some((v) => v.short && v.actual && pairWidth(v, v.short) > dayPx - 8);
+  const top = dayValues.some((v) => v.full || v.actual) ? (stacked ? TOP + BADGE_ROW : TOP) : TOP;
+
   let axis = null;
   if (payload.axes && payload.axes[unitKey]) {
     const a = payload.axes[unitKey];
@@ -81,14 +98,14 @@ export function renderTime(figure, payload, state) {
     const n = nice(maxY * 1.08, 4);
     axis = { max: n.max, step: n.step, dataMax: n.max, decimals: n.step < 1 ? 1 : 0, title: payload.yTitle };
   }
-  const y = linear([0, axis.max], [height - bottom, TOP]);
+  const y = linear([0, axis.max], [height - bottom, top]);
   const unit = style._unit || unitFromTitle(axis.title);
   drawAxis(f.yAxis, y, ticks(axis.dataMax ?? axis.max, axis.step), (v) => fmt(v, axis.decimals), { unit });
   let y1 = null;
   if (f.y1Axis) {
     const max1 = Math.max(1, ...right.flatMap((series) => (series.data || []).map((p) => p.y ?? 0)));
     const n1 = nice(max1 * 1.05, 4);
-    y1 = linear([0, n1.max], [height - bottom, TOP]);
+    y1 = linear([0, n1.max], [height - bottom, top]);
     drawAxis(f.y1Axis, y1, ticks(n1.max, n1.step), (v) => fmt(v, n1.step < 1 ? 1 : 0), { right: true, unit: unitFromTitle(payload.y1Title) });
   }
 
@@ -100,7 +117,7 @@ export function renderTime(figure, payload, state) {
   // Heute hinterlegt, damit der aktuelle Tag beim Scrollen eindeutig bleibt.
   if (today[1] > bounds[0] && today[0] < bounds[1]) {
     const from = x(Math.max(today[0], bounds[0]));
-    svg('rect', { class: 'today-zone', x: from, y: TOP - 8, width: x(Math.min(today[1], bounds[1])) - from, height: height - bottom - TOP + 8 }, plot);
+    svg('rect', { class: 'today-zone', x: from, y: top - 8, width: x(Math.min(today[1], bounds[1])) - from, height: height - bottom - top + 8 }, plot);
   }
   svg('line', { class: 'base-line', x1: 0, x2: plotWidth, y1: y(0), y2: y(0) }, plot);
 
@@ -109,7 +126,7 @@ export function renderTime(figure, payload, state) {
   const dayY = hours ? height - 6 : height - 9;
   for (const mark of marks) {
     if (mark.start > bounds[0] + 1000 && mark.start < bounds[1]) {
-      svg('line', { class: 'day-line', x1: x(mark.start), x2: x(mark.start), y1: TOP - 8, y2: height - bottom }, plot);
+      svg('line', { class: 'day-line', x1: x(mark.start), x2: x(mark.start), y1: top - 8, y2: height - bottom }, plot);
     }
     const from = Math.max(mark.start, bounds[0]);
     const to = Math.min(mark.start + DAY, bounds[1]);
@@ -159,26 +176,34 @@ export function renderTime(figure, payload, state) {
     lines.push({ series, xs: (series.data || []).map((p) => p.x), scaleY });
   }
 
-  // Peak-Badge pro Tag über dem höchsten Punkt der Prognose, mit Unsicherheit, wenn sie in den Tag passt.
-  const peakSeries = visible.find((series) => series.peak) || null;
-  if (peakSeries) {
-    for (const mark of marks) {
-      if (!mark.text || mark.x < bounds[0] || mark.x > bounds[1]) continue;
-      const inDay = (peakSeries.data || []).filter((p) => p.x >= mark.start && p.x < mark.start + DAY && p.y !== null);
-      if (!inDay.length) continue;
-      const top = inDay.reduce((best, p) => (p.y > best.y ? p : best), inDay[0]);
-      const full = String(mark.text);
-      const [energy] = full.split(' ± ');
-      const short = /kWh$/.test(energy) ? energy : `${energy}${NNBSP}kWh`;
-      const dayLeft = Math.max(x(mark.start), x(bounds[0])) + 2;
-      const dayRight = Math.min(x(mark.start + DAY), x(bounds[1])) - 2;
-      const label = dayRight - dayLeft >= full.length * 6.4 + 20 ? full : short;
-      const w = label.length * 6.4 + 16;
-      const bx = dayRight - dayLeft < w ? x(top.x) - w / 2 : Math.max(dayLeft, Math.min(dayRight - w, x(top.x) - w / 2));
-      const by = Math.max(4, y(top.y) - 32);
-      const badge = svg('g', { class: 'peak' }, plot);
-      svg('rect', { x: bx, y: by, width: w, height: 24, rx: 8 }, badge);
-      svg('text', { x: bx + w / 2, y: by + 16, 'text-anchor': 'middle' }, badge).textContent = label;
+  // Tageswerte oben in jedem Tag: Prognose mit Unsicherheit, wenn sie passt, daneben oder darunter gemessen.
+  for (const v of dayValues) {
+    const { mark } = v;
+    if (!v.full && !v.actual) continue;
+    const dayLeft = Math.max(x(mark.start), x(bounds[0])) + 2;
+    const dayRight = Math.min(x(mark.start + DAY), x(bounds[1])) - 2;
+    if (dayRight - dayLeft < 24) continue;
+    const room = dayRight - dayLeft;
+    const forecast = v.full ? (pairWidth(v, v.full) <= room || (stacked && badgeWidth(v.full) <= room) ? v.full : v.short) : null;
+    const items = [];
+    if (forecast) items.push({ text: forecast, cls: 'peak' });
+    if (v.actual) items.push({ text: v.actual, cls: 'peak peak-actual' });
+    const middle = (dayLeft + dayRight) / 2;
+    const place = (item, row, cx) => {
+      const w = badgeWidth(item.text);
+      const bx = room >= w ? Math.max(dayLeft, Math.min(dayRight - w, cx - w / 2)) : cx - w / 2;
+      const badge = svg('g', { class: item.cls }, plot);
+      svg('rect', { x: bx, y: 4 + row * BADGE_ROW, width: w, height: 24, rx: 8 }, badge);
+      svg('text', { x: bx + w / 2, y: 20 + row * BADGE_ROW, 'text-anchor': 'middle' }, badge).textContent = item.text;
+    };
+    if (items.length === 2 && !stacked) {
+      const wa = badgeWidth(items[0].text);
+      const wb = badgeWidth(items[1].text);
+      const startX = Math.max(dayLeft, Math.min(dayRight - wa - 6 - wb, middle - (wa + 6 + wb) / 2));
+      place(items[0], 0, startX + wa / 2);
+      place(items[1], 0, startX + wa + 6 + wb / 2);
+    } else {
+      items.forEach((item, row) => place(item, row, middle));
     }
   }
 
@@ -221,7 +246,7 @@ export function renderTime(figure, payload, state) {
 
   // „Jetzt“: senkrechte Linie mit Punkt auf der ersten Serie
   if (now > bounds[0] && now < bounds[1]) {
-    svg('line', { class: 'now-line', x1: x(now), x2: x(now), y1: TOP - 8, y2: height - bottom }, plot);
+    svg('line', { class: 'now-line', x1: x(now), x2: x(now), y1: top - 8, y2: height - bottom }, plot);
     const first = lines[0];
     if (first) {
       const i = nearest(first.xs, now);
@@ -231,7 +256,7 @@ export function renderTime(figure, payload, state) {
   }
 
   // Fadenkreuz, Tooltip, Tippen und Tastatur über alle Zeitpunkte der sichtbaren Serien
-  const cross = svg('line', { class: 'crosshair', x1: 0, x2: 0, y1: TOP - 8, y2: height - bottom, visibility: 'hidden' }, plot);
+  const cross = svg('line', { class: 'crosshair', x1: 0, x2: 0, y1: top - 8, y2: height - bottom, visibility: 'hidden' }, plot);
   const primary = lines.find((line) => line.xs.length) || null;
   const stamps = [...new Set(lines.flatMap((line) => line.xs))].sort((a, b) => a - b);
   const valueOf = (line, ms) => {

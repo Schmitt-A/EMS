@@ -141,6 +141,8 @@ final class Snapshot
             'wallbox_amps' => $amps['num'] ?? null,
             'wallbox_phases_raw' => $phases['state'] ?? null,
             'wallbox_force_raw' => $force['state'] ?? null,
+            'wallbox_force_options' => (array) ($force['attributes']['options'] ?? []),
+            'wallbox_phases_options' => (array) ($phases['attributes']['options'] ?? []),
             'wallbox_session_kwh' => $sessionEnergy[0],
             'priority_soc' => (float) $cfg['battery_strategy']['priority_soc'],
             'radiation' => null,
@@ -180,7 +182,7 @@ final class Snapshot
             'car_odometer_km' => null, 'car_limit_soc' => null, 'battery_reserve_soc' => null,
             'grid_import_kw' => null, 'grid_export_kw' => null, 'house_kw' => null,
             'house_includes_wallbox' => true, 'wallbox_kw' => null, 'wallbox_amps' => null, 'wallbox_car_raw' => null,
-            'wallbox_phases_raw' => null, 'wallbox_force_raw' => null, 'wallbox_session_kwh' => null, 'priority_soc' => 80, 'radiation_rows' => [],
+            'wallbox_phases_raw' => null, 'wallbox_force_raw' => null, 'wallbox_force_options' => [], 'wallbox_phases_options' => [], 'wallbox_session_kwh' => null, 'priority_soc' => 80, 'radiation_rows' => [],
         ], $base['values'] ?: []);
         $base['values'] = $values;
         $balance = Energy::balance($values);

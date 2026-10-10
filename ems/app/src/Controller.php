@@ -20,6 +20,15 @@ final class Controller
     /** Timer gilt als abgelaufen: die nächste Entscheidung fällt sofort (evcc: elapsePVTimer). */
     private const ELAPSED = 1;
     private const KW_PER_A = Energy::KW_PER_AMP;
+    /**
+     * Werte der go-e-Auswahlen nach Bedeutung: die Ziffern der go-e-API (Integration von marq24) oder die Namen der
+     * MQTT-Integration von syssi. Gelesen und geschrieben wird über die Bedeutung, die Option kommt aus der Liste
+     * der Entität in Home Assistant.
+     */
+    private const OPTIONS = [
+        'frc' => ['neutral' => ['0', 'neutral'], 'off' => ['1', 'dont_charge', 'off'], 'on' => ['2', 'charge', 'on']],
+        'psm' => ['auto' => ['0', 'auto'], '1p' => ['1', 'one_phase', 'force_1'], '3p' => ['2', 'three_phases', 'force_3']],
+    ];
 
     public function __construct(private ConfigStore $store, private HaSource $ha) {}
 
@@ -68,21 +77,46 @@ final class Controller
             'off_s' => max(0, (int) ($c['off_delay_s'] ?? 180)),
             'guard_s' => max(0, (int) ($c['switch_s'] ?? 60)),
             'reported' => self::reported($values),
+            'options' => [
+                'frc' => (array) ($values['wallbox_force_options'] ?? []),
+                'psm' => (array) ($values['wallbox_phases_options'] ?? []),
+            ],
         ];
     }
 
-    /** Was die Wallbox meldet: Freigabe (frc), Strom (amp) und Phasen (psm, bei der go-e 1 = einphasig, 2 = dreiphasig). */
+    /** Bedeutung eines Werts: frc neutral/off/on, psm auto/1p/3p; null, wenn unbekannt oder offline. */
+    public static function meaning(string $key, mixed $raw): ?string
+    {
+        $value = strtolower(trim((string) ($raw ?? '')));
+        foreach (self::OPTIONS[$key] as $meaning => $candidates) {
+            if (in_array($value, $candidates, true)) {
+                return $meaning;
+            }
+        }
+        return null;
+    }
+
+    /** Die Option, die diese Entität für eine Bedeutung erwartet, aus ihrer Liste in Home Assistant. */
+    public static function option(string $key, string $meaning, array $options): ?string
+    {
+        foreach ($options as $option) {
+            if (in_array(strtolower(trim((string) $option)), self::OPTIONS[$key][$meaning], true)) {
+                return (string) $option;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Was die Wallbox meldet, als Bedeutung: Freigabe (frc on/off/neutral), Strom (amp) und Phasen (psm 1p/3p/auto).
+     * Offline meldet Home Assistant unavailable oder unknown; das ist kein Wert, sonst sähe es nach Fremdzugriff aus.
+     */
     public static function reported(array $values): array
     {
-        // Offline meldet Home Assistant unavailable oder unknown; das ist kein Wert, sonst sähe es nach Fremdzugriff aus.
-        $state = static function (mixed $raw): ?string {
-            $text = trim((string) ($raw ?? ''));
-            return in_array(strtolower($text), ['', 'unavailable', 'unknown'], true) ? null : $text;
-        };
         return [
-            'frc' => $state($values['wallbox_force_raw'] ?? null),
+            'frc' => self::meaning('frc', $values['wallbox_force_raw'] ?? null),
             'amp' => isset($values['wallbox_amps']) && $values['wallbox_amps'] !== null ? (int) round((float) $values['wallbox_amps']) : null,
-            'psm' => $state($values['wallbox_phases_raw'] ?? null),
+            'psm' => self::meaning('psm', $values['wallbox_phases_raw'] ?? null),
         ];
     }
 
@@ -104,11 +138,11 @@ final class Controller
         // Erster Schritt: den Stand der Wallbox übernehmen, wie evcc beim Start.
         if ($s['step_at'] === null) {
             $r = $in['reported'] ?? [];
-            $s['enabled'] = ($r['frc'] ?? null) === '2' || !empty($in['charging']);
+            $s['enabled'] = ($r['frc'] ?? null) === 'on' || !empty($in['charging']);
             $s['amps'] = isset($r['amp']) && $r['amp'] !== null ? max($minA, min($maxA, (int) $r['amp'])) : $minA;
             $s['phases'] = match ($r['psm'] ?? null) {
-                '1' => 1,
-                '2' => 3,
+                '1p' => 1,
+                '3p' => 3,
                 default => (int) ($s['phases'] ?: 3),
             };
         }
@@ -395,7 +429,7 @@ final class Controller
      * beim Sperren nur frc 1. Ein gemeldeter Wert, der nach der Karenzzeit nicht mehr dem Geschriebenen entspricht,
      * zählt als Fremdzugriff; nach drei in zehn Minuten pausiert die Regelung, statt gegen evcc zu schalten.
      */
-    public function apply(array $s, array $cfg, array $reported, int $now): array
+    public function apply(array $s, array $cfg, array $reported, int $now, array $options = []): array
     {
         if ($reported['frc'] === null) {
             // Wallbox offline oder ohne Zwangszustand: nichts schreiben, den Stand halten.
@@ -404,7 +438,7 @@ final class Controller
         }
         $m = $cfg['mapping'];
         $ids = ['frc' => (string) ($m['wallbox_force'] ?? ''), 'amp' => (string) ($m['wallbox_amps'] ?? ''), 'psm' => (string) ($m['wallbox_phases'] ?? '')];
-        $want = ['frc' => $s['enabled'] ? '2' : '1', 'amp' => (int) $s['amps'], 'psm' => (int) $s['phases'] === 3 ? '2' : '1'];
+        $want = ['frc' => $s['enabled'] ? 'on' : 'off', 'amp' => (int) $s['amps'], 'psm' => (int) $s['phases'] === 3 ? '3p' : '1p'];
         $foreign = [];
         foreach ($want as $key => $value) {
             $written = $s['written'][$key] ?? null;
@@ -429,8 +463,8 @@ final class Controller
 
         // Nie kurz zu viel: hoch auf drei Phasen erst den Strom senken, runter auf eine erst die Phase wechseln.
         $before = match ($reported['psm']) {
-            '2' => 3,
-            '1' => 1,
+            '3p' => 3,
+            '1p' => 1,
             default => (int) $s['phases'],
         };
         $order = !$s['enabled'] ? ['frc'] : ((int) $s['phases'] > $before ? ['amp', 'psm', 'frc'] : ['psm', 'amp', 'frc']);
@@ -443,7 +477,7 @@ final class Controller
                 continue;
             }
             try {
-                $this->write($ids[$key], $key, $want[$key]);
+                $this->write($ids[$key], $key, $want[$key], (array) ($options[$key] ?? []));
             } catch (Throwable $e) {
                 $s['log'] = self::log($s['log'], $now, 'Schreiben fehlgeschlagen (' . $key . '): ' . $e->getMessage());
                 break;
@@ -466,7 +500,9 @@ final class Controller
         $message = 'EMS regelt nicht mehr.';
         if ($id !== '') {
             try {
-                $this->ha->service('select', 'select_option', ['entity_id' => $id, 'option' => '0']);
+                $row = $this->ha->state($id);
+                $neutral = self::option('frc', 'neutral', (array) ($row['attributes']['options'] ?? [])) ?? '0';
+                $this->ha->service('select', 'select_option', ['entity_id' => $id, 'option' => $neutral]);
                 $state['log'] = self::log($state['log'], $now, 'EMS aus, Wallbox freigegeben (neutral).');
                 $message = 'EMS regelt nicht mehr, die Wallbox ist freigegeben.';
             } catch (Throwable $e) {
@@ -538,7 +574,7 @@ final class Controller
             }
         }
         if (self::active($cfg) && $state['paused'] === null) {
-            $state = $this->apply($state, $cfg, $in['reported'], $now);
+            $state = $this->apply($state, $cfg, $in['reported'], $now, $in['options']);
             $state = $this->wake($state, $cfg, $in, $now);
         }
         $this->store->put(self::KEY, $state);
@@ -568,13 +604,18 @@ final class Controller
         return $s;
     }
 
-    private function write(string $entity, string $key, int|string $value): void
+    private function write(string $entity, string $key, int|string $value, array $options): void
     {
         if ($key === 'amp') {
             $this->ha->setNumber($entity, (float) $value);
             return;
         }
-        $this->ha->service('select', 'select_option', ['entity_id' => $entity, 'option' => (string) $value]);
+        // Ohne Liste die Ziffer der go-e-API, sonst die passende Option der Entität.
+        $option = $options === [] ? self::OPTIONS[$key][(string) $value][0] : self::option($key, (string) $value, $options);
+        if ($option === null) {
+            throw new RuntimeException($entity . ' kennt keinen Wert für „' . $value . '“.');
+        }
+        $this->ha->service('select', 'select_option', ['entity_id' => $entity, 'option' => $option]);
     }
 
     private static function same(string $key, mixed $a, mixed $b): bool
@@ -588,9 +629,9 @@ final class Controller
     private static function writeText(string $key, int|string $value): string
     {
         return match ($key) {
-            'frc' => $value === '2' ? 'Wallbox freigegeben.' : 'Wallbox gesperrt.',
+            'frc' => $value === 'on' ? 'Wallbox freigegeben.' : 'Wallbox gesperrt.',
             'amp' => 'Ladestrom ' . $value . NNBSP . 'A.',
-            default => $value === '2' ? 'Dreiphasig.' : 'Einphasig.',
+            default => $value === '3p' ? 'Dreiphasig.' : 'Einphasig.',
         };
     }
 
@@ -606,7 +647,7 @@ final class Controller
     {
         $m = $cfg['mapping'];
         $out = [];
-        $check = static function (string $key, string $label, ?array $options) use ($m, $index, &$out): void {
+        $check = static function (string $key, string $label, ?string $select, array $meanings) use ($m, $index, &$out): void {
             $id = (string) ($m[$key] ?? '');
             if ($id === '') {
                 $out[] = $label . ' ist nicht zugeordnet.';
@@ -616,17 +657,19 @@ final class Controller
                 $out[] = $label . ' (' . $id . ') ist in Home Assistant nicht erreichbar.';
                 return;
             }
-            if ($options !== null) {
-                $have = array_map('strval', (array) ($index[$id]['attributes']['options'] ?? []));
-                if (array_diff($options, $have)) {
-                    $out[] = $label . ' (' . $id . ') kennt die Werte ' . implode(', ', $options) . ' nicht.';
-                }
+            if ($select === null) {
+                return;
+            }
+            $have = (array) ($index[$id]['attributes']['options'] ?? []);
+            $missing = array_values(array_filter($meanings, static fn (string $meaning): bool => self::option($select, $meaning, $have) === null));
+            if ($missing) {
+                $out[] = $label . ' (' . $id . ') hat keine passenden Werte. Gefunden: ' . ($have ? implode(', ', array_map('strval', $have)) : 'keine') . '.';
             }
         };
-        $check('wallbox_force', 'Der Zwangszustand (frc)', ['1', '2']);
-        $check('wallbox_amps', 'Der Ladestrom (amp)', null);
-        if (($cfg['charge']['phase_mode'] ?? 'auto') === 'auto' && (string) ($m['wallbox_phases'] ?? '') !== '') {
-            $check('wallbox_phases', 'Die Phasenumschaltung (psm)', ['1', '2']);
+        $check('wallbox_force', 'Der Zwangszustand (frc)', 'frc', ['off', 'on']);
+        $check('wallbox_amps', 'Der Ladestrom (amp)', null, []);
+        if ((string) ($m['wallbox_phases'] ?? '') !== '') {
+            $check('wallbox_phases', 'Die Phasenumschaltung (psm)', 'psm', ['1p', '3p']);
         }
         if ((string) ($m['wallbox_power'] ?? '') === '') {
             $out[] = 'Die Ladeleistung der Wallbox ist nicht zugeordnet.';

@@ -13,6 +13,12 @@
 }
 
 .chart-tall { --chart-h: 18rem; }
+/* Solarprognose in voller Breite: höher, ab dem Tablet noch einmal. */
+.chart-xl { --chart-h: 20rem; }
+
+@media (min-width: 48rem) {
+  .chart-xl { --chart-h: 24rem; }
+}
 .chart-short { --chart-h: 11rem; }
 
 .chart-frame {
@@ -255,6 +261,15 @@
 .chart .peak text {
   fill: var(--on-accent);
   font-weight: 700;
+}
+
+/* Gemessen neben der Prognose: in der Farbe der gemessenen Linie. */
+.chart .peak-actual rect {
+  fill: var(--ink);
+}
+
+.chart .peak-actual text {
+  fill: var(--on-ink);
 }
 
 .chart .series-hidden {

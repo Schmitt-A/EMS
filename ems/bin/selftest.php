@@ -176,7 +176,7 @@ check($noon > 4 && $noon <= 10, '1000 W/m² bleibt unter dem Limit, ist ' . $noo
 check(abs($morning - $noon) < 0.001, 'die Stunde verändert die Leistung nicht');
 
 // Regelung wie evcc: Timer auf Bedingungen, Mindeststrom vor dem Stoppen, Phasen mit Ein- und Ausschaltverzögerung.
-$ctl = ['mode' => 'smart', 'connected' => true, 'charging' => false, 'available_kw' => 0.0, 'zone' => 'car', 'min_a' => 6, 'max_a' => 16, 'phase_mode' => 'auto', 'share' => 1.0, 'on_s' => 60, 'off_s' => 180, 'guard_s' => 60, 'reported' => ['frc' => '1', 'amp' => 6, 'psm' => '1']];
+$ctl = ['mode' => 'smart', 'connected' => true, 'charging' => false, 'available_kw' => 0.0, 'zone' => 'car', 'min_a' => 6, 'max_a' => 16, 'phase_mode' => 'auto', 'share' => 1.0, 'on_s' => 60, 'off_s' => 180, 'guard_s' => 60, 'reported' => ['frc' => 'off', 'amp' => 6, 'psm' => '1p']];
 $run = static fn (array $state, array $patch, int $now): array => Controller::step($state, $patch + $ctl, $now)['state'];
 $st = $run([], ['available_kw' => 2.0], 1000);
 check($st['enabled'] === false && $st['phases'] === 1 && $st['pv_action'] === 'enable', 'Erster Schritt übernimmt die Wallbox, der Ein-Timer läuft');
@@ -239,19 +239,29 @@ $wallHa = new class implements HaSource {
 };
 $wallCfg = ['mapping' => ['wallbox_force' => 'select.frc', 'wallbox_amps' => 'number.amp', 'wallbox_phases' => 'select.psm']];
 $wall = new Controller(new ConfigStore(':memory:'), $wallHa);
-$written = $wall->apply(['enabled' => true, 'amps' => 8, 'phases' => 3] + Controller::initial(), $wallCfg, ['frc' => '1', 'amp' => 6, 'psm' => '1'], 1000);
+$written = $wall->apply(['enabled' => true, 'amps' => 8, 'phases' => 3] + Controller::initial(), $wallCfg, ['frc' => 'off', 'amp' => 6, 'psm' => '1p'], 1000);
 check($wallHa->calls === [['number.amp', 8], ['select.psm', '2'], ['select.frc', '2']], 'Freigeben dreiphasig: erst Strom, dann Phasen, dann frc 2');
 $wallHa->calls = [];
-$again = $wall->apply($written, $wallCfg, ['frc' => '1', 'amp' => 6, 'psm' => '1'], 1030);
+$again = $wall->apply($written, $wallCfg, ['frc' => 'off', 'amp' => 6, 'psm' => '1p'], 1030);
 check($wallHa->calls === [], 'Innerhalb der Karenzzeit kein zweites Schreiben');
-$taken = $wall->apply($written, $wallCfg, ['frc' => '2', 'amp' => 10, 'psm' => '2'], 1070);
+$taken = $wall->apply($written, $wallCfg, ['frc' => 'on', 'amp' => 10, 'psm' => '3p'], 1070);
 check(count($taken['conflicts']) === 1 && $wallHa->calls === [['number.amp', 8]], 'Ein fremder Strom zählt als Fremdzugriff und wird zurückgesetzt');
-$taken = $wall->apply($taken, $wallCfg, ['frc' => '2', 'amp' => 10, 'psm' => '2'], 1140);
-$taken = $wall->apply($taken, $wallCfg, ['frc' => '2', 'amp' => 10, 'psm' => '2'], 1210);
+$taken = $wall->apply($taken, $wallCfg, ['frc' => 'on', 'amp' => 10, 'psm' => '3p'], 1140);
+$taken = $wall->apply($taken, $wallCfg, ['frc' => 'on', 'amp' => 10, 'psm' => '3p'], 1210);
 check($taken['paused'] !== null, 'Drei Fremdzugriffe in zehn Minuten pausieren die Regelung');
 $wallHa->calls = [];
-$wall->apply(['enabled' => false] + Controller::initial(), $wallCfg, ['frc' => '2', 'amp' => 8, 'psm' => '2'], 2000);
+$wall->apply(['enabled' => false] + Controller::initial(), $wallCfg, ['frc' => 'on', 'amp' => 8, 'psm' => '3p'], 2000);
 check($wallHa->calls === [['select.frc', '1']], 'Sperren schreibt nur frc 1');
+// MQTT-Integration von syssi: dieselben Bedeutungen mit Namen statt Ziffern.
+$mqtt = ['frc' => ['neutral', 'dont_charge', 'charge'], 'psm' => ['auto', 'one_phase', 'three_phases']];
+$wallHa->calls = [];
+$wall->apply(['enabled' => true, 'amps' => 16, 'phases' => 3] + Controller::initial(), $wallCfg, Controller::reported(['wallbox_force_raw' => 'dont_charge', 'wallbox_amps' => 16, 'wallbox_phases_raw' => 'one_phase']), 2500, $mqtt);
+check($wallHa->calls === [['select.psm', 'three_phases'], ['select.frc', 'charge']], 'MQTT-Integration: schreibt three_phases und charge');
+check(Controller::meaning('frc', 'dont_charge') === 'off' && Controller::meaning('psm', 'three_phases') === '3p' && Controller::meaning('frc', 'unavailable') === null, 'Gemeldete Namen werden zu Bedeutungen');
+$mqttIndex = ['select.frc' => ['attributes' => ['options' => $mqtt['frc']]], 'number.amp' => ['attributes' => []], 'select.psm' => ['attributes' => ['options' => $mqtt['psm']]], 'sensor.power' => ['attributes' => []]];
+$mqttCfg = ['charge' => ['phase_mode' => 'auto'], 'mapping' => $wallCfg['mapping'] + ['wallbox_power' => 'sensor.power']];
+check(Controller::problems($mqttCfg, $mqttIndex) === [], 'Vorbedingungen passen auch zur MQTT-Integration');
+check(count(Controller::problems($mqttCfg, ['select.frc' => ['attributes' => ['options' => ['a', 'b']]]] + $mqttIndex)) === 1, 'Unbekannte Werte nennen die gefundenen Optionen');
 $wallHa->calls = [];
 $offline = $wall->apply(['enabled' => true, 'amps' => 8, 'phases' => 3] + Controller::initial(), $wallCfg, Controller::reported(['wallbox_force_raw' => 'unavailable', 'wallbox_amps' => null, 'wallbox_phases_raw' => 'unknown']), 3000);
 check($wallHa->calls === [] && $offline['note'] === 'offline' && $offline['conflicts'] === [], 'Offline schreibt EMS nichts und zählt keinen Fremdzugriff');

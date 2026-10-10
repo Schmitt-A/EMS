@@ -284,6 +284,21 @@ final class Series
         $boundEnd = max($boundEnd, $viewEnd);
         $captions = Forecast::captions($this->store->pdo(), $plant);
         $scale = Forecast::energyScale($yMax);
+        // Gemessen je Tag: abgeschlossene Tage aus der Tabelle daily, heute bis jetzt aus dem Zähler.
+        $measured = [];
+        foreach ($this->store->pdo()->query('SELECT day, actual_kwh FROM daily') ?: [] as $row) {
+            if ($row['actual_kwh'] !== null) {
+                $measured[(string) $row['day']] = (float) $row['actual_kwh'];
+            }
+        }
+        try {
+            $yieldToday = $this->yieldToday($mapping);
+        } catch (Throwable) {
+            $yieldToday = null;
+        }
+        if ($yieldToday !== null) {
+            $measured[$today->format('Y-m-d')] = $yieldToday;
+        }
         $marks = [];
         $cursor = (new DateTimeImmutable('@' . $boundStart))->setTimezone($tz)->setTime(0, 0);
         $endMark = (new DateTimeImmutable('@' . $boundEnd))->setTimezone($tz);
@@ -295,6 +310,8 @@ final class Series
                 'x' => $cursor->modify('+12 hours')->getTimestamp() * 1000,
                 'label' => self::dayLabel($day),
                 'text' => $caption ? Forecast::captionText($caption['kwh'], $caption['sd']) : null,
+                // Gemessen an diesem Tag, für die schwarze Kapsel neben der Prognose; nur bis heute.
+                'actual' => isset($measured[$day]) && $day <= $today->format('Y-m-d') ? kwh($measured[$day]) : null,
             ];
             $cursor = $cursor->modify('+1 day');
         }

@@ -1,8 +1,9 @@
 <?php
 declare(strict_types=1);
 /**
- * Prognose (8): Solarprognose über drei Tage mit Tageswerten, Ist und Prognose mit Güte.
- * Ebene 2: Rechnung, Modelle, Prognosedaten, Faktor gegen Regression, Wetter, Wie gerechnet wird.
+ * Prognose (8): Solarprognose über drei Tage in voller Breite, über jedem Tag Prognose und Gemessen, darunter die
+ * Tageswerte und die Güte. Ebene 2: Ist und Prognose, Rechnung, Modelle, Prognosedaten, Faktor gegen Regression,
+ * Wetter, Wie gerechnet wird.
  * @var array $snap
  * @var array $live
  * @var array $overview
@@ -36,50 +37,36 @@ if (!empty($weather['fetched_at'])) {
         . (!empty($weather['issue']) ? ', Modelllauf ' . date('d.m. H:i', (int) $weather['issue']) : '') . '.';
 }
 ?>
-<div class="split split-wide">
-  <section class="card stack" aria-labelledby="solar-title">
-    <h2 class="card-title" id="solar-title">Solarprognose</h2>
-    <?= ui_chart('time', '/api/series?chart=power', 'Solarprognose für heute und die zwei folgenden Tage', [
-        'window' => '3',
-        'class' => 'chart-tall',
-        'tools' => '<div class="chart-tools">' . ui_segment('power-window', 'Zeitraum', ['today' => 'Heute', '3' => '3 Tage', '7' => '7 Tage'], '3', ['compact' => true, 'id' => 'pw', 'attrs' => ['data-chart-window' => true]])
-            . '<div class="chart-toggles">'
-            . '<button type="button" class="toggle-chip c-solar" aria-pressed="true" data-chart-series="forecast"><span class="swatch swatch-dot"></span>Prognose</button>'
-            . '<button type="button" class="toggle-chip c-ink" aria-pressed="true" data-chart-series="actual"><span class="swatch swatch-dot"></span>Gemessen</button>'
-            . '</div></div>',
-        'style' => [
-            'forecast' => ['color' => 'solar', 'type' => 'area', 'peak' => true, 'label' => 'Prognose', 'unit' => 'kW', 'decimals' => 2],
-            'actual' => ['color' => 'ink', 'width' => 'bold', 'label' => 'Gemessen', 'unit' => 'kW', 'decimals' => 2],
-        ],
-        'empty' => 'Noch keine Prognose. Die DWD-Datei wird beim nächsten Abruf geladen.',
-    ]) ?>
-    <div class="day-values">
-      <?= ui_metric('Heute, Rest', ui_live_num('remaining_kwh', $f['remaining_kwh'] ?? null, 'kWh'), ['after' => '<span class="caption muted">von ' . e(kwh($f['today_kwh'] ?? null)) . '</span>' . ui_spread($f['today_sd'] ?? null)]) ?>
-      <?= ui_metric('Morgen', ui_num($f['tomorrow_kwh'] ?? null, 'kWh'), ['after' => ui_spread($f['tomorrow_sd'] ?? null)]) ?>
-      <?= ui_metric('Übermorgen', ui_num($after !== null ? (float) $after : null, 'kWh'), ['after' => ui_spread($captions[$day(2)]['sd'] ?? null)]) ?>
-    </div>
-    <p class="caption muted">Gemessen heute <?= e(kwh($yield)) ?>, gestern <?= e(kwh($yesterday)) ?>. <?= e($stamp) ?></p>
-  </section>
-  <section class="card stack" aria-labelledby="quality-title">
-    <h2 class="card-title" id="quality-title">Ist und Prognose</h2>
-    <?= ui_chart('bars', '/api/series?chart=daily', 'Ist und Prognose der abgeschlossenen Tage mit Güte', [
-        'window' => '3',
-        'tools' => '<div class="chart-tools">' . ui_segment('daily-window', 'Fenster', ['3' => '3 Tage', '7' => '7 Tage', 'month' => 'Monat', 'quarter' => 'Quartal'], '3', ['compact' => true, 'id' => 'dw', 'attrs' => ['data-chart-window' => true]]) . '</div>',
-        'style' => [
-            'actual' => ['color' => 'solar', 'unit' => 'kWh', 'decimals' => 1],
-            'model' => ['color' => 'grid-out', 'unit' => 'kWh', 'decimals' => 1],
-            'k' => ['color' => 'ink', 'unit' => '', 'decimals' => 2, 'legendSum' => false],
-            'ideal' => ['color' => 'muted'],
-        ],
-        'empty' => 'Die Güte braucht mindestens einen abgeschlossenen Tag mit Ertrag und Prognose.',
-    ]) ?>
-    <p class="body">Güte <?= ui_inline('<strong data-goodness-ratio>' . e((string) ($score['text'] ?? '—')) . '</strong>', ['data-open-dialog' => 'forecast-method', 'aria-haspopup' => 'dialog']) ?> über <span data-goodness-days><?= (int) ($score['days'] ?? 0) ?></span> abgeschlossene Tage. Über 1 lag die Prognose höher als der Zähler.</p>
-  </section>
-</div>
+<section class="card stack" aria-labelledby="solar-title">
+  <h2 class="card-title" id="solar-title">Solarprognose</h2>
+  <?= ui_chart('time', '/api/series?chart=power', 'Solarprognose für heute und die zwei folgenden Tage, über jedem Tag Prognose und Gemessen', [
+      'window' => '3',
+      'class' => 'chart-xl',
+      'tools' => '<div class="chart-tools">' . ui_segment('power-window', 'Zeitraum', ['today' => 'Heute', '3' => '3 Tage', '7' => '7 Tage'], '3', ['compact' => true, 'id' => 'pw', 'attrs' => ['data-chart-window' => true]])
+          . '<div class="chart-toggles">'
+          . '<button type="button" class="toggle-chip c-solar" aria-pressed="true" data-chart-series="forecast"><span class="swatch swatch-dot"></span>Prognose</button>'
+          . '<button type="button" class="toggle-chip c-ink" aria-pressed="true" data-chart-series="actual"><span class="swatch swatch-dot"></span>Gemessen</button>'
+          . '</div></div>',
+      'style' => [
+          'forecast' => ['color' => 'solar', 'type' => 'area', 'peak' => true, 'label' => 'Prognose', 'unit' => 'kW', 'decimals' => 2],
+          'actual' => ['color' => 'ink', 'width' => 'bold', 'label' => 'Gemessen', 'unit' => 'kW', 'decimals' => 2],
+      ],
+      'empty' => 'Noch keine Prognose. Die DWD-Datei wird beim nächsten Abruf geladen.',
+  ]) ?>
+  <p class="caption muted">Über jedem Tag steht die Prognose in Orange und, bis heute, was gemessen wurde, in der Farbe der Messlinie. Zurückblättern zeigt, wie es war.</p>
+  <div class="day-values">
+    <?= ui_metric('Heute, Rest', ui_live_num('remaining_kwh', $f['remaining_kwh'] ?? null, 'kWh'), ['after' => '<span class="caption muted">von ' . e(kwh($f['today_kwh'] ?? null)) . '</span>' . ui_spread($f['today_sd'] ?? null)]) ?>
+    <?= ui_metric('Morgen', ui_num($f['tomorrow_kwh'] ?? null, 'kWh'), ['after' => ui_spread($f['tomorrow_sd'] ?? null)]) ?>
+    <?= ui_metric('Übermorgen', ui_num($after !== null ? (float) $after : null, 'kWh'), ['after' => ui_spread($captions[$day(2)]['sd'] ?? null)]) ?>
+  </div>
+  <p class="body">Gemessen heute <?= e(kwh($yield)) ?>, gestern <?= e(kwh($yesterday)) ?>. Güte <?= ui_inline('<strong data-goodness-ratio>' . e((string) ($score['text'] ?? '—')) . '</strong>', ['data-open-dialog' => 'forecast-daily', 'aria-haspopup' => 'dialog']) ?> über <span data-goodness-days><?= (int) ($score['days'] ?? 0) ?></span> abgeschlossene Tage.</p>
+  <p class="caption muted"><?= e($stamp) ?></p>
+</section>
 <section class="section" aria-labelledby="details-title">
   <h2 class="section-title" id="details-title">Details</h2>
   <ul class="detail-list" role="list">
 <?php foreach ([
+    ['forecast-daily', 'chart-column', 'Ist und Prognose', 'Gemessen und Prognose der abgeschlossenen Tage mit Güte, über 3 Tage bis ein Quartal.', true],
     ['forecast-method', 'scale', 'Rechnung', 'Vom DWD-Lauf über Eichfaktor und Abweichung bis zur Güte, mit den Zahlen von heute.', is_array($lesson)],
     ['forecast-models', 'chart-column', 'Modelle', 'Fünf kommende und fünf vergangene Tage mit Rohmodell, Faktor und Regression.', true],
     ['forecast-data', 'list', 'Prognosedaten', 'Prognose, Abweichung, Strahlung, Sonne, Wolken und Temperatur je Tag.', true],
@@ -97,6 +84,21 @@ if (!empty($weather['fetched_at'])) {
 if (is_array($lesson)) {
     forecast_method_dialog($lesson, $plant, $modelRows, (float) (store()->defaults()['plant']['factor'] ?? 0.93), $weather);
 }
+
+// Ist und Prognose
+echo ui_dialog('forecast-daily', 'Ist und Prognose', ui_chart('bars', '/api/series?chart=daily', 'Ist und Prognose der abgeschlossenen Tage mit Güte', [
+        'window' => '3',
+        'tools' => '<div class="chart-tools">' . ui_segment('daily-window', 'Fenster', ['3' => '3 Tage', '7' => '7 Tage', 'month' => 'Monat', 'quarter' => 'Quartal'], '3', ['compact' => true, 'id' => 'dw', 'attrs' => ['data-chart-window' => true]]) . '</div>',
+        'style' => [
+            'actual' => ['color' => 'solar', 'unit' => 'kWh', 'decimals' => 1],
+            'model' => ['color' => 'grid-out', 'unit' => 'kWh', 'decimals' => 1],
+            'k' => ['color' => 'ink', 'unit' => '', 'decimals' => 2, 'legendSum' => false],
+            'ideal' => ['color' => 'muted'],
+        ],
+        'empty' => 'Die Güte braucht mindestens einen abgeschlossenen Tag mit Ertrag und Prognose.',
+    ])
+    . '<p class="body">Güte <strong data-goodness-ratio>' . e((string) ($score['text'] ?? '—')) . '</strong> über <span data-goodness-days>' . (int) ($score['days'] ?? 0) . '</span> abgeschlossene Tage. Über 1 lag die Prognose höher als der Zähler. '
+    . (is_array($lesson) ? ui_inline('Wie die Güte gerechnet wird', ['data-open-dialog' => 'forecast-method', 'aria-haspopup' => 'dialog']) : '') . '</p>', ['wide' => true]);
 
 // Modelle
 ob_start();
