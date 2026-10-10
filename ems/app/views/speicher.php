@@ -53,7 +53,7 @@ if (!$snap['connected']) {
           <p class="body"><span data-zone-when="buffer-on"<?= $buffer >= 100 ? ' hidden' : '' ?>>Ab <?= $read('buffer', $buffer) ?> darf gespeicherte Energie das Auto stützen.</span><span data-zone-when="buffer-off"<?= $buffer >= 100 ? '' : ' hidden' ?>>Gespeicherte Energie stützt das Auto nicht, die Grenze steht auf 100<?= NNBSP ?>%.</span>
             <span data-zone-when="auto-on"<?= $auto >= 100 ? ' hidden' : '' ?>>Ab <?= $limit('auto', $auto) ?> startet die Ladung auch ohne Sonne.</span><span data-zone-when="auto-off"<?= $auto >= 100 ? '' : ' hidden' ?>>Ohne Sonne startet keine Ladung.</span></p></li>
         <li class="zone-item"><span class="zone-icon zone-icon-reserve"><?= icon('shield', 'icon-20') ?></span>
-          <p class="body"><span data-live="reserve.text"><?= e((string) $snap['reserve']['text']) ?></span> <?= ui_inline('Puffer einstellen', ['href' => url('/mehr/speicher')]) ?></p></li>
+          <p class="body"><span data-live="reserve.text"><?= e((string) $snap['reserve']['text']) ?></span> <?= ui_inline('Puffer einstellen', ['href' => url('/einstellungen/speicher')]) ?></p></li>
       </ul>
     </section>
     <section class="card stack" aria-labelledby="outlook-title">
@@ -132,7 +132,7 @@ ob_start();
   <div><dt>Min+Solar</dt><dd>Die Mindestleistung bleibt an. Was die Sonne nicht schafft, deckt der Speicher bis zum Backup-Puffer, dann das Netz.</dd></div>
   <div><dt>Netzladen</dt><dd>Volle Leistung, die Grenzen bleiben außen vor. Mit „Speicher schonen“ hebt die App den Backup-Puffer, solange das Auto lädt; sonst deckt der Speicher mit.</dd></div>
 </dl>
-<p class="caption muted">Aktuell: <?= e(Energy::modeLabel($mode)) ?>. Geändert wird sofort, ohne Speichern-Knopf. Backup-Puffer und Entladeleistung stehen unter <?= ui_inline('Mehr → Speicher', ['href' => url('/mehr/speicher')]) ?>.</p>
+<p class="caption muted">Aktuell: <?= e(Energy::modeLabel($mode)) ?>. Geändert wird sofort, ohne Speichern-Knopf. Backup-Puffer und Entladeleistung stehen unter <?= ui_inline('Einstellungen → Speicher', ['href' => url('/einstellungen/speicher')]) ?>.</p>
 <?php
 echo ui_dialog('battery-limits', 'Grenzen des Speichers', ob_get_clean());
 view('partials/overview', ['overview' => $overview]);

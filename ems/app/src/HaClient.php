@@ -392,7 +392,17 @@ final class HaClient implements HaSource
         if (!is_entity_id($entityId) || !in_array($domain, ['number', 'input_number'], true)) {
             throw new InvalidArgumentException('Setzen geht nur bei number- oder input_number-Entitäten.');
         }
-        $this->get('/api/services/' . $domain . '/set_value', ['entity_id' => $entityId, 'value' => $value]);
+        $this->service($domain, 'set_value', ['entity_id' => $entityId, 'value' => $value]);
+    }
+
+    /** Nur die Dienste, die EMS braucht: Zahlen, Auswahlen und Knöpfe. */
+    public function service(string $domain, string $service, array $data): void
+    {
+        $allowed = ['number' => ['set_value'], 'input_number' => ['set_value'], 'select' => ['select_option'], 'input_select' => ['select_option'], 'button' => ['press']];
+        if (!in_array($service, $allowed[$domain] ?? [], true) || !is_entity_id((string) ($data['entity_id'] ?? '')) || !str_starts_with((string) $data['entity_id'], $domain . '.')) {
+            throw new InvalidArgumentException('Dienst ' . $domain . '.' . $service . ' ist für EMS nicht vorgesehen.');
+        }
+        $this->get('/api/services/' . $domain . '/' . $service, $data);
         // Der nächste Lesezugriff soll den neuen Wert sehen.
         @unlink(data_dir() . '/states-cache.json');
     }

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 /**
- * Mehr → System: Verbindung zu Home Assistant, Assistent, Konfiguration als JSON.
+ * Einstellungen → System: Verbindung zu Home Assistant, Assistent, Konfiguration als JSON.
  * @var array $ping
  * @var string $back
  */
@@ -29,7 +29,7 @@ $connection = connection();
 <section class="card stack" aria-labelledby="json-title">
   <h3 class="card-title" id="json-title">Konfiguration als JSON</h3>
   <p class="body-sm muted">Die Datei enthält Zuordnung, Tarif mit CO₂-Faktor, Anlage, Speichergrenzen, Ladeparameter, Ladepunkt, Fahrzeug, DWD-Adresse und Darstellung. Verbindung und Ladevorgänge bleiben draußen.</p>
-  <?= ui_config_exchange('/mehr', $back) ?>
+  <?= ui_config_exchange('/einstellungen', $back) ?>
 </section>
 <?php if (demo_mode()): ?>
 <section class="card stack" aria-labelledby="demo-title">

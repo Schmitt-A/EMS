@@ -459,7 +459,64 @@
   }
 }
 
-/* Mehr: mobil die Liste oder ein Bereich, ab 1024 px die Liste links und der Bereich rechts. */
+/* Hauptschalter oben in den Einstellungen: aktiv mit Amber-Rand. */
+.ems-switch[data-active] {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.ems-switch-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.ems-switch-head .card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+}
+
+.ems-switch .form-actions {
+  margin: 0;
+}
+
+.ems-problem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: start;
+  color: var(--text);
+}
+
+.ems-problem .icon {
+  margin-block-start: 0.125rem;
+  color: var(--warn, var(--accent-strong));
+}
+
+.ems-log summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  color: var(--text-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.ems-log summary::-webkit-details-marker {
+  display: none;
+}
+
+.ems-log[open] summary .icon {
+  transform: rotate(180deg);
+}
+
+/* Einstellungen: mobil die Liste oder ein Bereich, ab 1024 px die Liste links und der Bereich rechts. */
 .mehr {
   display: grid;
   gap: var(--s-6);

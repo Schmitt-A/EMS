@@ -311,7 +311,12 @@ final class Energy
             $target = self::KW_PER_AMP * $maxA * $phases;
             $reason = 'Netzladen mit voller Leistung.';
         } else {
-            $target = $share >= 0.999 ? $solar : ($share > 0 ? $solar / $share : max(0.0, $pSoll));
+            // Sonnenanteil wie evcc: Er senkt nur die Schwelle zum Start mit dem Mindeststrom, darüber zählt die Sonne.
+            $target = $solar;
+            if ($target < self::KW_PER_AMP * $minA && $share < 0.999 && $solar >= $share * self::KW_PER_AMP * $minA) {
+                $target = self::KW_PER_AMP * $minA;
+                $reason = 'Mindeststrom mit ' . pct($share * 100) . ' Sonne.';
+            }
             if ($mode === 'smart_dauerhaft') {
                 $floor = self::KW_PER_AMP * $minA * ($phaseMode === '3p' ? 3 : 1);
                 if ($target < $floor) {
@@ -429,57 +434,6 @@ final class Energy
         ];
     }
 
-    public static function latch(array $desired, array $state, int $now, array $charge): array
-    {
-        $amps = (int) ($desired['amps'] ?? 0);
-        $phases = (int) ($desired['phases'] ?? 1);
-        $latchedA = (int) ($state['amps'] ?? 0);
-        $latchedP = (int) ($state['phases'] ?? 1);
-        $pendingA = $state['pending_amps'] ?? null;
-        $pendingP = $state['pending_phases'] ?? null;
-        $since = isset($state['pending_since']) ? (int) $state['pending_since'] : 0;
-
-        $same = $amps === $latchedA && ($amps === 0 || $phases === $latchedP);
-        if ($same) {
-            return self::latchResult($latchedA, $latchedP, null, null, null, 0, $desired);
-        }
-
-        $phaseChange = $latchedA > 0 && $amps > 0 && $phases !== $latchedP;
-        $delay = $phaseChange
-            ? (int) ($charge['switch_s'] ?? 60)
-            : ($amps === 0 ? (int) ($charge['off_delay_s'] ?? 60) : ($latchedA === 0 ? (int) ($charge['on_delay_s'] ?? 60) : 0));
-        $delay = $amps !== 0 && $latchedA !== 0 && !$phaseChange ? 0 : max(60, $delay);
-        if ($amps !== 0 && $latchedA !== 0 && !$phaseChange) {
-            $delay = 0;
-        }
-        // Die Verzögerungen fangen Wolken ab. Aus und Netzladen sind gewählt und gelten sofort, nur ein
-        // Phasenwechsel wartet weiter die Schütz-Schutzzeit ab.
-        if (!$phaseChange && in_array((string) ($desired['mode'] ?? ''), ['aus', 'schnell'], true)) {
-            $delay = 0;
-        }
-
-        if ($pendingA !== $amps || $pendingP !== $phases || $since === 0) {
-            $since = $now;
-        }
-        $wait = max(0, $delay - ($now - $since));
-        if ($wait === 0) {
-            return self::latchResult($amps, $phases, null, null, null, 0, $desired);
-        }
-        return self::latchResult($latchedA, $latchedP, $amps, $phases, $since, $wait, $desired);
-    }
-
-    private static function latchResult(int $amps, int $phases, ?int $pendingA, ?int $pendingP, ?int $since, int $wait, array $desired): array
-    {
-        $desired['latched_amps'] = $amps;
-        $desired['latched_phases'] = $phases;
-        $desired['pending_amps'] = $pendingA;
-        $desired['pending_phases'] = $pendingP;
-        $desired['pending_since'] = $since;
-        $desired['wait_s'] = $wait;
-        $desired['latched_kw'] = $amps === 0 ? 0.0 : self::KW_PER_AMP * $amps * $phases;
-        return $desired;
-    }
-
     private static function autoPhases(float $target, ?int $reported, string $mode): int
     {
         if ($mode === 'schnell') {
@@ -530,18 +484,19 @@ final class Energy
     {
         $key = strtolower((string) $raw);
         return match ($key) {
-            'three_phases', '3', '3p' => '3-phasig',
+            'three_phases', '3', '3p', '2' => '3-phasig',
             'one_phase', '1', '1p' => '1-phasig',
-            'auto' => 'Automatisch',
+            'auto', '0' => 'Automatisch',
             '' => '—',
             default => (string) $raw,
         };
     }
 
+    /** Gemeldete Phasen; die go-e meldet ihren Phasenmodus als 1 (einphasig) und 2 (dreiphasig), 0 ist automatisch. */
     public static function reportedPhases(?string $raw): ?int
     {
         return match (strtolower((string) $raw)) {
-            'three_phases', '3', '3p' => 3,
+            'three_phases', '3', '3p', '2' => 3,
             'one_phase', '1', '1p' => 1,
             default => null,
         };

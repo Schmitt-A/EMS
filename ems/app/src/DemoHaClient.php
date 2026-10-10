@@ -63,16 +63,55 @@ final class DemoHaClient implements HaSource
         ];
     }
 
-    /** Merkt sich den Wert, damit Anheben und Zurücksetzen des Puffers im Demo-Modus sichtbar werden. */
+    /** Merkt sich den Wert, damit Puffer und Regelung im Demo-Modus sichtbar werden. */
     public function setNumber(string $entityId, float $value): void
     {
-        if (!isset(self::ENTITIES[$entityId]) || !str_starts_with($entityId, 'number.')) {
-            throw new InvalidArgumentException('Entität ' . $entityId . ' gibt es im Demo-Modus nicht.');
+        $this->service('number', 'set_value', ['entity_id' => $entityId, 'value' => $value]);
+    }
+
+    public function service(string $domain, string $service, array $data): void
+    {
+        $id = (string) ($data['entity_id'] ?? '');
+        if (!isset(self::ENTITIES[$id]) || !str_starts_with($id, $domain . '.')) {
+            throw new InvalidArgumentException('Entität ' . $id . ' gibt es im Demo-Modus nicht.');
         }
-        $numbers = store()->get('demo_numbers', []);
-        $numbers = is_array($numbers) ? $numbers : [];
-        $numbers[$entityId] = $value;
-        store()->put('demo_numbers', $numbers);
+        if ($domain === 'button') {
+            return;
+        }
+        $writes = store()->get('demo_writes', []);
+        $writes = is_array($writes) ? $writes : [];
+        $writes[$id] = $domain === 'select' ? (string) ($data['option'] ?? '') : (float) ($data['value'] ?? 0);
+        store()->put('demo_writes', $writes);
+    }
+
+    /**
+     * Regelt EMS im Demo-Modus (frc 1 oder 2 geschrieben), folgt die Wallbox: Strom mal Phasen, solange ein Auto
+     * steckt; Speicher und Netz gleichen den Rest aus wie im Modell, der Speicher bis zum Backup-Puffer.
+     */
+    private function follow(array $s, array $writes, array $data): array
+    {
+        $frc = (string) ($writes['select.demo_wallbox_frc'] ?? '0');
+        if ($frc === '0') {
+            return $s;
+        }
+        $connected = $s['status'] !== 'idle';
+        $phases = ($writes['select.demo_wallbox_psm'] ?? '2') === '1' ? 1 : 3;
+        $amps = (int) round((float) ($writes['number.demo_wallbox_amp'] ?? 6));
+        $full = $s['car'] >= (float) $data['fahrzeug']['limit'];
+        $wall = $frc === '2' && $connected && !$full ? $amps * $phases * 0.23 : 0.0;
+        $maxKw = (float) ($data['anlage']['speicher_max_kw'] ?? 5);
+        $reserve = (float) ($writes['number.demo_battery_reserve'] ?? 10);
+        $net = $s['pv'] - $s['house'] - $wall;
+        $charge = $discharge = $import = $export = 0.0;
+        if ($net >= 0) {
+            $charge = $s['soc'] < 99.5 ? min($net, $maxKw) : 0.0;
+            $export = $net - $charge;
+        } else {
+            $discharge = $s['soc'] > $reserve + 0.5 ? min(-$net, $maxKw) : 0.0;
+            $import = -$net - $discharge;
+        }
+        $status = !$connected ? 'idle' : ($wall > 0 ? 'charging' : ($full ? 'complete' : 'wait_car'));
+        return ['wall' => $wall, 'phases' => $phases, 'charge' => $charge, 'discharge' => $discharge, 'import' => $import, 'export' => $export, 'status' => $status] + $s;
     }
 
     public function configured(): bool
@@ -99,7 +138,9 @@ final class DemoHaClient implements HaSource
     {
         $data = $this->model->data();
         $now = $this->model->now();
-        $s = $this->model->at($now);
+        $writes = store()->get('demo_writes', []);
+        $writes = is_array($writes) ? $writes : [];
+        $s = $this->follow($this->model->at($now), $writes, $data);
         $car = $data['fahrzeug'];
         $values = [
             'sensor.demo_pv_power' => round($s['pv'] * 1000),
@@ -114,17 +155,18 @@ final class DemoHaClient implements HaSource
             'sensor.demo_house_power' => round(($s['house'] + $s['wall']) * 1000),
             'sensor.demo_wallbox_power' => round($s['wall'] * 1000),
             'sensor.demo_wallbox_car' => $s['status'],
-            'number.demo_wallbox_amp' => $s['wall'] > 0 ? (int) round($s['wall'] / (0.23 * $s['phases'])) : 16,
+            'number.demo_wallbox_amp' => $writes['number.demo_wallbox_amp'] ?? ($s['wall'] > 0 ? (int) round($s['wall'] / (0.23 * $s['phases'])) : 16),
             'number.demo_wallbox_ama' => 16,
-            'select.demo_wallbox_psm' => (string) $s['phases'],
-            'select.demo_wallbox_frc' => 'neutral',
+            // Wie die go-e: 1 einphasig, 2 dreiphasig, 0 automatisch; frc 0 neutral, 1 gesperrt, 2 frei.
+            'select.demo_wallbox_psm' => $writes['select.demo_wallbox_psm'] ?? ($s['phases'] === 3 ? '2' : '1'),
+            'select.demo_wallbox_frc' => $writes['select.demo_wallbox_frc'] ?? '0',
             'sensor.demo_car_soc' => round($s['car'], 0),
             'sensor.demo_car_capacity' => (float) $car['kapazitaet_kwh'],
             'sensor.demo_car_range' => round($s['car'] / 100 * (float) $car['reichweite_voll_km']),
             // Etwa 38 km am Tag seit Jahresbeginn, auf ganze Kilometer.
             'sensor.demo_car_odometer' => 18400 + round(max(0, $now - (int) strtotime(date('Y', $now) . '-01-01')) / 86400 * 38),
             'sensor.demo_car_limit' => (float) $car['limit'],
-            'number.demo_battery_reserve' => (float) ((store()->get('demo_numbers', [])['number.demo_battery_reserve'] ?? null) ?? 10),
+            'number.demo_battery_reserve' => (float) ($writes['number.demo_battery_reserve'] ?? 10),
         ];
         $stamp = gmdate('Y-m-d\TH:i:s\Z', $now);
         $index = [];
@@ -135,6 +177,9 @@ final class DemoHaClient implements HaSource
             }
             if ($unit === 'kWh') {
                 $attributes['device_class'] = 'energy';
+            }
+            if (str_starts_with($id, 'select.')) {
+                $attributes['options'] = ['0', '1', '2'];
             }
             $index[$id] = [
                 'entity_id' => $id,

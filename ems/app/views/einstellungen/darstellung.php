@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 /**
- * Mehr → Darstellung: Farbschema. Mit JS wechselt es sofort und wird per /api/darstellung gespeichert.
+ * Einstellungen → Darstellung: Farbschema. Mit JS wechselt es sofort und wird per /api/darstellung gespeichert.
  * @var array $cfg
  * @var string $back
  */
@@ -9,7 +9,7 @@ $theme = (string) ($cfg['ui']['theme'] ?? 'system');
 ?>
 <section class="card stack" aria-labelledby="theme-title">
   <h3 class="card-title" id="theme-title">Farbschema</h3>
-  <form method="post" action="<?= e(url('/mehr')) ?>" class="stack">
+  <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack">
     <?= csrf_field() ?>
     <input type="hidden" name="section" value="theme"><input type="hidden" name="back" value="<?= e($back) ?>">
     <?= ui_segment('theme', 'Farbschema', [

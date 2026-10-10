@@ -483,6 +483,24 @@ function ui_chargepoint(array $cp, array $opts = []): string
     $name = $editable
         ? ui_inline(e((string) $v['name']), ['data-open-dialog' => $id . '-vehicle', 'aria-label' => 'Fahrzeug ' . $v['name'] . ': Einstellungen'], 'align-start')
         : '<span class="metric-sm">' . e((string) $v['name']) . '</span>';
+    // Ladeziel: Zeile mit Fortschritt oder „Ladeziel setzen“; live.js schreibt die Texte, chargepoint.js Breite und Sichtbarkeit.
+    $target = $cp['target'] ?? null;
+    $t = $target ?? ['label' => '', 'text' => '', 'then_text' => '', 'progress' => 0];
+    $targetHtml = !$editable ? '' : '<div class="cp-target" data-target data-progress="' . e((string) (float) $t['progress']) . '"' . ($target === null ? ' hidden' : '') . '>'
+        . '<span class="cp-target-icon" aria-hidden="true">' . icon('target', 'icon-16') . '</span>'
+        . '<div class="cp-target-body"><p class="cp-target-head"><span class="cp-target-label"' . ui_attrs(['data-live' => $p('target.label')]) . '>' . e((string) $t['label']) . '</span>'
+        . '<span class="caption muted"' . ui_attrs(['data-live' => $p('target.then_text')]) . '>' . e((string) $t['then_text']) . '</span></p>'
+        . '<span class="cp-target-bar" aria-hidden="true"><span class="cp-target-fill"></span></span>'
+        . '<p class="caption cp-target-text"' . ui_attrs(['data-live' => $p('target.text')]) . '>' . e((string) $t['text']) . '</p></div>'
+        . ui_inline('Ändern', ['data-open-dialog' => $id . '-target', 'aria-label' => 'Ladeziel ändern'])
+        . '</div>'
+        . '<button type="button" class="text-action cp-target-set" data-open-dialog="' . e($id) . '-target" data-target-none' . ($target !== null ? ' hidden' : '') . '>' . icon('target', 'icon-16') . '<span>Ladeziel setzen</span></button>';
+    // Übersicht des laufenden Ladevorgangs.
+    $session = $cp['session_view'] ?? ['open' => false];
+    $item = static fn (string $label, string $key) => '<div><dt>' . e($label) . '</dt><dd' . ui_attrs(['data-live' => $p('session_view.' . $key)]) . '>' . e((string) ($session[$key] ?? '—')) . '</dd></div>';
+    $sessionHtml = '<div class="cp-session" data-session' . (empty($session['open']) ? ' hidden' : '') . '>'
+        . '<p class="label">Dieser Ladevorgang <span' . ui_attrs(['data-live' => $p('session_view.since')]) . '>' . e((string) ($session['since'] ?? '')) . '</span></p>'
+        . '<dl class="cp-session-list">' . $item('Dauer', 'duration') . $item('Ø Leistung', 'avg') . $item('Sonne', 'solar') . $item('Kosten', 'cost') . '</dl></div>';
     $track = '<div class="chargebar-track" data-chargebar-track><span class="chargebar-clip"><span class="chargebar-fill"></span><span class="chargebar-target"></span></span>'
         . ($limit !== null && $editable && !$fromCar
             ? '<span class="limit-mark" role="slider" tabindex="0" aria-label="Ladelimit" aria-valuemin="20" aria-valuemax="100" aria-valuenow="' . (int) $limit . '" aria-valuetext="' . e(pct((float) $limit)) . '" data-limit-mark></span>'
@@ -501,6 +519,8 @@ function ui_chargepoint(array $cp, array $opts = []): string
         . ui_metric('Geladen', $live ? ui_live_num('chargepoint.session_kwh', $cp['session_kwh'], 'kWh') : ui_num($cp['session_kwh'], 'kWh'))
         . ui_metric('Restzeit', '<span class="num"' . ui_attrs(['data-live' => $p('chargepoint.remaining_text')]) . '>' . e($remaining) . '</span>')
         . '</div>'
+        . $targetHtml
+        . $sessionHtml
         . '<hr class="rule">'
         . '<div class="cp-vehicle">' . icon('car', 'icon-24') . $name . '<span class="cp-status body-sm"' . ui_attrs(['data-live' => $p('vehicle.status')]) . '>' . e((string) $v['status']) . '</span></div>'
         . '<div class="chargebar"' . ui_attrs([
@@ -559,7 +579,9 @@ function ui_control(array $c, array $charge, array $strategy, array $opts = []):
 
     // 1. Jetzt: Stufe und Leistung beim Einschalten
     $html = '<section class="card ctl" id="' . e($id) . '" aria-labelledby="' . e($id) . '-title" data-control="' . e(ui_json(['scale_kw' => $c['scale_kw'], 'flows' => $f, 'modes' => array_map(static fn (array $m): array => ['flows' => $m['flows'], 'active' => $m['active']], $c['modes']), 'ladder' => $c['ladder']])) . '"' . ($live ? ' data-control-live' : '') . '>'
-        . '<div class="ctl-grid"><header class="ctl-head"><h2 class="card-title" id="' . e($id) . '-title">Regelung</h2>' . $text('mode_label', (string) $c['mode_label'], 'span', 'pill pill-neutral') . '</header>'
+        . '<div class="ctl-grid"><header class="ctl-head"><h2 class="card-title" id="' . e($id) . '-title">Regelung</h2><span class="ctl-pills">'
+        . '<span class="pill' . (!empty($c['ems_active']) ? '' : ' pill-neutral') . '" data-ems-pill' . ui_attrs(['data-live' => $l('ems_label')]) . '>' . e((string) ($c['ems_label'] ?? 'nur Anzeige')) . '</span>'
+        . $text('mode_label', (string) $c['mode_label'], 'span', 'pill pill-neutral') . '</span></header>'
         . '<div class="ctl-now">'
         . $text('headline', (string) $c['headline'], 'p', 'label')
         . '<p class="ctl-now-value">' . $text('kw_text', (string) $c['kw_text'], 'span', 'metric-xl')
@@ -639,13 +661,24 @@ function ui_control(array $c, array $charge, array $strategy, array $opts = []):
     foreach ($details as [$label, $key, $sub]) {
         $html .= '<div><dt>' . e($label) . '</dt><dd>' . $text('details.' . $key, (string) ($c['details'][$key] ?? '—')) . ($sub !== '' ? '<span class="sub">' . e($sub) . '</span>' : '') . '</dd></div>';
     }
-    $html .= '<div><dt>Grenzen</dt><dd>' . e('Haus bis ' . pct((float) $strategy['priority_soc']) . ', Stützung ab ' . pct((float) $strategy['car_buffer_soc']) . ', Start ab ' . pct((float) $strategy['car_auto_soc'])) . '<span class="sub">' . ui_inline('Unter Mehr → Speicher ändern', ['href' => url('/mehr/speicher')]) . '</span></dd></div>'
+    $html .= '<div><dt>Grenzen</dt><dd>' . e('Haus bis ' . pct((float) $strategy['priority_soc']) . ', Stützung ab ' . pct((float) $strategy['car_buffer_soc']) . ', Start ab ' . pct((float) $strategy['car_auto_soc'])) . '<span class="sub">' . ui_inline('Unter Einstellungen → Speicher ändern', ['href' => url('/einstellungen/speicher')]) . '</span></dd></div>'
         . '<div><dt>Regelreserve, Sonnenanteil</dt><dd>' . e(num((float) ($charge['reserve_w'] ?? 0), 0) . NNBSP . 'W, mindestens ' . pct((float) ($charge['solar_share'] ?? 100))) . '</dd></div>'
         . '</dl></div>';
 
+    if (!empty($c['log'])) {
+        // Die letzten Schaltvorgänge der Regelung, beim Laden der Seite.
+        $html .= '<div class="ctl-block"><h3 class="ctl-title">Zuletzt geschaltet</h3><ul class="plain-list stack-tight body-sm" role="list">';
+        foreach ($c['log'] as $row) {
+            $html .= '<li><span class="num muted">' . e((string) $row['time']) . '</span> ' . e((string) $row['text']) . '</li>';
+        }
+        $html .= '</ul></div>';
+    }
     $html .= '<div class="ctl-block"><h3 class="ctl-title">So arbeiten die Modi</h3><dl class="kv">';
     foreach (ui_mode_options() as $key => $option) {
         $html .= '<div><dt>' . e($option['label']) . '</dt><dd>' . e(Energy::modeText($key)) . '</dd></div>';
     }
-    return $html . '</dl><p class="caption muted">An die Wallbox schreibt die App nichts, sie zeigt, was eine Regelung jetzt einstellen würde. Geschrieben wird nur der Backup-Puffer des Speichers, wenn Netzladen ihn schont.</p></div></div></details></div></section>';
+    $note = !empty($c['ems_active'])
+        ? 'EMS regelt: Es stellt Ladestrom, Phasen und Start/Stopp der Wallbox ein und hebt beim Netzladen den Backup-Puffer.'
+        : 'EMS zeigt nur an, was es einstellen würde. Regeln lässt es sich unter Einstellungen mit dem Hauptschalter.';
+    return $html . '</dl><p class="caption muted">' . e($note) . '</p></div></div></details></div></section>';
 }

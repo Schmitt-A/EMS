@@ -11,7 +11,7 @@ $nav = [
     '/speicher' => ['Speicher', 'battery', null],
     '/prognose' => ['Prognose', 'sun', null],
     '/ladevorgaenge' => ['Ladevorgänge', 'chart-column', 'Vorgänge'],
-    '/mehr' => ['Mehr', 'ellipsis', null],
+    '/einstellungen' => ['Einstellungen', 'settings', 'Optionen'],
 ];
 $isActive = static fn (string $href): bool => $href === '/' ? $current === '/' : ($current === $href || str_starts_with($current, $href . '/'));
 ?>

@@ -190,7 +190,7 @@ ob_start();
 <?php formula('<mrow><mi>P</mi><mo>=</mo><mo>min</mo><mo>(</mo><mtext>Limit</mtext><mo>,</mo><mi>G</mi><mo>×</mo><mo>(</mo>' . mnum((float) $plant['kwp'], 2) . '<mo>×</mo><mn>1,04</mn><mo>×</mo><mn>0,90</mn><mo>×</mo><mn>0,975</mn><mo>/</mo><mn>1000</mn><mo>)</mo><mo>×</mo><mi>f</mi><mo>)</mo></mrow>'); ?>
 <p class="body">Jede Stunde der DWD-Datei zählt einmal. Die Zahl über einem Tag ist der Mittelwert der gespeicherten Läufe mal Eichfaktor, mit der Streuung dieser Läufe. Der Ertrag kommt vom Energiezähler. Die Güte benutzt nur abgeschlossene Tage, an denen Ist und Prognose vollständig sind.</p>
 <p class="body">Strahlung, Bewölkung, Sonnenschein und Temperatur kommen aus der DWD-Datei. Jeder Modelllauf bleibt gespeichert, sobald der Tag ab Mitternacht in der Datei steht.</p>
-<p><?= ui_inline('Anlagenwerte ändern', ['href' => url('/mehr/prognose')], 'align-start') ?></p>
+<p><?= ui_inline('Anlagenwerte ändern', ['href' => url('/einstellungen/prognose')], 'align-start') ?></p>
 <?php
 echo ui_dialog('forecast-howto', 'Wie gerechnet wird', ob_get_clean());
 view('partials/overview', ['overview' => $overview]);

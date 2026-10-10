@@ -8,7 +8,7 @@ final class Snapshot
         private HaSource $ha,
     ) {}
 
-    public function build(bool $persistLatch = true): array
+    public function build(): array
     {
         $cfg = $this->store->all();
         $now = time();
@@ -23,13 +23,13 @@ final class Snapshot
         ];
         if (!$this->ha->configured()) {
             $base['error'] = 'Home Assistant ist noch nicht verbunden.';
-            return $this->finish($base, $cfg, $now, $persistLatch);
+            return $this->finish($base, $cfg, $now);
         }
         try {
             $index = $this->ha->index();
         } catch (Throwable $e) {
             $base['error'] = $e->getMessage();
-            return $this->finish($base, $cfg, $now, $persistLatch);
+            return $this->finish($base, $cfg, $now);
         }
         $base['connected'] = true;
         $map = (new Series($this->store, $this->ha))->adoptBatteryTotal($cfg['mapping'], $index);
@@ -115,6 +115,9 @@ final class Snapshot
         $car = $read('wallbox_car');
         $amps = $read('wallbox_amps');
         $phases = $read('wallbox_phases');
+        $force = $read('wallbox_force');
+        $energyRow = $read('wallbox_energy');
+        $sessionEnergy = Energy::energyToKwh(is_array($energyRow) ? $energyRow['num'] : null, is_array($energyRow) ? ($energyRow['unit'] ?? null) : null);
 
         $values = [
             'pv_kw' => $pv[0],
@@ -137,6 +140,8 @@ final class Snapshot
             'wallbox_car_raw' => $car['state'] ?? null,
             'wallbox_amps' => $amps['num'] ?? null,
             'wallbox_phases_raw' => $phases['state'] ?? null,
+            'wallbox_force_raw' => $force['state'] ?? null,
+            'wallbox_session_kwh' => $sessionEnergy[0],
             'priority_soc' => (float) $cfg['battery_strategy']['priority_soc'],
             'radiation' => null,
             'radiation_rows' => [],
@@ -152,7 +157,7 @@ final class Snapshot
             'house' => is_array($houseRow) ? ($houseRow['name'] ?? '') : '',
             'wallbox' => is_array($wallboxRow) ? ($wallboxRow['name'] ?? '') : '',
         ];
-        return $this->finish($base, $cfg, $now, $persistLatch);
+        return $this->finish($base, $cfg, $now);
     }
 
     private function kw(?array $row, array &$base): array
@@ -167,7 +172,7 @@ final class Snapshot
         return [$kw, $warn];
     }
 
-    private function finish(array $base, array $cfg, int $now, bool $persistLatch): array
+    private function finish(array $base, array $cfg, int $now): array
     {
         $values = array_merge([
             'pv_kw' => null, 'battery_soc' => null, 'battery_charge_kw' => null, 'battery_discharge_kw' => null,
@@ -175,7 +180,7 @@ final class Snapshot
             'car_odometer_km' => null, 'car_limit_soc' => null, 'battery_reserve_soc' => null,
             'grid_import_kw' => null, 'grid_export_kw' => null, 'house_kw' => null,
             'house_includes_wallbox' => true, 'wallbox_kw' => null, 'wallbox_amps' => null, 'wallbox_car_raw' => null,
-            'wallbox_phases_raw' => null, 'priority_soc' => 80, 'radiation_rows' => [],
+            'wallbox_phases_raw' => null, 'wallbox_force_raw' => null, 'wallbox_session_kwh' => null, 'priority_soc' => 80, 'radiation_rows' => [],
         ], $base['values'] ?: []);
         $base['values'] = $values;
         $balance = Energy::balance($values);
@@ -194,17 +199,36 @@ final class Snapshot
         foreach (['smart', 'smart_dauerhaft', 'schnell'] as $mode) {
             $modes[$mode] = $mode === $suggestion['mode'] ? $suggestion : Energy::suggest($live, ['mode' => $mode] + $cfg['charge'], $reported, $strategy, $battery);
         }
-        $latchState = $this->store->get('suggestion_latch', []);
-        $latched = Energy::latch($suggestion, is_array($latchState) ? $latchState : [], $now, $cfg['charge']);
-        if ($persistLatch) {
-            $this->store->put('suggestion_latch', [
-                'amps' => $latched['latched_amps'],
-                'phases' => $latched['latched_phases'],
-                'pending_amps' => $latched['pending_amps'],
-                'pending_phases' => $latched['pending_phases'],
-                'pending_since' => $latched['pending_since'],
-            ]);
+        // Regelung: der Zustand, den der Recorder alle 30 s fortschreibt. Ist er nicht frisch oder gilt schon ein
+        // anderer Modus, rechnet die Anzeige einen Schritt voraus, ohne ihn zu speichern.
+        $controller = (new Controller($this->store, $this->ha))->state();
+        $controlIn = Controller::input($values, $cfg, $suggestion);
+        if ($controller['step_at'] === null || $now - (int) $controller['step_at'] > 90 || $controller['mode'] !== $controlIn['mode']) {
+            $controller = Controller::step($controller, $controlIn, $now)['state'];
         }
+        $decision = Controller::decision($controller, $controlIn, $now);
+        $latched = [
+            'mode' => $suggestion['mode'],
+            'zone' => $suggestion['zone'],
+            'latched_amps' => $decision['amps'],
+            'latched_phases' => $decision['phases'],
+            'latched_kw' => $decision['kw'],
+            'target_kw' => $suggestion['target_kw'],
+            'p_soll_kw' => $suggestion['p_soll_kw'],
+            'delta_kw' => $suggestion['delta_kw'],
+            'timer' => $decision['timer'],
+            'guard_s' => $decision['guard_s'],
+            'note' => $decision['note'],
+            'min_a' => $controlIn['min_a'],
+        ];
+        $heartbeat = (int) $this->store->get('control_heartbeat', 0);
+        $ems = [
+            'active' => Controller::active($cfg),
+            'paused' => $controller['paused'],
+            // Ohne Recorder steht die Regelung; im Demo-Modus übernimmt /api/live den Takt.
+            'stale' => Controller::active($cfg) && !demo_mode() && $now - $heartbeat > 60,
+            'log' => array_map(static fn (array $row): array => ['time' => date('d.m. H:i', (int) $row['t']), 'text' => (string) $row['text']], array_slice((array) $controller['log'], 0, 6)),
+        ];
         $feed = new WeatherFeed($this->store);
         if ($feed->stale()) {
             $meta = $feed->refresh();
@@ -281,6 +305,14 @@ final class Snapshot
         $session = $sessions->open() ?: $sessions->latest();
         $base['balance'] = $balance;
         $base['setpoint'] = $latched;
+        $base['suggestion'] = $suggestion;
+        $base['ems'] = $ems;
+        if ($ems['paused']) {
+            $base['warnings'][] = (string) $ems['paused'];
+        }
+        if ($ems['stale']) {
+            $base['warnings'][] = 'EMS soll regeln, aber der Recorder läuft nicht. Die Wallbox bleibt, wie sie ist.';
+        }
         $base['forecast'] = $brief;
         $base['storage'] = $outlook;
         $base['house_mean_kw'] = $mean;
@@ -298,7 +330,14 @@ final class Snapshot
         if ($base['reserve']['error']) {
             $base['warnings'][] = 'Backup-Puffer: ' . $base['reserve']['error'];
         }
-        $base['control'] = self::control($live, $cfg['charge'], $strategy, $latched, $modes, $battery, $base['reserve']);
+        $base['target'] = Target::view(Target::get($this->store), Target::inputs($base), $now);
+        if ($base['target'] !== null && $base['target']['remaining_s'] !== null && !$base['target']['reached']) {
+            // Mit Ziel zählt die Restzeit bis zum Ziel, nicht bis zum Limit.
+            $base['chargepoint']['remaining_s'] = $base['target']['remaining_s'];
+            $base['chargepoint']['remaining_text'] = duration_clock((int) $base['target']['remaining_s']);
+        }
+        $base['session_view'] = self::sessionView($base, $cfg['tariffs'], $now);
+        $base['control'] = self::control($live, $cfg['charge'], $strategy, $latched, $modes, $battery, $base['reserve'], $ems);
         $base['warnings'] = array_values(array_unique($base['warnings']));
         return $base;
     }
@@ -322,6 +361,9 @@ final class Snapshot
             'control' => $snap['control'],
             // Backup-Puffer: Satz für den Speicher, angehoben beim Netzladen
             'reserve' => ['text' => $snap['reserve']['text'], 'raised' => $snap['reserve']['raised'], 'value' => $snap['reserve']['value']],
+            // Ladeziel und Übersicht des laufenden Ladevorgangs in der Ladepunkt-Karte
+            'target' => $snap['target'] === null ? ['active' => false] : ['active' => true] + $snap['target'] + ['remaining_text' => $snap['target']['text']],
+            'session_view' => $snap['session_view'],
             // Erklärliste des Speichers
             'house_mean' => kw($snap['house_mean_kw'] ?? null),
             'battery_full' => $this->fullText($snap['storage'] ?? []),
@@ -404,7 +446,10 @@ final class Snapshot
         $power = $v['wallbox_kw'] === null ? null : (float) $v['wallbox_kw'];
         $phases = $charging ? (Energy::reportedPhases($v['wallbox_phases_raw'] ?? null) ?? (int) ($setpoint['latched_phases'] ?? 1)) : 0;
         $energy = null;
-        if ($open || ($vehicle['connected'] && is_array($session))) {
+        if ($vehicle['connected'] && $v['wallbox_session_kwh'] !== null) {
+            // Meldet die Wallbox die Lademenge seit dem Anstecken (go-e „wh“), gilt ihr Zähler.
+            $energy = round((float) $v['wallbox_session_kwh'], 3);
+        } elseif ($open || ($vehicle['connected'] && is_array($session))) {
             // Geladen seit dem Anstecken: alle Zyklen dieses Ladevorgangs.
             $energy = round((float) ($base['plug_group']['energy_kwh'] ?? $session['energy_kwh']), 3);
         } elseif ($power !== null) {
@@ -426,18 +471,47 @@ final class Snapshot
     }
 
     /**
+     * Übersicht des Ladevorgangs, solange er läuft oder das Auto noch steckt: seit wann, wie lange geladen,
+     * Energie, Ø Leistung, Sonnenanteil und Kosten bisher.
+     */
+    public static function sessionView(array $base, array $tariffs, int $now): array
+    {
+        $session = $base['session'] ?? null;
+        $group = $base['plug_group'] ?? null;
+        $open = is_array($session) && empty($session['ended_at']);
+        if (!$open && !(!empty($base['vehicle']['connected']) && is_array($session))) {
+            return ['open' => false];
+        }
+        $row = is_array($group) ? $group : $session;
+        $energy = (float) $row['energy_kwh'];
+        $duration = (int) $row['duration_s'];
+        $start = (int) strtotime((string) (($row['plug_at'] ?? '') ?: $row['started_at']));
+        $cost = Sessions::cost($row, $tariffs);
+        return [
+            'open' => true,
+            'since' => 'seit ' . date('H:i', $start),
+            'duration' => duration_clock($duration),
+            'kwh' => kwh($energy),
+            'avg' => $duration > 60 ? kw($energy / ($duration / 3600)) : '—',
+            'solar' => pct((float) $cost['solar_pct']),
+            'cost' => euro((float) $cost['cost']),
+        ];
+    }
+
+    /**
      * Regelung unter der Ladepunkt-Karte: mit welcher Stufe die Wallbox jetzt laden würde (verriegelt, mit
      * anstehendem Wechsel), woher die Leistung käme und wohin der übrige Überschuss ginge, was die drei Modi
      * täten, die Phasen-Leiter und der Rechenweg. Geschrieben wird nichts.
      *
      * @param array $live Messwerte und Bilanz
      * @param array $strategy geordnete Grenzen aus zone_thresholds()
-     * @param array $setpoint Vorschlag des aktiven Modus nach Energy::latch()
+     * @param array $setpoint Stand der Regelung aus Controller::decision() mit Zielwerten von Energy::suggest()
      * @param array<string, array> $modes Vorschläge für smart, smart_dauerhaft und schnell
      * @param array $battery Backup-Puffer, Schonen und Entladeleistung aus Reserve::battery()
      * @param array $reserve Stand des Puffers aus Reserve::view()
+     * @param array $ems Hauptschalter: active, paused, stale, log
      */
-    public static function control(array $live, array $charge, array $strategy, array $setpoint, array $modes, array $battery = [], array $reserve = []): array
+    public static function control(array $live, array $charge, array $strategy, array $setpoint, array $modes, array $battery = [], array $reserve = [], array $ems = []): array
     {
         $active = (string) ($setpoint['mode'] ?? ($charge['mode'] ?? 'smart'));
         $zone = (string) ($setpoint['zone'] ?? 'none');
@@ -478,10 +552,14 @@ final class Snapshot
             'kw' => round($kw, 3),
             // Der Modus steht schon im Kopf; ohne Ladung zeigt die große Zahl 0 kW und keine Stufe.
             'kw_text' => kw($amps === 0 ? 0.0 : $kw),
-            'headline' => $amps === 0 ? 'Würde jetzt nicht laden' : 'Würde jetzt laden mit',
+            'headline' => self::headline($amps, $ems),
             'level_text' => $amps === 0 ? '' : self::levelText($amps, $phases),
             'reason' => self::zoneText($active, $zone, $strategy, $soc, $minA, $reserve),
             'pending' => self::pendingText($setpoint),
+            // Hauptschalter: regelt EMS die Wallbox oder zeigt es nur an?
+            'ems_label' => !empty($ems['active']) ? (!empty($ems['paused']) ? 'pausiert' : 'regelt') : 'nur Anzeige',
+            'ems_active' => !empty($ems['active']) && empty($ems['paused']),
+            'log' => $ems['log'] ?? [],
             'flows' => $flows,
             'car_text' => kw((float) $flows['car_kw']),
             'split_text' => self::splitText($flows, 'Auto: ', !empty($own['protect']) ? 'Der Speicher bleibt geschont.' : 'Speicher lädt nicht.'),
@@ -536,7 +614,7 @@ final class Snapshot
             return match (true) {
                 !empty($reserve['raised']) => 'Volle Leistung aus Sonne und Netz. ' . (string) $reserve['text'],
                 !empty($reserve['active']) => 'Volle Leistung aus Sonne und Netz. Lädt das Auto, hebt die App den Backup-Puffer auf den Ladestand, damit der Speicher geschont bleibt.',
-                default => 'Volle Leistung. Was die Sonne nicht schafft, deckt zuerst der Speicher bis zu seinem Backup-Puffer, dann das Netz. Schonen lässt er sich unter Mehr → Speicher.',
+                default => 'Volle Leistung. Was die Sonne nicht schafft, deckt zuerst der Speicher bis zu seinem Backup-Puffer, dann das Netz. Schonen lässt er sich unter Einstellungen → Speicher.',
             };
         }
         $p = pct((float) $strategy['priority_soc']);
@@ -556,17 +634,41 @@ final class Snapshot
     /** Anstehender Wechsel der Verriegelung, leer ohne Wechsel. */
     public static function pendingText(array $setpoint): string
     {
-        $wait = (int) ($setpoint['wait_s'] ?? 0);
-        if ($wait <= 0 || !isset($setpoint['pending_amps'])) {
-            return '';
+        $timer = $setpoint['timer'] ?? null;
+        $phases = (int) ($setpoint['latched_phases'] ?? 1);
+        if (is_array($timer)) {
+            $left = (int) $timer['remaining_s'];
+            $in = $left > 0 ? 'in ' . self::wait($left) : 'gleich';
+            return match ((string) $timer['action']) {
+                'enable' => 'Startet ' . $in . ' mit ' . self::levelText((int) ($setpoint['min_a'] ?? 6), $phases) . ' (Einschaltverzögerung).',
+                'disable' => 'Stoppt ' . $in . ' (Ausschaltverzögerung), bis dahin mit dem Mindeststrom.',
+                'scale3p' => 'Schaltet ' . $in . ' auf drei Phasen.',
+                'scale1p' => 'Schaltet ' . $in . ' auf eine Phase.',
+                default => '',
+            };
         }
-        $next = (int) $setpoint['pending_amps'];
-        $level = self::levelText($next, (int) ($setpoint['pending_phases'] ?? 1));
-        return match (true) {
-            $next === 0 => 'Stoppt in ' . $wait . NNBSP . 's (Ausschaltverzögerung).',
-            (int) ($setpoint['latched_amps'] ?? 0) === 0 => 'Startet in ' . $wait . NNBSP . 's mit ' . $level . ' (Einschaltverzögerung).',
-            default => 'Wechselt in ' . $wait . NNBSP . 's auf ' . $level . ' (Schütz-Schutzzeit).',
+        return match ($setpoint['note'] ?? null) {
+            'guard' => 'Wartet die Schütz-Schutzzeit ab, noch ' . self::wait((int) ($setpoint['guard_s'] ?? 0)) . '.',
+            'no_values' => 'Ohne Zählerwerte schaltet die Regelung nichts.',
+            'offline' => 'Die Wallbox meldet keinen Zustand, die Regelung wartet.',
+            default => '',
         };
+    }
+
+    /** Wartezeit als „45 s“ oder „2:10 min“. */
+    public static function wait(int $seconds): string
+    {
+        $seconds = max(0, $seconds);
+        return $seconds < 60 ? $seconds . NNBSP . 's' : intdiv($seconds, 60) . ':' . str_pad((string) ($seconds % 60), 2, '0', STR_PAD_LEFT) . NNBSP . 'min';
+    }
+
+    /** Überschrift über der Stufe: was EMS einstellt oder, nur angezeigt, einstellen würde. */
+    public static function headline(int $amps, array $ems): string
+    {
+        if (!empty($ems['active']) && empty($ems['paused'])) {
+            return $amps === 0 ? 'Wallbox gesperrt' : 'Regelt auf';
+        }
+        return $amps === 0 ? 'Würde jetzt nicht laden' : 'Würde jetzt laden mit';
     }
 
     /**

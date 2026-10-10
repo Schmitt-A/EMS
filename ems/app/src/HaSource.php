@@ -2,13 +2,16 @@
 declare(strict_types=1);
 
 /**
- * Was die App von Home Assistant liest, dazu ein einziger Schreibzugriff: der Backup-Puffer des Speichers
- * (Reserve). HaClient spricht mit HA, DemoHaClient liefert Beispieldaten.
+ * Was die App von Home Assistant liest, dazu die Schreibzugriffe bei aktivem EMS: Wallbox (Controller) und
+ * Backup-Puffer (Reserve). HaClient spricht mit HA, DemoHaClient liefert Beispieldaten.
  */
 interface HaSource
 {
     /** Setzt eine number- oder input_number-Entität (Dienst set_value). Wirft bei Fehlern. */
     public function setNumber(string $entityId, float $value): void;
+
+    /** Ruft einen Dienst auf, etwa select.select_option oder button.press. Wirft bei Fehlern. */
+    public function service(string $domain, string $service, array $data): void;
 
     public function configured(): bool;
 

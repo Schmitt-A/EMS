@@ -70,6 +70,8 @@ function render(card, data) {
   }
   legend($('[data-legend="modes"]', card), seen);
   ladder($('[data-ladder]', card), data.ladder);
+  // Regelt EMS, steht die Kapsel in Amber; nur Anzeige oder pausiert neutral.
+  if ('ems_active' in data) $('[data-ems-pill]', card)?.classList.toggle('pill-neutral', !data.ems_active);
 }
 
 export function initControl(root = document) {

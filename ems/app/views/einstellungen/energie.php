@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 /**
- * Mehr → Energie: Zuordnung von PV, Speicher, Netz und Haus. Jede Karte speichert nur ihre Felder.
+ * Einstellungen → Energie: Zuordnung von PV, Speicher, Netz und Haus. Jede Karte speichert nur ihre Felder.
  * @var array $cfg
  * @var array $suggest
  * @var list<string> $missing
@@ -9,7 +9,7 @@ declare(strict_types=1);
  */
 $m = $cfg['mapping'];
 $entity = static fn (string $key, string $label, string $hint): string => ui_entity_field($key, $label, (string) ($m[$key] ?? ''), $hint, $suggest[$key] ?? '');
-$open = static fn (): string => '<form method="post" action="' . e(url('/mehr')) . '" class="stack">' . csrf_field()
+$open = static fn (): string => '<form method="post" action="' . e(url('/einstellungen')) . '" class="stack">' . csrf_field()
     . '<input type="hidden" name="section" value="mapping"><input type="hidden" name="back" value="' . e($back) . '">';
 $close = '<div class="form-actions"><button class="btn btn-primary" type="submit">Zuordnung speichern</button></div></form>';
 
@@ -36,7 +36,7 @@ if ($missing) {
   <?= $entity('battery_discharge', 'Speicher entladen', 'Leistung beim Entladen.') ?>
   <?= $entity('battery_signed', 'Speicher mit Vorzeichen', 'Nur bei einem gemeinsamen Sensor.') ?>
   <div class="form-rows"><?= ui_form_row('Positives Vorzeichen bedeutet', ui_select('battery_sign', ['positive_charge' => 'Laden', 'positive_discharge' => 'Entladen'], (string) $m['battery_sign']), ['for' => 'f-battery_sign', 'stack' => true]) ?></div>
-  <p class="body-sm muted">Backup-Puffer, Grenzen und Entladeleistung stehen unter <?= ui_inline('Mehr → Speicher', ['href' => url('/mehr/speicher')]) ?>.</p>
+  <p class="body-sm muted">Backup-Puffer, Grenzen und Entladeleistung stehen unter <?= ui_inline('Einstellungen → Speicher', ['href' => url('/einstellungen/speicher')]) ?>.</p>
   <?= $close ?>
 </section>
 <section class="card stack" aria-labelledby="map-grid-title">

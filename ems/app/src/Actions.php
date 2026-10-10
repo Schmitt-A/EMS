@@ -36,8 +36,8 @@ final class Actions
     /** Alle Zuordnungen, die eine Entität aufnehmen; Formulare und Import nehmen nur diese an. */
     private const ENTITY_KEYS = [
         'pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'battery_reserve',
-        'car_soc', 'car_capacity', 'car_range', 'car_odometer', 'car_limit', 'grid_import', 'grid_export', 'grid_signed', 'house_power',
-        'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force',
+        'car_soc', 'car_capacity', 'car_range', 'car_odometer', 'car_limit', 'car_wakeup', 'grid_import', 'grid_export', 'grid_signed', 'house_power',
+        'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force', 'wallbox_energy',
     ];
 
     /**
@@ -50,6 +50,8 @@ final class Actions
         'car_range' => ['/^sensor\.\w*tesla\w*_(range|battery_range|reichweite)$/', ['km', 'mi']],
         'car_odometer' => ['/^sensor\.\w*tesla\w*_(odometer|kilometerstand)$/', ['km', 'mi']],
         'car_limit' => ['/^sensor\.\w*tesla\w*_(charge_limit|ladelimit)$/', ['%']],
+        'car_wakeup' => ['/^button\.\w*tesla\w*_(wake_up|wake|aufwecken|wecken)$/', ['']],
+        'wallbox_energy' => ['/^sensor\.go_echarger_\w+_wh$/', ['kwh', 'wh']],
     ];
 
     /**
@@ -254,7 +256,7 @@ final class Actions
             store()->merge('battery_strategy', $patch);
             $reserve = new Reserve(store(), ha());
             // Ist das Schonen jetzt aus, aber der Puffer noch angehoben, erst zurücksetzen, dann den Standardwert setzen.
-            $snap = (new Snapshot(store(), ha()))->build(false);
+            $snap = (new Snapshot(store(), ha()))->build();
             $reserve->sync($snap['values'], $snap['cfg'], time(), (new Sessions(store()))->open() !== null);
             flash($reserve->apply(cfg(), time()));
             self::redirectBack();
@@ -282,6 +284,13 @@ final class Actions
             }
         } elseif ($section === 'charge') {
             store()->merge('charge', self::chargePatch());
+            (new Controller(store(), ha()))->kick(time());
+        } elseif ($section === 'control') {
+            flash(self::switchControl(($_POST['active'] ?? '0') === '1'));
+            self::redirectBack();
+        } elseif ($section === 'target') {
+            flash(self::saveTarget());
+            self::redirectBack();
         } elseif ($section === 'vehicle') {
             $mapping = store()->get('mapping', []);
             $mapping = is_array($mapping) ? $mapping : [];
@@ -403,7 +412,7 @@ final class Actions
             store()->put('wizard_done', true);
         }
         flash('Konfiguration übernommen.');
-        $back = (string) ($_POST['back'] ?? '/mehr');
+        $back = (string) ($_POST['back'] ?? '/einstellungen');
         if (!self::localPath($back) || (store()->get('wizard_done', false) && str_starts_with($back, '/einrichten'))) {
             $back = '/';
         }
@@ -492,7 +501,9 @@ final class Actions
                 'max_a' => (int) round(self::clamped($charge['max_a'] ?? null, 6, 16, 16)),
                 'switch_s' => (int) round(self::clamped($charge['switch_s'] ?? null, 60, 600, 60)),
                 'on_delay_s' => (int) round(self::clamped($charge['on_delay_s'] ?? null, 60, 600, 60)),
-                'off_delay_s' => (int) round(self::clamped($charge['off_delay_s'] ?? null, 60, 600, 60)),
+                'off_delay_s' => (int) round(self::clamped($charge['off_delay_s'] ?? null, 60, 600, 180)),
+                'then_mode' => in_array($charge['then_mode'] ?? '', Target::THEN, true) ? (string) $charge['then_mode'] : 'smart',
+                'after_unplug' => in_array($charge['after_unplug'] ?? '', ['', 'aus', 'smart', 'smart_dauerhaft', 'schnell'], true) ? (string) $charge['after_unplug'] : '',
             ]);
         }
         if (isset($data['battery_strategy']) && is_array($data['battery_strategy'])) {
@@ -556,6 +567,15 @@ final class Actions
             $phase = (string) $_POST['phase_mode'];
             $patch['phase_mode'] = in_array($phase, ['auto', '1p', '3p'], true) ? $phase : 'auto';
         }
+        if (array_key_exists('then_mode', $_POST)) {
+            $then = (string) $_POST['then_mode'];
+            $patch['then_mode'] = in_array($then, Target::THEN, true) ? $then : 'smart';
+        }
+        if (array_key_exists('after_unplug', $_POST)) {
+            $after = (string) $_POST['after_unplug'];
+            $patch['after_unplug'] = in_array($after, ['', 'aus', 'smart', 'smart_dauerhaft', 'schnell'], true) ? $after : '';
+        }
+
         $ranges = [
             'solar_share' => [0, 100, 100, false],
             'reserve_w' => [0, 2000, 200, false],
@@ -563,7 +583,7 @@ final class Actions
             'max_a' => [6, 16, 16, true],
             'switch_s' => [60, 600, 60, true],
             'on_delay_s' => [60, 600, 60, true],
-            'off_delay_s' => [60, 600, 60, true],
+            'off_delay_s' => [60, 600, 180, true],
         ];
         foreach ($ranges as $key => [$min, $max, $fallback, $int]) {
             if (!array_key_exists($key, $_POST)) {
@@ -576,7 +596,60 @@ final class Actions
         if ($maxA < $minA) {
             $patch['max_a'] = $minA;
         }
+        if (!empty($_POST['evcc_defaults'])) {
+            // Wie evcc: Einschalten nach 1 min, Ausschalten nach 3 min, 60 s Beruhigung nach dem Schalten.
+            $patch = ['on_delay_s' => 60, 'off_delay_s' => 180, 'switch_s' => 60] + $patch;
+        }
         return $patch;
+    }
+
+    /**
+     * Hauptschalter: Einschalten prüft erst die Entitäten der Wallbox und übernimmt beim nächsten Schritt ihren
+     * Stand. Ausschalten gibt die Wallbox frei (frc 0) und setzt einen angehobenen Backup-Puffer zurück.
+     */
+    public static function switchControl(bool $active): string
+    {
+        $cfg = cfg();
+        $controller = new Controller(store(), ha());
+        $now = time();
+        if ($active) {
+            try {
+                $problems = Controller::problems($cfg, ha()->index());
+            } catch (Throwable $e) {
+                $problems = ['Home Assistant ist nicht erreichbar: ' . $e->getMessage()];
+            }
+            if ($problems) {
+                return 'EMS regelt noch nicht. ' . implode(' ', $problems);
+            }
+            store()->merge('control', ['active' => true]);
+            $controller->resume($now);
+            return 'EMS regelt jetzt die Wallbox. evcc darf sie in der Zeit nicht steuern.';
+        }
+        store()->merge('control', ['active' => false]);
+        $message = $controller->release(cfg(), $now);
+        $snap = (new Snapshot(store(), ha()))->build();
+        (new Reserve(store(), ha()))->sync($snap['values'], $snap['cfg'], $now, (new Sessions(store()))->open() !== null);
+        return $message;
+    }
+
+    /** Ladeziel aus dem Sheet setzen oder löschen; gibt die Rückmeldung zurück. */
+    public static function saveTarget(): string
+    {
+        $controller = new Controller(store(), ha());
+        if (!empty($_POST['clear'])) {
+            store()->put(Target::KEY, []);
+            $controller->kick(time());
+            return 'Ladeziel gelöscht.';
+        }
+        $snap = (new Snapshot(store(), ha()))->build();
+        $built = Target::build($_POST, time(), $snap['vehicle']['soc'] ?? null);
+        if ($built['error'] !== null) {
+            return $built['error'];
+        }
+        store()->put(Target::KEY, $built['target']);
+        $controller->kick(time());
+        $view = Target::view($built['target'], Target::inputs($snap), time());
+        return 'Ladeziel gesetzt: ' . $view['label'] . ', danach ' . Energy::modeLabel((string) $built['target']['then']) . '.';
     }
 
     /** Modus aus dem Segment-Umschalter (POST /api/modus). */
@@ -661,9 +734,9 @@ final class Actions
 
     private static function redirectBack(): never
     {
-        $back = (string) ($_POST['back'] ?? '/mehr');
+        $back = (string) ($_POST['back'] ?? '/einstellungen');
         if (!self::localPath($back)) {
-            $back = '/mehr';
+            $back = '/einstellungen';
         }
         redirect($back);
     }

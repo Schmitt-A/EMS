@@ -6,6 +6,7 @@ require dirname(__DIR__) . '/app/src/bootstrap.php';
 $snapshot = new Snapshot(store(), ha());
 $sessions = new Sessions(store());
 $reserve = new Reserve(store(), ha());
+$controller = new Controller(store(), ha());
 $sessions->repairVehicleNames((string) (cfg()['vehicle']['name'] ?? ''));
 $series = new Series(store(), ha());
 
@@ -24,6 +25,8 @@ while (true) {
                 $snap['cfg']['charge'],
                 time()
             );
+            // Regelung der Wallbox wie evcc: Timer alle 10 s, Schritt alle 30 s, schreibt nur bei aktivem EMS.
+            $controller->tick($snap, time());
             // Backup-Puffer: beim Netzladen anheben, danach zurücksetzen (auch nach einem Neustart mittendrin).
             $reserve->sync($snap['values'], $snap['cfg'], time(), $sessions->open() !== null);
             // Ältere Zyklen ohne Ansteckzeit aus dem Statusverlauf zuordnen, höchstens einmal pro Stunde.

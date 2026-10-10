@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 /**
- * Mehr → Speicher: Grenzen fürs Auto (wie auf der Seite Speicher), der Backup-Puffer mit Standardwert und
+ * Einstellungen → Speicher: Grenzen fürs Auto (wie auf der Seite Speicher), der Backup-Puffer mit Standardwert und
  * Schonen beim Netzladen, und die Entladeleistung für die Aufteilung. Jede Karte speichert nur ihre Felder.
  * @var array $cfg
  * @var array $snap
@@ -12,7 +12,7 @@ $b = $cfg['battery_strategy'];
 $z = zone_thresholds((float) $b['priority_soc'], (float) $b['car_buffer_soc'], (float) $b['car_auto_soc']);
 $settings = Reserve::settings($cfg);
 $reserve = $snap['reserve'];
-$open = static fn (string $section): string => '<form method="post" action="' . e(url('/mehr')) . '" class="stack">' . csrf_field()
+$open = static fn (string $section): string => '<form method="post" action="' . e(url('/einstellungen')) . '" class="stack">' . csrf_field()
     . '<input type="hidden" name="section" value="' . e($section) . '"><input type="hidden" name="back" value="' . e($back) . '">';
 $numberField = static fn (string $name, ?float $value, int $decimals, array $attrs = []): string => ui_input($name, $value === null ? '' : ui_field_num($value, $decimals), $attrs + ['class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off', 'placeholder' => '–']);
 ?>

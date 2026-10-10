@@ -123,6 +123,13 @@ $guardHa = new class implements HaSource {
         }
         $this->writes[] = [$entityId, $value];
     }
+    public function service(string $domain, string $service, array $data): void
+    {
+        if ($this->fail) {
+            throw new RuntimeException('nicht erreichbar');
+        }
+        $this->writes[] = [$data['entity_id'], $data['option'] ?? $data['value'] ?? null];
+    }
     public function configured(): bool { return true; }
     public function ping(): array { return ['ok' => true]; }
     public function states(): array { return []; }
@@ -134,7 +141,7 @@ $guardHa = new class implements HaSource {
     public function search(string $query, int $limit = 20): array { return []; }
 };
 $guard = new Reserve(new ConfigStore(':memory:'), $guardHa);
-$gridCfg = ['charge' => ['mode' => 'schnell'], 'mapping' => ['battery_reserve' => 'number.x'], 'battery_strategy' => ['backup_soc' => 20, 'grid_protect' => true]];
+$gridCfg = ['charge' => ['mode' => 'schnell'], 'mapping' => ['battery_reserve' => 'number.x'], 'battery_strategy' => ['backup_soc' => 20, 'grid_protect' => true], 'control' => ['active' => true]];
 $charging = ['wallbox_kw' => 11.0, 'wallbox_car_raw' => 'charging', 'battery_soc' => 64.7];
 $guard->sync($charging, $gridCfg, 1000, true);
 $guard->sync($charging, $gridCfg, 1010, true);
@@ -168,16 +175,107 @@ $morning = Forecast::powerKw(1000, 8, $plantNoon);
 check($noon > 4 && $noon <= 10, '1000 W/m² bleibt unter dem Limit, ist ' . $noon);
 check(abs($morning - $noon) < 0.001, 'die Stunde verändert die Leistung nicht');
 
-$latched = Energy::latch(['amps' => 10, 'phases' => 1], ['amps' => 0, 'phases' => 1], 1000, $charge);
-check($latched['latched_amps'] === 0 && $latched['wait_s'] === 60, 'Einschalten wartet 60 s');
-$latched = Energy::latch(['amps' => 10, 'phases' => 1], ['amps' => 0, 'phases' => 1, 'pending_amps' => 10, 'pending_phases' => 1, 'pending_since' => 900], 1000, $charge);
-check($latched['latched_amps'] === 10 && $latched['wait_s'] === 0, 'Nach der Wartezeit wird verriegelt');
-$latched = Energy::latch(['mode' => 'aus', 'amps' => 0, 'phases' => 3], ['amps' => 6, 'phases' => 3], 1000, $charge);
-check($latched['latched_amps'] === 0 && $latched['wait_s'] === 0, 'Aus gilt sofort, ohne Ausschaltverzögerung');
-$latched = Energy::latch(['mode' => 'schnell', 'amps' => 16, 'phases' => 3], ['amps' => 0, 'phases' => 1], 1000, $charge);
-check($latched['latched_amps'] === 16 && $latched['wait_s'] === 0, 'Netzladen startet sofort');
-$latched = Energy::latch(['mode' => 'schnell', 'amps' => 16, 'phases' => 3], ['amps' => 16, 'phases' => 1], 1000, $charge);
-check($latched['latched_phases'] === 1 && $latched['wait_s'] === 60, 'Auch beim Netzladen wartet der Phasenwechsel die Schutzzeit ab');
+// Regelung wie evcc: Timer auf Bedingungen, Mindeststrom vor dem Stoppen, Phasen mit Ein- und Ausschaltverzögerung.
+$ctl = ['mode' => 'smart', 'connected' => true, 'charging' => false, 'available_kw' => 0.0, 'zone' => 'car', 'min_a' => 6, 'max_a' => 16, 'phase_mode' => 'auto', 'share' => 1.0, 'on_s' => 60, 'off_s' => 180, 'guard_s' => 60, 'reported' => ['frc' => '1', 'amp' => 6, 'psm' => '1']];
+$run = static fn (array $state, array $patch, int $now): array => Controller::step($state, $patch + $ctl, $now)['state'];
+$st = $run([], ['available_kw' => 2.0], 1000);
+check($st['enabled'] === false && $st['phases'] === 1 && $st['pv_action'] === 'enable', 'Erster Schritt übernimmt die Wallbox, der Ein-Timer läuft');
+$st = $run($st, ['available_kw' => 1.6], 1030);
+check($st['enabled'] === false && $st['pv_timer'] === 1000, 'Schwankender Überschuss startet den Ein-Timer nicht neu');
+$st = $run($st, ['available_kw' => 2.0], 1060);
+check($st['enabled'] === true && $st['amps'] === 6 && $st['phases'] === 1, 'Nach 60 s gestartet mit dem Mindeststrom');
+$st = $run($st, ['available_kw' => 3.0, 'charging' => true], 1090);
+check($st['amps'] === 13, 'Laufend folgt der Strom sofort, abgerundet: 3 kW sind 13 A');
+$st = $run($st, ['available_kw' => 0.5, 'charging' => true], 1100);
+check($st['enabled'] === true && $st['amps'] === 6 && $st['pv_action'] === 'disable', 'Zu wenig Sonne: Mindeststrom, der Aus-Timer läuft');
+$st = $run($st, ['available_kw' => 0.5, 'charging' => true], 1250);
+check($st['enabled'] === true, 'Vor 180 s wird nicht gestoppt');
+$st = $run($st, ['available_kw' => 0.5, 'charging' => true], 1280);
+check($st['enabled'] === false && $st['pv_timer'] === null, 'Nach 180 s gestoppt');
+$up = $run(['enabled' => true, 'amps' => 16, 'phases' => 1, 'step_at' => 1900, 'mode' => 'smart', 'connected' => true], ['available_kw' => 5.0, 'charging' => true], 2000);
+check($up['phases'] === 1 && $up['phase_action'] === 'scale3p', '1p → 3p wartet die Einschaltverzögerung ab');
+$up = $run($up, ['available_kw' => 5.0, 'charging' => true], 2060);
+check($up['phases'] === 3 && $up['amps'] === 7, 'Nach 60 s dreiphasig mit 7 A');
+$down = $run(['enabled' => true, 'amps' => 8, 'phases' => 3, 'step_at' => 2900, 'mode' => 'smart', 'connected' => true], ['available_kw' => 3.0, 'charging' => true], 3000);
+$down = $run($down, ['available_kw' => 3.0, 'charging' => true], 3170);
+check($down['phases'] === 3 && $down['enabled'] === true && $down['amps'] === 6, '3p → 1p erst nach der Ausschaltverzögerung, bis dahin Mindeststrom');
+check($down['pv_action'] === null, 'Reicht es einphasig, läuft kein Aus-Timer');
+$down = $run($down, ['available_kw' => 3.0, 'charging' => true], 3180);
+check($down['phases'] === 1 && $down['enabled'] === true && $down['amps'] === 13, 'Nach 180 s einphasig weiter statt zu stoppen');
+$guarded = $run(['enabled' => false, 'amps' => 6, 'phases' => 1, 'step_at' => 3990, 'mode' => 'smart', 'connected' => false, 'switched_at' => 3990], ['available_kw' => 2.0], 4000);
+check($guarded['enabled'] === false && $guarded['note'] === 'guard', 'Angesteckt startet sofort, aber nicht vor der Schütz-Schutzzeit');
+$guarded = $run($guarded, ['available_kw' => 2.0], 4050);
+check($guarded['enabled'] === true, 'Nach der Schutzzeit ohne weitere Einschaltverzögerung');
+$fast = $run(['enabled' => false, 'amps' => 6, 'phases' => 1, 'step_at' => 4990, 'mode' => 'smart', 'connected' => true], ['mode' => 'schnell'], 5000);
+check($fast['enabled'] === true && $fast['amps'] === 16 && $fast['phases'] === 3, 'Netzladen gibt sofort frei, dreiphasig mit Höchststrom');
+$off = $run($fast, ['mode' => 'aus', 'charging' => true], 5010);
+check($off['enabled'] === false, 'Aus sperrt sofort');
+$min = $run(['enabled' => false, 'amps' => 6, 'phases' => 1, 'step_at' => 5990, 'mode' => 'smart_dauerhaft', 'connected' => true], ['mode' => 'smart_dauerhaft', 'available_kw' => 0.0], 6000);
+check($min['enabled'] === true && $min['amps'] === 6, 'Min+Solar gibt sofort mit dem Mindeststrom frei');
+$gone = $run($min, ['mode' => 'smart_dauerhaft', 'connected' => false], 6100);
+check($gone['enabled'] === false, 'Ohne Auto gesperrt');
+$start = $run(['enabled' => false, 'amps' => 6, 'phases' => 1, 'step_at' => 6990, 'mode' => 'smart', 'connected' => true], ['zone' => 'start', 'available_kw' => 0.0], 7000);
+check($start['enabled'] === true, 'Ab dem Start ohne Sonne gibt der Speicher frei');
+$share = $run(['enabled' => false, 'amps' => 6, 'phases' => 1, 'step_at' => 7990, 'mode' => 'smart', 'connected' => true, 'pv_timer' => 1, 'pv_action' => null], ['available_kw' => 0.8, 'share' => 0.5], 8000);
+check($share['enabled'] === true, 'Mit 50 % Sonnenanteil reichen 0,8 kW für den Start');
+$decision = Controller::decision(['enabled' => true, 'amps' => 6, 'phases' => 3, 'pv_timer' => 1000, 'pv_action' => 'disable'], $ctl, 1100);
+check($decision['kw'] > 4.13 && $decision['timer'] === ['action' => 'disable', 'remaining_s' => 80], 'Anzeige mit Restzeit des Aus-Timers');
+check(Energy::reportedPhases('2') === 3 && Energy::reportedPhases('1') === 1 && Energy::reportedPhases('0') === null, 'go-e psm 2 heißt dreiphasig');
+
+// Schreiben an die go-e: nur Unterschiede, hoch auf drei Phasen erst der Strom; Fremdzugriffe pausieren.
+$wallHa = new class implements HaSource {
+    public array $calls = [];
+    public function setNumber(string $entityId, float $value): void { $this->calls[] = [$entityId, (int) $value]; }
+    public function service(string $domain, string $service, array $data): void { $this->calls[] = [$data['entity_id'], $data['option'] ?? $data['value'] ?? '']; }
+    public function configured(): bool { return true; }
+    public function ping(): array { return ['ok' => true]; }
+    public function states(): array { return []; }
+    public function state(string $entityId): ?array { return null; }
+    public function index(): array { return []; }
+    public function history(string $entityId, int $start, ?int $end = null): array { return []; }
+    public function stateHistory(string $entityId, int $start, ?int $end = null): array { return []; }
+    public function statistics(string $entityId, int $start, int $end, string $period = 'hour'): array { return []; }
+    public function search(string $query, int $limit = 20): array { return []; }
+};
+$wallCfg = ['mapping' => ['wallbox_force' => 'select.frc', 'wallbox_amps' => 'number.amp', 'wallbox_phases' => 'select.psm']];
+$wall = new Controller(new ConfigStore(':memory:'), $wallHa);
+$written = $wall->apply(['enabled' => true, 'amps' => 8, 'phases' => 3] + Controller::initial(), $wallCfg, ['frc' => '1', 'amp' => 6, 'psm' => '1'], 1000);
+check($wallHa->calls === [['number.amp', 8], ['select.psm', '2'], ['select.frc', '2']], 'Freigeben dreiphasig: erst Strom, dann Phasen, dann frc 2');
+$wallHa->calls = [];
+$again = $wall->apply($written, $wallCfg, ['frc' => '1', 'amp' => 6, 'psm' => '1'], 1030);
+check($wallHa->calls === [], 'Innerhalb der Karenzzeit kein zweites Schreiben');
+$taken = $wall->apply($written, $wallCfg, ['frc' => '2', 'amp' => 10, 'psm' => '2'], 1070);
+check(count($taken['conflicts']) === 1 && $wallHa->calls === [['number.amp', 8]], 'Ein fremder Strom zählt als Fremdzugriff und wird zurückgesetzt');
+$taken = $wall->apply($taken, $wallCfg, ['frc' => '2', 'amp' => 10, 'psm' => '2'], 1140);
+$taken = $wall->apply($taken, $wallCfg, ['frc' => '2', 'amp' => 10, 'psm' => '2'], 1210);
+check($taken['paused'] !== null, 'Drei Fremdzugriffe in zehn Minuten pausieren die Regelung');
+$wallHa->calls = [];
+$wall->apply(['enabled' => false] + Controller::initial(), $wallCfg, ['frc' => '2', 'amp' => 8, 'psm' => '2'], 2000);
+check($wallHa->calls === [['select.frc', '1']], 'Sperren schreibt nur frc 1');
+$wallHa->calls = [];
+$offline = $wall->apply(['enabled' => true, 'amps' => 8, 'phases' => 3] + Controller::initial(), $wallCfg, Controller::reported(['wallbox_force_raw' => 'unavailable', 'wallbox_amps' => null, 'wallbox_phases_raw' => 'unknown']), 3000);
+check($wallHa->calls === [] && $offline['note'] === 'offline' && $offline['conflicts'] === [], 'Offline schreibt EMS nichts und zählt keinen Fremdzugriff');
+
+// Ladeziele: Energie, Uhrzeit, Ladestand; erreicht → Folgemodus, Abstecken löscht.
+$noon = (int) strtotime('2026-10-10 12:00:00 Europe/Berlin');
+$energyTarget = Target::build(['type' => 'energy', 'kwh' => '20', 'then' => 'aus'], $noon, null)['target'];
+check($energyTarget['value'] === 20.0 && $energyTarget['then'] === 'aus', 'Ziel 20 kWh, danach Aus');
+$view = Target::view($energyTarget, ['session_kwh' => 5.0, 'power_kw' => 11.0], $noon);
+check($view['reached'] === false && abs($view['progress'] - 0.25) < 0.001 && $view['remaining_s'] === 4909, 'Noch 15 kWh bei 11 kW sind 1:21 h');
+check(Target::view($energyTarget, ['session_kwh' => 20.0], $noon)['reached'] === true, 'Bei 20 kWh erreicht');
+$timeTarget = Target::build(['type' => 'time', 'until' => '11:30'], $noon, null)['target'];
+check($timeTarget['value'] === (int) strtotime('2026-10-11 11:30:00 Europe/Berlin'), 'Eine vergangene Uhrzeit meint morgen');
+$soonTarget = Target::build(['type' => 'time', 'hours' => '1,5'], $noon, null)['target'];
+check(Target::view($soonTarget, ['session_kwh' => 2.0], $noon + 3600)['text'] === 'noch 30:00 · 2,0' . NNBSP . 'kWh geladen', 'Countdown und bisher geladene kWh');
+check(Target::build(['type' => 'soc', 'soc' => '80'], $noon, null)['error'] !== null && Target::build(['type' => 'soc', 'soc' => '80'], $noon, 55.0)['target']['start_soc'] === 55.0, 'Ladestand-Ziel braucht den Ladestand des Autos');
+$targetStore = new ConfigStore(':memory:');
+$targetStore->put(Target::KEY, $energyTarget);
+$targetSnap = ['cfg' => ['charge' => ['mode' => 'schnell']], 'values' => ['wallbox_kw' => 11.0, 'wallbox_car_raw' => 'charging'], 'chargepoint' => ['session_kwh' => 20.2], 'suggestion' => [], 'vehicle' => []];
+$switched = Target::check($targetStore, $targetSnap, $noon, true);
+check($switched['mode'] === 'aus' && Target::get($targetStore) === null && $targetStore->get('charge')['mode'] === 'aus', 'Ziel erreicht: weiter mit Aus, Ziel gelöscht');
+$targetStore->put(Target::KEY, $energyTarget);
+$unplugged = Target::check($targetStore, ['values' => ['wallbox_kw' => 0.0, 'wallbox_car_raw' => 'idle']] + $targetSnap, $noon, true);
+check(Target::get($targetStore) === null && str_contains((string) $unplugged['text'], 'abgesteckt'), 'Abstecken löscht das Ziel');
 
 $sample = <<<'KML'
 <?xml version="1.0" encoding="ISO-8859-1"?>
@@ -493,6 +591,7 @@ if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
     $ha = new class ($plugStart) implements HaSource {
         public function __construct(private int $plug) {}
         public function setNumber(string $entityId, float $value): void {}
+        public function service(string $domain, string $service, array $data): void {}
         public function configured(): bool { return true; }
         public function ping(): array { return ['ok' => true]; }
         public function states(): array { return []; }

@@ -28,9 +28,16 @@
 
 .ctl-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s-3);
+  gap: var(--s-2) var(--s-3);
+}
+
+.ctl-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
 }
 
 .ctl-now {

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 /**
- * Mehr → Prognose: Anlagenwerte, Eichfaktor und Regression, Adresse der DWD-Datei.
+ * Einstellungen → Prognose: Anlagenwerte, Eichfaktor und Regression, Adresse der DWD-Datei.
  * @var array $cfg
  * @var string $back
  */
@@ -13,7 +13,7 @@ $catalog = 'https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_station
 ?>
 <section class="card stack" aria-labelledby="plant-title">
   <h3 class="card-title" id="plant-title">Anlage</h3>
-  <form method="post" action="<?= e(url('/mehr')) ?>" class="stack">
+  <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack">
     <?= csrf_field() ?>
     <input type="hidden" name="section" value="plant"><input type="hidden" name="back" value="<?= e($back) ?>">
     <div class="form-rows">
@@ -37,7 +37,7 @@ $catalog = 'https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_station
 <section class="card stack" aria-labelledby="dwd-title">
   <h3 class="card-title" id="dwd-title">DWD-Prognose</h3>
   <p class="body-sm muted">Die Strahlungsprognose kommt direkt vom Deutschen Wetterdienst, stündlich für etwa zehn Tage. Die App holt die Datei ungefähr alle 30 Minuten neu.</p>
-  <form method="post" action="<?= e(url('/mehr')) ?>" class="stack">
+  <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack">
     <?= csrf_field() ?>
     <input type="hidden" name="section" value="weather"><input type="hidden" name="back" value="<?= e($back) ?>">
     <div class="form-rows"><?= ui_form_row('KMZ-Adresse', ui_input('weather_url', (new WeatherFeed(store()))->url(), ['id' => 'f-weather-url', 'type' => 'url', 'spellcheck' => 'false', 'autocomplete' => 'off']), ['for' => 'f-weather-url', 'stack' => true]) ?></div>

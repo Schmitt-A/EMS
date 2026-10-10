@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 /**
- * Mehr → Fahrzeug: Name, Ladelimit, Akku und die Entitäten des Autos, auch von Tesla BLE.
+ * Einstellungen → Fahrzeug: Name, Ladelimit, Akku und die Entitäten des Autos, auch von Tesla BLE.
  * @var array $cfg
  * @var array $snap
  * @var array $suggest
@@ -20,4 +20,4 @@ declare(strict_types=1);
     'back' => $back,
 ]); ?>
 </section>
-<p class="body-sm muted">Ab wann der Hausspeicher das Auto stützt, legst du unter <?= ui_inline('Mehr → Speicher', ['href' => url('/mehr/speicher')]) ?> oder auf der Seite <?= ui_inline('Speicher', ['href' => url('/speicher')]) ?> fest.</p>
+<p class="body-sm muted">Ab wann der Hausspeicher das Auto stützt, legst du unter <?= ui_inline('Einstellungen → Speicher', ['href' => url('/einstellungen/speicher')]) ?> oder auf der Seite <?= ui_inline('Speicher', ['href' => url('/speicher')]) ?> fest.</p>

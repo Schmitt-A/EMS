@@ -75,10 +75,16 @@ final class Reserve
         return ['action' => 'none'];
     }
 
-    /** Prüft und schreibt bei Bedarf. Der Recorder ruft das alle 10 s auf, die Oberfläche nach einem Moduswechsel. */
+    /**
+     * Prüft und schreibt bei Bedarf. Der Recorder ruft das alle 10 s auf, die Oberfläche nach einem Moduswechsel.
+     * Angehoben wird nur bei aktivem EMS; ist es aus, wird ein angehobener Puffer zurückgesetzt.
+     */
     public function sync(array $values, array $cfg, int $now, bool $open): array
     {
         $settings = self::settings($cfg);
+        if (!Controller::active($cfg)) {
+            $settings['active'] = false;
+        }
         $state = $this->state();
         $power = isset($values['wallbox_kw']) ? (float) $values['wallbox_kw'] : null;
         $raw = isset($values['wallbox_car_raw']) ? (string) $values['wallbox_car_raw'] : null;
@@ -115,7 +121,7 @@ final class Reserve
     }
 
     /**
-     * Nach dem Speichern unter Mehr → Speicher: Der Standardwert geht sofort an den Speicher, außer der Puffer ist
+     * Nach dem Speichern unter Einstellungen → Speicher: Der Standardwert geht sofort an den Speicher, außer der Puffer ist
      * gerade fürs Netzladen angehoben; dann gilt er beim Zurücksetzen. Gibt den Satz für die Rückmeldung zurück.
      */
     public function apply(array $cfg, int $now): string
@@ -153,6 +159,7 @@ final class Reserve
             $raised => 'Netzladen: Puffer seit ' . date('H:i', (int) $state['since']) . ' auf ' . pct((float) $state['value']) . ' angehoben, der Speicher gibt nichts ab. Danach zurück auf ' . ($default ?: pct((float) $state['restore'])) . '.',
             $s['default'] === null => 'Der Standardwert fehlt. Ohne ihn hebt die App den Puffer beim Netzladen nicht an.',
             !$s['protect'] => 'Backup-Puffer ' . $default . '. Beim Netzladen deckt der Speicher mit.',
+            !Controller::active($cfg) => 'Backup-Puffer ' . $default . '. Netzladen hebt ihn erst an, wenn EMS die Wallbox regelt.',
             default => 'Backup-Puffer ' . $default . '. Lädt das Auto im Modus Netzladen, hebt die App ihn auf den Ladestand.',
         };
         return [

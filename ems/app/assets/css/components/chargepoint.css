@@ -235,3 +235,126 @@
 .cp-note {
   color: var(--text-2);
 }
+
+/* Ladeziel: Symbol, Ziel und Folgemodus, Fortschritt als dünner Balken, darunter Restzeit oder Countdown. */
+.cp-target {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border-radius: var(--r-field);
+  background: var(--accent-soft);
+}
+
+.cp-target[hidden],
+.cp-target-set[hidden],
+.cp-session[hidden] {
+  display: none;
+}
+
+.cp-target-icon {
+  display: inline-flex;
+  padding-block-start: 0.125rem;
+  color: var(--accent-on-soft);
+}
+
+.cp-target-body {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.cp-target-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--s-2);
+  margin: 0;
+}
+
+.cp-target-label {
+  font-weight: 700;
+}
+
+.cp-target-bar {
+  display: block;
+  height: 0.375rem;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.cp-target-fill {
+  --progress: 0;
+  display: block;
+  width: calc(var(--progress) * 100%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 400ms var(--ease-out);
+}
+
+.cp-target-text {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-target-set {
+  justify-self: start;
+}
+
+/* Übersicht des laufenden Ladevorgangs: vier kleine Kennzahlen, schmal zwei mal zwei. */
+.cp-session {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.cp-session .label {
+  margin: 0;
+}
+
+.cp-session-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-2) var(--s-4);
+  margin: 0;
+}
+
+.cp-session-list div {
+  display: grid;
+  gap: 0.125rem;
+}
+
+.cp-session-list dt {
+  color: var(--text-2);
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.cp-session-list dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+@container cp (min-width: 30rem) {
+  .cp-session-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Ladeziel-Sheet: nur die Felder der gewählten Art (spezifischer als .form-rows). */
+.target-form .target-panel {
+  display: none;
+}
+
+.target-form:has(#tg-type-energy:checked) [data-panel="energy"],
+.target-form:has(#tg-type-time:checked) [data-panel="time"],
+.target-form:has(#tg-type-soc:checked) [data-panel="soc"] {
+  display: grid;
+}
+
+.target-quick .btn {
+  flex: 1 1 0;
+}

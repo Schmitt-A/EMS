@@ -9,7 +9,7 @@ declare(strict_types=1);
 $v = $snap['values'];
 $b = $snap['balance'];
 $c = $snap['cfg']['charge'];
-$cp = $snap['chargepoint'] + ['vehicle' => $snap['vehicle']];
+$cp = $snap['chargepoint'] + ['vehicle' => $snap['vehicle'], 'target' => $snap['target'], 'session_view' => $snap['session_view']];
 $vehicle = $snap['vehicle'];
 $tariffs = $snap['cfg']['tariffs'];
 $f = $snap['forecast'];
@@ -31,7 +31,7 @@ echo ui_page_head('Laden', ui_head_chips(
 
 $missing = Actions::missing($snap['cfg']['mapping']);
 if (!$snap['connected']) {
-    echo ui_notice('wifi-off', e((string) ($snap['error'] ?? 'Keine Verbindung.')) . ' ' . ui_inline('Verbindung prüfen', ['href' => url('/mehr/system')]), 'error');
+    echo ui_notice('wifi-off', e((string) ($snap['error'] ?? 'Keine Verbindung.')) . ' ' . ui_inline('Verbindung prüfen', ['href' => url('/einstellungen/system')]), 'error');
 } elseif ($missing) {
     echo ui_notice('circle-alert', 'Noch nicht zugeordnet: ' . e(implode(', ', $missing)) . '. ' . ui_inline('Assistent öffnen', ['href' => url('/einrichten')]), 'warn');
 }
@@ -78,10 +78,10 @@ $rows = [
 // Ebene 2: Ladepunkt-Einstellungen
 ob_start();
 ?>
-<p class="body muted">Wie die Regelung mit diesen Werten gerade entscheiden würde, zeigt die Karte Regelung unter dem Ladepunkt. Die App schreibt nichts an die Wallbox.</p>
+<p class="body muted">Wie die Regelung mit diesen Werten gerade entscheidet, zeigt die Karte Regelung unter dem Ladepunkt. An die Wallbox schreibt EMS nur, wenn es unter Einstellungen eingeschaltet ist.</p>
 <?php view('partials/charge-form', ['charge' => $c, 'back' => '/']); ?>
 <?= ui_divider('Ladepunkt') ?>
-<form method="post" action="<?= e(url('/mehr')) ?>" class="stack">
+<form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack">
   <?= csrf_field() ?>
   <input type="hidden" name="section" value="chargepoint"><input type="hidden" name="back" value="/">
   <div class="form-rows"><?= ui_form_row('Name', ui_input('chargepoint_name', (string) $cp['name'], ['id' => 'f-cp-name', 'maxlength' => '40', 'autocomplete' => 'off']), ['for' => 'f-cp-name']) ?></div>
@@ -89,6 +89,11 @@ ob_start();
 </form>
 <?php
 echo ui_dialog('cp-settings', 'Einstellungen: ' . $cp['name'], ob_get_clean());
+
+// Ebene 2: Ladeziel
+ob_start();
+view('partials/target-form', ['target' => Target::get(store()), 'snap' => $snap, 'back' => '/']);
+echo ui_dialog('cp-target', 'Ladeziel', ob_get_clean());
 
 // Ebene 2: Fahrzeug
 ob_start();

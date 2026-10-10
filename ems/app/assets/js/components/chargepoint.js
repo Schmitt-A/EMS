@@ -83,6 +83,23 @@ function bindMode(card) {
   });
 }
 
+// Ladeziel: Zeile oder „Ladeziel setzen“, Fortschritt als Breite; Übersicht nur bei offenem Ladevorgang.
+function paintTarget(card, target, session) {
+  const row = $('[data-target]', card);
+  const none = $('[data-target-none]', card);
+  if (row && target) {
+    row.hidden = !target.active;
+    if (none) none.hidden = Boolean(target.active);
+    if (target.active) row.dataset.progress = String(target.progress ?? 0);
+  }
+  if (row) {
+    const fill = $('.cp-target-fill', row);
+    if (fill) fill.style.setProperty('--progress', String(Math.max(0, Math.min(1, Number(row.dataset.progress) || 0))));
+  }
+  const box = $('[data-session]', card);
+  if (box && session) box.hidden = !session.open;
+}
+
 export function initChargepoints(root = document) {
   for (const bar of $$('[data-chargebar]', root)) {
     paintBar(bar, bar.dataset.soc === undefined ? null : Number(bar.dataset.soc), bar.dataset.limit === undefined ? null : Number(bar.dataset.limit));
@@ -91,7 +108,9 @@ export function initChargepoints(root = document) {
     const bar = $('[data-chargebar]', card);
     bindMode(card);
     if (bar) bindLimit(card, bar);
+    paintTarget(card, null, null);
     onLive((data) => {
+      paintTarget(card, data.target, data.session_view);
       const cp = data.chargepoint;
       const vehicle = data.vehicle;
       if (cp) {

@@ -31,7 +31,9 @@ $staticFlow = Energy::flowBar(
 );
 $vehicle = ['name' => 'ID.3', 'status' => 'Lädt …', 'soc' => 57.0, 'range_km' => 296.0, 'limit' => 80.0, 'range_at_limit' => 416.0];
 $cards = [
-    'Lädt mit Sonne' => ['name' => 'Garage', 'mode' => 'smart', 'charging' => true, 'solar_only' => true, 'power_kw' => 7.36, 'phases' => 3, 'session_kwh' => 12.4, 'remaining_s' => 4300, 'vehicle' => $vehicle],
+    'Lädt mit Ziel und Übersicht' => ['name' => 'Garage', 'mode' => 'smart', 'charging' => true, 'solar_only' => true, 'power_kw' => 7.36, 'phases' => 3, 'session_kwh' => 12.4, 'remaining_s' => 4300, 'vehicle' => $vehicle,
+        'target' => ['label' => 'Ziel 20,0' . NNBSP . 'kWh', 'text' => '12,4' . NNBSP . 'kWh von 20,0' . NNBSP . 'kWh, noch ca. 1:02 h', 'then_text' => 'Danach Nur Solar', 'progress' => 0.62],
+        'session_view' => ['open' => true, 'since' => 'seit 10:12', 'duration' => '1:41 h', 'avg' => '7,4' . NNBSP . 'kW', 'solar' => '92' . NNBSP . '%', 'cost' => '0,13' . NNBSP . '€']],
     'Verbunden, wartet' => ['name' => 'Garage', 'mode' => 'smart_dauerhaft', 'charging' => false, 'solar_only' => false, 'power_kw' => 0.0, 'phases' => 0, 'session_kwh' => 0.0, 'remaining_s' => null, 'vehicle' => ['status' => 'Verbunden'] + $vehicle],
     'Fahrzeugdaten fehlen (gesperrt)' => ['name' => 'Garage', 'mode' => 'aus', 'charging' => false, 'solar_only' => false, 'power_kw' => null, 'phases' => 0, 'session_kwh' => null, 'remaining_s' => null, 'vehicle' => ['name' => 'Auto', 'status' => 'Nicht verbunden', 'soc' => null, 'range_km' => null, 'limit' => null, 'range_at_limit' => null]],
 ];
@@ -118,7 +120,7 @@ $section('Energiefluss-Balken', 'Signatur-Komponente: Quellen oben, Verbraucher 
     echo '<div class="card"><p class="caption muted">Laden</p><div class="skeleton sk-bar"></div></div>';
 });
 
-$section('Ladepunkt-Karte mit Ladebalken', 'Modus, Leistung mit Phasen, Fahrzeug, Ladebalken mit ziehbarem Limit. Zustände: lädt, wartet, Daten fehlen.', static function (string $s) use ($cards, $state): void {
+$section('Ladepunkt-Karte mit Ladebalken', 'Modus, Leistung mit Phasen, Ladeziel, Übersicht des Ladevorgangs, Fahrzeug, Ladebalken mit ziehbarem Limit. Zustände: lädt mit Ziel, wartet, Daten fehlen.', static function (string $s) use ($cards, $state): void {
     $i = 0;
     foreach ($cards as $name => $card) {
         $id = 'g-cp-' . $s . (++$i);
@@ -127,6 +129,7 @@ $section('Ladepunkt-Karte mit Ladebalken', 'Modus, Leistung mit Phasen, Fahrzeug
             // Rahmen der Sheets; die echten Formulare stehen auf der Seite Laden.
             echo ui_dialog($id . '-settings', 'Einstellungen: ' . $card['name'], '<p class="body muted">Hier stehen in der App die Ladeparameter, die Regelung im Detail und die Modi.</p>');
             echo ui_dialog($id . '-vehicle', 'Fahrzeug: ' . $card['vehicle']['name'], '<p class="body muted">Hier stehen in der App Name, Ladelimit und die Entitäten des Fahrzeugs.</p>');
+            echo ui_dialog($id . '-target', 'Ladeziel', '<p class="body muted">Hier stehen in der App Energie, Uhrzeit oder Ladestand und der Folgemodus.</p>');
         }
     }
 });

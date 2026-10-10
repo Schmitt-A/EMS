@@ -88,6 +88,8 @@ final class ConfigStore
                 'wallbox_amps_max' => '',
                 'wallbox_phases' => '',
                 'wallbox_force' => '',
+                'wallbox_energy' => '',
+                'car_wakeup' => '',
                 'weather_radiation' => '',
                 'weather_cloud' => '',
                 'weather_sunshine' => '',
@@ -115,10 +117,16 @@ final class ConfigStore
                 'reserve_w' => 200.0,
                 'min_a' => 6,
                 'max_a' => 16,
+                // Wie evcc: Einschalten nach 1 min, Ausschalten nach 3 min, 60 s zwischen zwei Schaltvorgängen.
                 'switch_s' => 60,
                 'on_delay_s' => 60,
-                'off_delay_s' => 60,
+                'off_delay_s' => 180,
+                // Nach einem erreichten Ladeziel und nach dem Abstecken ('' = Modus behalten).
+                'then_mode' => 'smart',
+                'after_unplug' => '',
             ],
+            // Hauptschalter: Nur wenn aktiv, schreibt EMS an Wallbox und Speicher.
+            'control' => ['active' => false],
             // backup_soc: Standardwert des Backup-Puffers (null: nicht gesetzt), grid_protect: Netzladen hebt den Puffer an,
             // discharge_kw: höchste Entladeleistung des Speichers (null: unbekannt).
             'battery_strategy' => [

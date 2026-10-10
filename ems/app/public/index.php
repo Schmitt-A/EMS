@@ -28,6 +28,7 @@ if ($path === '/api/live') {
             'vehicle_name' => (string) ($snap['cfg']['vehicle']['name'] ?? ''),
             'loadpoint_name' => (string) ($snap['cfg']['chargepoint']['name'] ?? 'Wallbox'),
         ]), $snap['cfg']['charge'], time());
+        (new Controller(store(), ha()))->tick($snap, time());
         (new Reserve(store(), ha()))->sync($snap['values'], $snap['cfg'], time(), $sessions->open() !== null);
     }
     json_out($snapshot->livePayload($snap));
@@ -46,15 +47,12 @@ if (in_array($path, $writes, true)) {
     };
     if ($path === '/api/modus') {
         Actions::saveChargeMode();
-        // Netzladen hebt den Backup-Puffer an, ein anderer Modus setzt ihn gleich zurück, nicht erst beim Recorder.
+        // Der neue Modus wirkt sofort, nicht erst beim nächsten Recorder-Schritt: Regelung und Backup-Puffer.
         $snapshot = new Snapshot(store(), ha());
         $snap = $snapshot->build();
-        $reserve = new Reserve(store(), ha());
-        $before = $reserve->state();
-        if ($reserve->sync($snap['values'], $snap['cfg'], time(), (new Sessions(store()))->open() !== null) !== $before) {
-            $snap = $snapshot->build();
-        }
-        json_out($snapshot->livePayload($snap));
+        (new Controller(store(), ha()))->tick($snap, time(), true);
+        (new Reserve(store(), ha()))->sync($snap['values'], $snap['cfg'], time(), (new Sessions(store()))->open() !== null);
+        json_out($snapshot->livePayload($snapshot->build()));
     }
     if ($path === '/api/limit') {
         Actions::saveLimit();
@@ -129,7 +127,8 @@ if ($inWizard && $method === 'POST') {
     Actions::saveWizard($step);
 }
 
-if (($path === '/einstellungen' || $path === '/mehr' || str_starts_with($path, '/mehr/')) && $method === 'POST') {
+// Einstellungen speichern; /mehr nimmt noch Formulare aus älteren, offenen Seiten an.
+if (($path === '/einstellungen' || str_starts_with($path, '/einstellungen/') || $path === '/mehr' || str_starts_with($path, '/mehr/')) && $method === 'POST') {
     Actions::saveSettings();
 }
 
@@ -269,15 +268,21 @@ if ($path === '/prognose') {
     $weather = (new WeatherFeed(store()))->meta();
     page('prognose', compact('snap', 'live', 'yield', 'yesterday', 'scores', 'upcoming', 'past', 'modelRows', 'todayKey', 'lesson', 'overview', 'captions', 'weather') + ['title' => 'Prognose']);
 }
-if ($path === '/einstellungen') {
-    redirect('/mehr');
-}
 if ($path === '/mehr' || str_starts_with($path, '/mehr/')) {
-    $area = trim(substr($path, strlen('/mehr')), '/');
-    if ($area !== '' && (!preg_match('/^[a-z]+$/', $area) || !is_file(EMS_APP . '/views/mehr/' . $area . '.php'))) {
-        redirect('/mehr');
+    redirect('/einstellungen' . substr($path, strlen('/mehr')));
+}
+if ($path === '/einstellungen' || str_starts_with($path, '/einstellungen/')) {
+    $area = trim(substr($path, strlen('/einstellungen')), '/');
+    if ($area !== '' && (!preg_match('/^[a-z]+$/', $area) || !is_file(EMS_APP . '/views/einstellungen/' . $area . '.php'))) {
+        redirect('/einstellungen');
     }
-    page('mehr', ['area' => $area === '' ? null : $area, 'cfg' => cfg(), 'ping' => ha()->ping(), 'snap' => $snap, 'live' => $live, 'suggest' => known_suggestions(), 'title' => 'Mehr']);
+    try {
+        $problems = Controller::problems(cfg(), ha()->index());
+    } catch (Throwable $e) {
+        $problems = ['Home Assistant ist nicht erreichbar.'];
+    }
+    $control = ['problems' => $problems, 'state' => (new Controller(store(), ha()))->state()];
+    page('einstellungen', ['area' => $area === '' ? null : $area, 'cfg' => cfg(), 'ping' => ha()->ping(), 'snap' => $snap, 'live' => $live, 'suggest' => known_suggestions(), 'control' => $control, 'title' => 'Einstellungen']);
 }
 if ($inWizard) {
     $step = trim(substr($path, strlen('/einrichten')), '/');
