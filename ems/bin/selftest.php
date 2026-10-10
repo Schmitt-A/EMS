@@ -680,7 +680,15 @@ $notifyHa->fail = true;
 $sent = $notifier->deliver('stop', 'x', 'y', $quiet, false, $at('23:32'), null, true);
 $notifyLog = $notifier->log(5);
 check(!$sent['ok'] && $sent['status'] === 'error' && str_contains((string) $sent['error'], 'nicht erreichbar') && count($notifyLog) === 3 && $notifyLog[0]['event'] === 'Test · Laden beendet' && $notifyLog[2]['status_text'] === 'leise', 'Fehler beim Senden stehen im Protokoll, neueste zuerst');
+check(Notify::panelPath('a0d7b954_ems', '2026.10.1') === '/app/a0d7b954_ems' && Notify::panelPath('a0d7b954_ems', '2026.2.0') === '/app/a0d7b954_ems' && Notify::panelPath('a0d7b954_ems', '2026.1.3') === '/hassio/ingress/a0d7b954_ems'
+    && Notify::panelPath('a0d7b954_ems', '2025.12.4') === '/hassio/ingress/a0d7b954_ems' && Notify::panelPath('local_ems', null) === '/app/local_ems', 'Tippen öffnet die App: ab Home Assistant 2026.2 unter /app/, davor unter /hassio/ingress/');
 $devices = $notifier->services(['mobile_app_alt']);
+$panelStore = new ConfigStore(':memory:');
+$panelStore->put('notify_slug', 'a0d7b954_ems');
+$notifyHa->fail = false;
+(new Notify($panelStore, $notifyHa))->deliver('test', 'EMS Test', 'x', Notify::settings(['notify' => ['targets' => ['mobile_app_pixel_8']]]), false, $at('12:00'), null, true);
+$lastSent = end($notifyHa->sent);
+check($lastSent[1]['data']['clickAction'] === '/app/a0d7b954_ems' && $lastSent[1]['data']['url'] === '/app/a0d7b954_ems', 'Ein Tippen auf die Mitteilung öffnet EMS in der App');
 check(array_column($devices['list'], 'name') === ['Alt', 'Pixel von Kim'] && $devices['list'][0]['missing'] && !$devices['list'][1]['missing'] && Notify::deviceName('notify') === 'notify.notify' && Notify::deviceName('mobile_app_iphone_15') === 'iPhone 15', 'Gerätenamen aus der App, vergessene Geräte markiert');
 
 if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {

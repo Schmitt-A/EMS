@@ -192,7 +192,9 @@ final class Notify
 
     public const STATUS = ['sent' => 'gesendet', 'silent' => 'leise', 'demo' => 'Demo', 'error' => 'Fehler'];
 
-    private static int $panelTried = 0;
+    private static int $slugTried = 0;
+    /** @var ?array{0: int, 1: ?string} Zeitpunkt der Abfrage und Version von Home Assistant */
+    private static ?array $coreVersion = null;
 
     public function __construct(private ConfigStore $store, private HaSource $ha) {}
 
@@ -911,21 +913,54 @@ final class Notify
     }
 
     /**
-     * Was ein Tippen auf die Mitteilung in der App öffnet: die Ingress-Seite dieses Add-ons. Den Namen fragt EMS
-     * einmal beim Supervisor nach (addons/self/info, für jedes Add-on frei); ohne Supervisor bleibt es beim Öffnen
-     * der App.
+     * Was ein Tippen auf die Mitteilung in der App öffnet: die Oberfläche dieser App in Home Assistant. Ihren Namen
+     * (slug) fragt EMS einmal beim Supervisor nach (addons/self/info, für jede App frei) und merkt ihn sich in
+     * kv.notify_slug; ohne Supervisor öffnet ein Tippen nur die Home-Assistant-App.
      */
     public function appPath(int $now): ?string
     {
-        $cached = $this->store->get('notify_panel', '');
-        if (is_string($cached) && $cached !== '') {
-            return $cached;
+        $slug = $this->store->get('notify_slug', '');
+        if (!is_string($slug) || $slug === '') {
+            $slug = $this->askSlug($now);
+            if ($slug === null) {
+                return null;
+            }
+            $this->store->put('notify_slug', $slug);
         }
+        return self::panelPath($slug, $this->coreVersion($now));
+    }
+
+    /**
+     * Seit Home Assistant 2026.2 öffnet /app/<slug> die Oberfläche einer App, /hassio/ingress/<slug> antwortet dort
+     * mit 404. Ältere Versionen kennen nur diesen Weg. Ist die Version unbekannt, gilt der neue.
+     */
+    public static function panelPath(string $slug, ?string $version): string
+    {
+        if ($version !== null && preg_match('/^(\d+)\.(\d+)/', $version, $m) && ((int) $m[1] < 2026 || ((int) $m[1] === 2026 && (int) $m[2] < 2))) {
+            return '/hassio/ingress/' . $slug;
+        }
+        return '/app/' . $slug;
+    }
+
+    /** Version von Home Assistant aus /api/config, je Prozess höchstens einmal in der Stunde gefragt. */
+    private function coreVersion(int $now): ?string
+    {
+        if (self::$coreVersion === null || $now - self::$coreVersion[0] >= 3600) {
+            $ping = $this->ha->ping();
+            $version = $ping['version'] ?? null;
+            self::$coreVersion = [$now, !empty($ping['ok']) && is_string($version) && $version !== '' ? $version : null];
+        }
+        return self::$coreVersion[1];
+    }
+
+    /** Name dieser App beim Supervisor; nach einem Fehlschlag frühestens in einer Stunde wieder. */
+    private function askSlug(int $now): ?string
+    {
         $token = (string) (getenv('SUPERVISOR_TOKEN') ?: '');
-        if ($token === '' || demo_mode() || $now - self::$panelTried < 3600 || !function_exists('curl_init')) {
+        if ($token === '' || demo_mode() || $now - self::$slugTried < 3600 || !function_exists('curl_init')) {
             return null;
         }
-        self::$panelTried = $now;
+        self::$slugTried = $now;
         $ch = curl_init('http://supervisor/addons/self/info');
         if ($ch === false) {
             return null;
@@ -935,11 +970,6 @@ final class Notify
         curl_close($ch);
         $reply = is_string($body) ? json_decode($body, true) : null;
         $slug = is_array($reply) ? (string) ($reply['data']['slug'] ?? '') : '';
-        if (!preg_match('/^[a-z0-9_]{1,64}$/', $slug)) {
-            return null;
-        }
-        $path = '/hassio/ingress/' . $slug;
-        $this->store->put('notify_panel', $path);
-        return $path;
+        return preg_match('/^[a-z0-9_]{1,64}$/', $slug) ? $slug : null;
     }
 }
