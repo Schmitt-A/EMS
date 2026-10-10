@@ -577,6 +577,18 @@
   }
 }
 
+/* Vorschau des Energieflusses unter Einstellungen → Darstellung, live wie auf Laden. */
+.flow-preview {
+  display: grid;
+  gap: var(--s-3);
+  min-width: 0;
+  padding-block: var(--s-2);
+}
+
+.flow-preview > .label {
+  margin: 0;
+}
+
 /* Laufender Text mit Links, etwa die Anleitung zur DWD-Adresse. */
 .prose {
   display: grid;

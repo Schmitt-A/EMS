@@ -2,11 +2,13 @@
 declare(strict_types=1);
 /**
  * Einstellungen → Darstellung: Farbschema (mit JS sofort, gespeichert per /api/darstellung) und ob Laden den
- * Energiefluss als Balken oder als Energie-Flow zeigt.
+ * Energiefluss als Balken oder als Energie-Flow zeigt, mit der gewählten Darstellung live als Vorschau darunter.
  * @var array $cfg
+ * @var array $snap
  * @var string $back
  */
 $theme = (string) ($cfg['ui']['theme'] ?? 'system');
+$flowView = (string) ($cfg['ui']['flow_view'] ?? 'bar');
 ?>
 <section class="card stack" aria-labelledby="theme-title">
   <h3 class="card-title" id="theme-title">Farbschema</h3>
@@ -30,10 +32,18 @@ $theme = (string) ($cfg['ui']['theme'] ?? 'system');
     <?= ui_segment('flow_view', 'Energiefluss auf Laden', [
         'bar' => ['label' => 'Balken', 'icon' => 'chart-column'],
         'graph' => ['label' => 'Energie-Flow', 'icon' => 'activity'],
-    ], (string) ($cfg['ui']['flow_view'] ?? 'bar'), ['id' => 'f-flow-view']) ?>
+    ], $flowView, ['id' => 'f-flow-view']) ?>
     <noscript><div class="form-actions"><button class="btn btn-primary" type="submit">Darstellung speichern</button></div></noscript>
   </form>
-  <p class="body-sm muted">Balken: Quellen oben, Verbraucher unten, jede Seite über die ganze Breite. Energie-Flow: Kreise für Sonne, Netz, Verbrauch, Speicher und Auto, auf den Linien laufen Punkte dorthin, wohin die Energie fließt.</p>
+  <div class="flow-preview" aria-label="Vorschau, wie auf Laden" role="group">
+    <p class="label">Vorschau, live wie auf Laden</p>
+<?php if ($flowView === 'graph'): ?>
+    <?= ui_energy_flow(Snapshot::flowGraph($snap), ['id' => 'flow-preview', 'car' => (string) ($snap['vehicle']['name'] ?? 'Auto'), 'links' => false]) ?>
+<?php else: ?>
+    <?= ui_flow_bar(Energy::flowBar($snap['values'], $snap['balance'] ?? []), 'flow-preview') ?>
+<?php endif; ?>
+  </div>
+  <p class="body-sm muted">Balken: Quellen oben, Verbraucher unten, jede Seite über die ganze Breite. Energie-Flow: links Sonne, Speicher und Netz, rechts Haus, Auto, Speicher und Einspeisung; auf den Linien laufen Punkte dorthin, wohin die Energie fließt, und unter jedem Namen stehen die wichtigsten Zahlen.</p>
 </section>
 <section class="card stack" aria-labelledby="ha-title">
   <h3 class="card-title" id="ha-title">In Home Assistant</h3>

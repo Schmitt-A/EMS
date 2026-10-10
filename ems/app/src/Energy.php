@@ -8,6 +8,8 @@ final class Energy
     /** Automatik: ab 4,14 kW (6 A dreiphasig) auf drei Phasen, unter 3,68 kW (16 A einphasig) auf eine; dazwischen bleibt die Phase. */
     public const PHASE_UP_KW = 4.14;
     public const PHASE_DOWN_KW = 3.68;
+    /** Anteil der Energie ab Wallbox, der im Akku ankommt (8 % Ladeverlust). */
+    public const CHARGE_EFFICIENCY = 0.92;
 
     /** @return array{0:?float,1:?string} */
     public static function powerToKw(?float $value, ?string $unit): array
@@ -159,8 +161,9 @@ final class Energy
      * Speicher und Einspeisung. Die Sonne deckt zuerst den Verbrauch, dann lädt sie den Speicher, der Rest geht ins
      * Netz; danach deckt der Speicher den Verbrauch, das Netz den Rest und, was der Speicher sonst noch lädt. Haus und
      * Auto teilen sich die Quellen anteilig. $forecast: today_kwh und remaining_kwh der Prognose, done_kwh gemessen.
+     * $facts für die zweite Zeile unter den Namen: house_mean_kw (Ø 30 Tage), import_ct, export_ct, car_range_km.
      */
-    public static function flowGraph(array $values, array $balance, ?array $forecast = null): array
+    public static function flowGraph(array $values, array $balance, ?array $forecast = null, array $facts = []): array
     {
         $read = static fn (mixed $value): float => $value === null ? 0.0 : max(0.0, (float) $value);
         $pv = $read($values['pv_kw'] ?? null);
@@ -188,6 +191,8 @@ final class Energy
         $done = isset($forecast['done_kwh']) && $forecast['done_kwh'] !== null
             ? (float) $forecast['done_kwh']
             : ($today !== null && isset($forecast['remaining_kwh']) ? max(0.0, $today - (float) $forecast['remaining_kwh']) : null);
+        $toFull = self::toFull($values['battery_capacity_kwh'] ?? null, $values['battery_total_kwh'] ?? null, $soc);
+        $fact = static fn (string $key, int $decimals): ?float => isset($facts[$key]) && is_numeric($facts[$key]) ? round((float) $facts[$key], $decimals) : null;
         return [
             'nodes' => [
                 'sun' => [
@@ -196,12 +201,12 @@ final class Energy
                     'done_kwh' => $done === null ? null : round($done, 1),
                     'progress' => $today !== null && $today > 0.05 && $done !== null ? round(min(1.0, $done / $today), 3) : null,
                 ],
-                'battery_out' => ['kw' => $r($discharge), 'soc' => $soc],
-                'grid_in' => ['kw' => $r($import)],
-                'home' => ['kw' => $r($house)],
-                'car' => ['kw' => $r($car), 'soc' => isset($values['car_soc']) ? round((float) $values['car_soc']) : null],
-                'battery_in' => ['kw' => $r($charge), 'soc' => $soc],
-                'grid_out' => ['kw' => $r($export)],
+                'battery_out' => ['kw' => $r($discharge), 'soc' => $soc, 'to_full_kwh' => $toFull],
+                'grid_in' => ['kw' => $r($import), 'price_ct' => $fact('import_ct', 1)],
+                'home' => ['kw' => $r($house), 'mean_kw' => $fact('house_mean_kw', 2)],
+                'car' => ['kw' => $r($car), 'soc' => isset($values['car_soc']) ? round((float) $values['car_soc']) : null, 'range_km' => $fact('car_range_km', 0)],
+                'battery_in' => ['kw' => $r($charge), 'soc' => $soc, 'to_full_kwh' => $toFull],
+                'grid_out' => ['kw' => $r($export), 'price_ct' => $fact('export_ct', 1)],
             ],
             'links' => [
                 'sun_home' => $r($pvUse * $houseShare),
@@ -219,6 +224,66 @@ final class Energy
         ];
     }
 
+    /**
+     * Energie, die noch in den Speicher passt: Gesamtkapazität minus gespeicherte Energie, sonst aus dem Ladestand.
+     * null, wenn die Gesamtkapazität fehlt.
+     */
+    public static function toFull(mixed $storedKwh, mixed $totalKwh, mixed $soc): ?float
+    {
+        if (!is_numeric($totalKwh) || (float) $totalKwh <= 0) {
+            return null;
+        }
+        if (is_numeric($storedKwh)) {
+            return round(max(0.0, (float) $totalKwh - (float) $storedKwh), 1);
+        }
+        return is_numeric($soc) ? round(max(0.0, (100 - (float) $soc) / 100 * (float) $totalKwh), 1) : null;
+    }
+
+    /**
+     * Verbrauch des Autos in kWh/100 km: der aus den Einstellungen, sonst aus Reichweite, Ladestand und Akku, so wie
+     * das Auto selbst rechnet. null, wenn beides fehlt oder unplausibel ist.
+     *
+     * @return ?array{kwh: float, source: string} source: setting oder car
+     */
+    public static function consumption(?float $setting, ?float $rangeKm, ?float $soc, ?float $capacityKwh): ?array
+    {
+        if ($setting !== null && $setting > 0) {
+            return ['kwh' => round($setting, 1), 'source' => 'setting'];
+        }
+        if ($rangeKm === null || $soc === null || $capacityKwh === null || $rangeKm < 20 || $soc < 5 || $capacityKwh <= 0) {
+            return null;
+        }
+        $kwh = $soc / 100 * $capacityKwh / $rangeKm * 100;
+        return $kwh >= 8 && $kwh <= 40 ? ['kwh' => round($kwh, 1), 'source' => 'car'] : null;
+    }
+
+    /** Kilometer aus Energie ab Wallbox (mit Ladeverlust) bei diesem Verbrauch. */
+    public static function kmFromKwh(?float $kwh, ?float $consumptionKwh): ?float
+    {
+        if ($kwh === null || $consumptionKwh === null || $consumptionKwh <= 0) {
+            return null;
+        }
+        return round(max(0.0, $kwh) * self::CHARGE_EFFICIENCY / $consumptionKwh * 100);
+    }
+
+    /** Energie ab Wallbox (mit Ladeverlust) für so viele Kilometer. */
+    public static function kwhForKm(?float $km, ?float $consumptionKwh): ?float
+    {
+        if ($km === null || $consumptionKwh === null || $consumptionKwh <= 0) {
+            return null;
+        }
+        return round(max(0.0, $km) * $consumptionKwh / 100 / self::CHARGE_EFFICIENCY, 1);
+    }
+
+    /** Reichweite aus Ladestand, Akku und Verbrauch (kWh/100 km), wenn keine Entität sie meldet. */
+    public static function rangeFrom(?float $soc, ?float $capacityKwh, ?float $consumptionKwh): ?float
+    {
+        if ($soc === null || $capacityKwh === null || $consumptionKwh === null || $capacityKwh <= 0 || $consumptionKwh <= 0) {
+            return null;
+        }
+        return round(max(0.0, $soc) / 100 * $capacityKwh / $consumptionKwh * 100);
+    }
+
     /** Sekunden bis zum Limit bei gleicher Leistung, null wenn etwas fehlt oder nicht geladen wird. */
     public static function timeToLimit(?float $soc, ?float $limit, ?float $capacityKwh, ?float $powerKw): ?int
     {
@@ -226,7 +291,7 @@ final class Energy
             return null;
         }
         $missing = max(0.0, $limit - $soc) / 100 * $capacityKwh;
-        return (int) round($missing / ($powerKw * 0.92) * 3600);
+        return (int) round($missing / ($powerKw * self::CHARGE_EFFICIENCY) * 3600);
     }
 
     /** Reichweite beim Limit, linear aus der aktuellen Reichweite geschätzt. */

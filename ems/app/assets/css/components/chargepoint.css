@@ -316,7 +316,7 @@
 
 .cp-session-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--s-2) var(--s-4);
   margin: 0;
 }
@@ -340,7 +340,7 @@
 
 @container cp (min-width: 30rem) {
   .cp-session-list {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 
@@ -351,10 +351,17 @@
 
 .target-form:has(#tg-type-energy:checked) [data-panel="energy"],
 .target-form:has(#tg-type-time:checked) [data-panel="time"],
-.target-form:has(#tg-type-soc:checked) [data-panel="soc"] {
+.target-form:has(#tg-type-soc:checked) [data-panel="soc"],
+.target-form:has(#tg-type-range:checked) [data-panel="range"] {
   display: grid;
 }
 
 .target-quick .btn {
   flex: 1 1 0;
+}
+
+/* Kilometer und Dauer unter dem Feld, von components/target.js gerechnet. */
+.target-km {
+  margin: 0;
+  color: var(--text-2);
 }

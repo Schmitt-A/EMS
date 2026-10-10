@@ -62,7 +62,7 @@ $rows = [
   <section class="home-flow" aria-labelledby="flow-title">
     <h2 class="sr-only" id="flow-title">Energiefluss</h2>
 <?php if (($snap['cfg']['ui']['flow_view'] ?? 'bar') === 'graph'): ?>
-    <?= ui_energy_flow(Energy::flowGraph($v, $b, Snapshot::flowForecast($snap)), ['car' => (string) $vehicle['name']]) ?>
+    <?= ui_energy_flow(Snapshot::flowGraph($snap), ['car' => (string) $vehicle['name']]) ?>
 <?php else: ?>
     <?= ui_flow_bar(Energy::flowBar($v, $b)) ?>
 <?php endif; ?>
@@ -111,6 +111,8 @@ view('partials/vehicle-form', [
     'limit' => (float) $snap['cfg']['vehicle']['limit_soc'],
     'carLimit' => !empty($vehicle['limit_from_car']) ? (float) $vehicle['limit'] : null,
     'capacity' => is_numeric($snap['cfg']['vehicle']['capacity_kwh'] ?? null) ? (float) $snap['cfg']['vehicle']['capacity_kwh'] : null,
+    'consumption' => is_numeric($snap['cfg']['vehicle']['consumption_kwh'] ?? null) ? (float) $snap['cfg']['vehicle']['consumption_kwh'] : null,
+    'derived' => ($snap['vehicle']['consumption_source'] ?? null) === 'car' ? ['kwh' => (float) $snap['vehicle']['consumption_kwh']] : null,
     'mapping' => $snap['cfg']['mapping'],
     'back' => '/',
 ]);

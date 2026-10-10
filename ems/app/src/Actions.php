@@ -307,6 +307,9 @@ final class Actions
             if (array_key_exists('capacity_kwh', $_POST)) {
                 $patch['capacity_kwh'] = self::optional('capacity_kwh', 1, 250);
             }
+            if (array_key_exists('consumption_kwh', $_POST)) {
+                $patch['consumption_kwh'] = self::optional('consumption_kwh', 5, 60);
+            }
             if (array_key_exists('limit_soc', $_POST)) {
                 $patch['limit_soc'] = max(20.0, snap_percent(post_float('limit_soc', 20, 100, 80)));
             }
@@ -584,10 +587,12 @@ final class Actions
         }
         if (isset($data['vehicle']) && is_array($data['vehicle'])) {
             $capacity = $data['vehicle']['capacity_kwh'] ?? null;
+            $consumption = $data['vehicle']['consumption_kwh'] ?? null;
             self::mergeVehicle([
                 'name' => self::name((string) ($data['vehicle']['name'] ?? ''), 'Auto'),
                 'limit_soc' => max(20.0, snap_percent(self::clamped($data['vehicle']['limit_soc'] ?? null, 20, 100, 80))),
                 'capacity_kwh' => is_numeric($capacity) ? clamp_float((float) $capacity, 1, 250) : null,
+                'consumption_kwh' => is_numeric($consumption) ? clamp_float((float) $consumption, 5, 60) : null,
             ]);
         }
         if (isset($data['chargepoint']['name'])) {
@@ -768,7 +773,7 @@ final class Actions
             return 'Ladeziel gelöscht.';
         }
         $snap = (new Snapshot(store(), ha()))->build();
-        $built = Target::build($_POST, time(), $snap['vehicle']['soc'] ?? null);
+        $built = Target::build($_POST, time(), $snap['vehicle']['soc'] ?? null, $snap['vehicle']['range_km'] ?? null);
         if ($built['error'] !== null) {
             return $built['error'];
         }

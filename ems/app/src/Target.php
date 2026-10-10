@@ -3,8 +3,9 @@ declare(strict_types=1);
 
 /**
  * Ladeziel für den laufenden Ladevorgang, wie Energie- und SoC-Limit in evcc: eine Energiemenge seit dem
- * Anstecken, eine Uhrzeit oder ein Ladestand des Autos. Ist es erreicht, wechselt die App in den Folgemodus
- * (Aus stoppt die Wallbox); beim Abstecken verfällt es. Gespeichert in kv.charge_target.
+ * Anstecken, eine Uhrzeit, ein Ladestand oder eine Reichweite des Autos. Ist es erreicht, wechselt die App in den
+ * Folgemodus (Aus stoppt die Wallbox); beim Abstecken verfällt es. Gespeichert in kv.charge_target. Mit dem
+ * Verbrauch des Autos nennt jedes Ziel auch die Kilometer.
  */
 final class Target
 {
@@ -20,11 +21,12 @@ final class Target
     }
 
     /**
-     * Ziel aus Formular oder JSON: type energy (kwh), time (until „HH:MM“ oder hours) oder soc (soc), dazu then.
+     * Ziel aus Formular oder JSON: type energy (kwh), time (until „HH:MM“ oder hours), soc (soc) oder range (km),
+     * dazu then.
      *
      * @return array{target: ?array, error: ?string}
      */
-    public static function build(array $input, int $now, ?float $carSoc): array
+    public static function build(array $input, int $now, ?float $carSoc, ?float $carRange = null): array
     {
         $number = static function (mixed $value): ?float {
             $raw = str_replace(',', '.', trim((string) $value));
@@ -67,6 +69,16 @@ final class Target
             }
             $value = (float) round($soc);
             $extra['start_soc'] = $carSoc;
+        } elseif ($type === 'range') {
+            $km = $number($input['km'] ?? null);
+            if ($km === null || $km < 10 || $km > 1500) {
+                return ['target' => null, 'error' => 'Bitte eine Reichweite zwischen 10 und 1500 km angeben.'];
+            }
+            if ($carRange === null) {
+                return ['target' => null, 'error' => 'Für ein Ziel nach Reichweite braucht die App die Reichweite des Autos, etwa über Tesla BLE, oder Ladestand, Akku und Verbrauch.'];
+            }
+            $value = (float) round($km);
+            $extra['start_range'] = $carRange;
         } else {
             return ['target' => null, 'error' => 'Unbekannte Zielart.'];
         }
@@ -75,7 +87,8 @@ final class Target
 
     /**
      * Fortschritt, Restzeit und Sätze für die Karte. $in: session_kwh (seit dem Anstecken), power_kw (jetzt),
-     * plan_kw (was der Modus einstellen würde), car_soc, capacity_kwh.
+     * plan_kw (was der Modus einstellen würde), car_soc, capacity_kwh, range_km und consumption_kwh (kWh/100 km).
+     * Mit Verbrauch nennt das Ziel die Kilometer: was geladen ist, was das Ziel bringt, die Reichweite danach.
      */
     public static function view(?array $target, array $in, int $now): ?array
     {
@@ -86,6 +99,14 @@ final class Target
         $power = (float) ($in['power_kw'] ?? 0);
         $plan = (float) ($in['plan_kw'] ?? 0);
         $rate = $power > 0.1 ? $power : ($plan > 0.1 ? $plan : null);
+        $use = isset($in['consumption_kwh']) && is_numeric($in['consumption_kwh']) ? (float) $in['consumption_kwh'] : null;
+        $soc = isset($in['car_soc']) && is_numeric($in['car_soc']) ? (float) $in['car_soc'] : null;
+        $range = isset($in['range_km']) && is_numeric($in['range_km']) ? (float) $in['range_km'] : null;
+        $capacity = isset($in['capacity_kwh']) && is_numeric($in['capacity_kwh']) && (float) $in['capacity_kwh'] > 0 ? (float) $in['capacity_kwh'] : null;
+        // „≈ 80 km“ hinter einer Energiemenge oder einem Ziel, leer ohne Verbrauch.
+        $km = static fn (?float $value): string => $value === null ? '' : ' ≈ ' . with_unit($value, 0, 'km');
+        $tag = static fn (?float $value): string => $value === null ? '' : ' · ≈ ' . with_unit($value, 0, 'km');
+        $loaded = 'bisher ' . kwh($kwh) . $km(Energy::kmFromKwh($kwh, $use));
         $value = (float) $target['value'];
         $remaining = null;
         $reached = false;
@@ -96,8 +117,8 @@ final class Target
                 $reached = $kwh >= $value - 0.005;
                 $progress = $value > 0 ? $kwh / $value : 1.0;
                 $remaining = $rate === null ? null : (int) round($left / $rate * 3600);
-                $label = 'Ziel ' . kwh($value);
-                $text = kwh($kwh) . ' von ' . kwh($value) . ($reached ? '' : ($remaining === null ? ', Dauer offen' : ', noch ca. ' . duration_clock($remaining)));
+                $label = 'Ziel ' . kwh($value) . $tag(Energy::kmFromKwh($value, $use));
+                $text = $loaded . ($reached ? '' : ($remaining === null ? ', Dauer offen' : ', noch ca. ' . duration_clock($remaining)));
                 break;
             case 'time':
                 $until = (int) $value;
@@ -105,21 +126,36 @@ final class Target
                 $remaining = max(0, $until - $now);
                 $reached = $now >= $until;
                 $progress = $until > $start ? ($now - $start) / ($until - $start) : 1.0;
-                $label = 'Bis ' . date('H:i', $until);
-                $text = ($reached ? 'Zeit erreicht' : 'noch ' . self::countdown($remaining)) . ' · ' . kwh($kwh) . ' geladen';
+                // Bis zur Uhrzeit bei der Leistung von jetzt (ohne Ladung der des Modus), höchstens bis zum Limit nicht gerechnet.
+                $expected = $rate === null ? null : Energy::kmFromKwh($kwh + $rate * $remaining / 3600, $use);
+                $label = 'Bis ' . date('H:i', $until) . ($reached ? '' : $tag($expected));
+                $text = ($reached ? 'Zeit erreicht' : 'noch ' . self::countdown($remaining)) . ' · ' . $loaded;
+                break;
+            case 'range':
+                $from = (float) ($target['start_range'] ?? ($range ?? 0));
+                $reached = $range !== null && $range >= $value;
+                $progress = $range === null ? 0.0 : ($value > $from ? ($range - $from) / ($value - $from) : 1.0);
+                $missing = $range === null ? null : max(0.0, $value - $range);
+                $need = Energy::kwhForKm($missing, $use);
+                $remaining = $need === null || $rate === null ? null : (int) round($need / $rate * 3600);
+                $label = 'Bis ' . with_unit($value, 0, 'km');
+                $text = $range === null ? 'Reichweite unbekannt'
+                    : 'jetzt ' . with_unit($range, 0, 'km') . ($reached ? '' : ' · noch ' . with_unit($missing, 0, 'km') . ($remaining === null ? '' : ', ca. ' . duration_clock($remaining)));
                 break;
             default:
-                $soc = isset($in['car_soc']) ? (float) $in['car_soc'] : null;
                 $from = (float) ($target['start_soc'] ?? ($soc ?? 0));
-                $capacity = isset($in['capacity_kwh']) ? (float) $in['capacity_kwh'] : null;
                 $reached = $soc !== null && $soc >= $value;
                 $progress = $soc === null ? 0.0 : ($value > $from ? ($soc - $from) / ($value - $from) : 1.0);
-                if ($soc !== null && $capacity !== null && $capacity > 0 && $rate !== null) {
+                if ($soc !== null && $capacity !== null && $rate !== null) {
                     // Ladeverluste wie bei der Restzeit bis zum Limit.
-                    $remaining = (int) round(max(0.0, $value - $soc) / 100 * $capacity / ($rate * 0.92) * 3600);
+                    $remaining = (int) round(max(0.0, $value - $soc) / 100 * $capacity / ($rate * Energy::CHARGE_EFFICIENCY) * 3600);
                 }
-                $label = 'Bis ' . pct($value);
-                $text = ($soc === null ? 'Ladestand unbekannt' : 'jetzt ' . pct($soc)) . ($reached || $remaining === null ? '' : ', noch ca. ' . duration_clock($remaining));
+                // Reichweite beim Ziel und was bis dahin dazukommt, aus Akku und Verbrauch.
+                $add = $soc !== null && $capacity !== null && $use !== null ? round(max(0.0, $value - $soc) / 100 * $capacity / $use * 100) : null;
+                $at = $range !== null && $soc !== null ? Energy::rangeAt($range, $soc, $value) : ($capacity !== null && $use !== null ? round($value / 100 * $capacity / $use * 100) : null);
+                $label = 'Bis ' . pct($value) . $tag($at);
+                $text = ($soc === null ? 'Ladestand unbekannt' : 'jetzt ' . pct($soc))
+                    . ($reached ? '' : ($add !== null ? ' · noch ≈ ' . with_unit($add, 0, 'km') : '') . ($remaining === null ? '' : ', ca. ' . duration_clock($remaining)));
         }
         return [
             'type' => (string) $target['type'],
@@ -152,6 +188,8 @@ final class Target
             'plan_kw' => (float) ($snap['suggestion']['offered_kw'] ?? 0),
             'car_soc' => $snap['vehicle']['soc'] ?? null,
             'capacity_kwh' => $snap['vehicle']['capacity_kwh'] ?? null,
+            'range_km' => $snap['vehicle']['range_km'] ?? null,
+            'consumption_kwh' => $snap['vehicle']['consumption_kwh'] ?? null,
         ];
     }
 

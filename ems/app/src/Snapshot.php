@@ -375,7 +375,7 @@ final class Snapshot
             'battery_surplus' => $this->surplusText($snap['storage'] ?? [], isset($snap['house_mean_kw']) && $snap['house_mean_kw'] !== null, $snap['house_mean_kw'] ?? null),
             'remaining_kwh' => $f['remaining_kwh'] ?? null,
             'flow' => Energy::flowBar($v, $b),
-            'flow_graph' => Energy::flowGraph($v, $b, self::flowForecast($snap)),
+            'flow_graph' => self::flowGraph($snap),
             'flow_rows' => self::flowRows($v, $b, $f),
             'chargepoint' => $snap['chargepoint'],
             'vehicle' => $snap['vehicle'],
@@ -405,8 +405,13 @@ final class Snapshot
         $soc = $v['car_soc'] !== null ? (float) $v['car_soc'] : null;
         $fromCar = $v['car_limit_soc'] !== null;
         $limit = $fromCar ? (float) $v['car_limit_soc'] : (float) ($cfg['vehicle']['limit_soc'] ?? 80);
-        $range = $v['car_range_km'] !== null ? round((float) $v['car_range_km']) : null;
         $capacity = $v['car_capacity_kwh'] ?? (is_numeric($cfg['vehicle']['capacity_kwh'] ?? null) && (float) $cfg['vehicle']['capacity_kwh'] > 0 ? (float) $cfg['vehicle']['capacity_kwh'] : null);
+        // Meldet keine Entität die Reichweite, rechnet EMS sie aus Ladestand, Akku und dem Verbrauch aus den Einstellungen.
+        // Ohne eingetragenen Verbrauch gilt der, mit dem das Auto seine Reichweite rechnet; damit werden kWh zu Kilometern.
+        $setting = is_numeric($cfg['vehicle']['consumption_kwh'] ?? null) ? (float) $cfg['vehicle']['consumption_kwh'] : null;
+        $capacity = $capacity === null ? null : (float) $capacity;
+        $range = $v['car_range_km'] !== null ? round((float) $v['car_range_km']) : Energy::rangeFrom($soc, $capacity, $setting);
+        $consumption = Energy::consumption($setting, $v['car_range_km'] !== null ? (float) $v['car_range_km'] : null, $soc, $capacity);
         return [
             'name' => trim((string) ($cfg['vehicle']['name'] ?? '')) ?: 'Auto',
             'status' => self::vehicleStatus($raw, (bool) $base['car_charging']),
@@ -414,6 +419,8 @@ final class Snapshot
             'soc' => $soc === null ? null : round($soc, 1),
             'capacity_kwh' => $capacity,
             'range_km' => $range,
+            'consumption_kwh' => $consumption['kwh'] ?? null,
+            'consumption_source' => $consumption['source'] ?? null,
             'odometer_km' => $v['car_odometer_km'] !== null ? round((float) $v['car_odometer_km']) : null,
             'has_odometer' => (string) ($cfg['mapping']['car_odometer'] ?? '') !== '',
             'limit' => $limit,
@@ -491,6 +498,9 @@ final class Snapshot
         $duration = (int) $row['duration_s'];
         $start = (int) strtotime((string) (($row['plug_at'] ?? '') ?: $row['started_at']));
         $cost = Sessions::cost($row, $tariffs);
+        // Strecke aus der geladenen Energie wie auf der Karte (bei go-e „wh“ der Zähler der Wallbox) und dem Verbrauch.
+        $counter = $base['chargepoint']['session_kwh'] ?? null;
+        $km = Energy::kmFromKwh($counter !== null ? (float) $counter : $energy, $base['vehicle']['consumption_kwh'] ?? null);
         return [
             'open' => true,
             'since' => 'seit ' . date('H:i', $start),
@@ -499,6 +509,7 @@ final class Snapshot
             'avg' => $duration > 60 ? kw($energy / ($duration / 3600)) : '—',
             'solar' => pct((float) $cost['solar_pct']),
             'cost' => euro((float) $cost['cost']),
+            'km' => $km === null ? '—' : '≈ ' . with_unit($km, 0, 'km'),
         ];
     }
 
@@ -721,6 +732,21 @@ final class Snapshot
             return null;
         }
         return ['today_kwh' => $f['today_kwh'] ?? null, 'remaining_kwh' => $f['remaining_kwh'] ?? null, 'done_kwh' => $snap['yield_today'] ?? null];
+    }
+
+    /**
+     * Energie-Flow für Laden, die Vorschau unter Einstellungen → Darstellung und /api/live: die Flüsse, die Prognose an
+     * der Sonne und die Zahlen der zweiten Zeile (Ø Haus der letzten 30 Tage, Preise, Reichweite).
+     */
+    public static function flowGraph(array $snap): array
+    {
+        $tariffs = is_array($snap['cfg']['tariffs'] ?? null) ? $snap['cfg']['tariffs'] : [];
+        return Energy::flowGraph($snap['values'] ?? [], $snap['balance'] ?? [], self::flowForecast($snap), [
+            'house_mean_kw' => $snap['house_mean_kw'] ?? null,
+            'import_ct' => $tariffs['import_ct'] ?? null,
+            'export_ct' => $tariffs['export_ct'] ?? null,
+            'car_range_km' => $snap['vehicle']['range_km'] ?? null,
+        ]);
     }
 
     /** Leistungen für die Detail-Liste „Rein“ und „Raus“ unter dem Energiefluss-Balken, dazu die Prognose für heute. */

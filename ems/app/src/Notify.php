@@ -68,19 +68,19 @@ final class Notify
             'group' => 'laden', 'label' => 'Laden beendet', 'icon' => 'circle-check', 'on' => true, 'important' => false,
             'hint' => 'Wenn das Auto voll oder abgesteckt ist oder das Laden länger als 10 Minuten ruht. Kurze Pausen der Sonne melden sich nicht.',
             'title' => '{auto}: Laden beendet', 'message' => '{geladen} in {dauer}, {sonnenanteil} aus der Sonne, {kosten}. Ladestand {ladestand}.',
-            'vars' => ['geladen', 'dauer', 'sonnenanteil', 'kosten', 'ladestand'], 'params' => [],
+            'vars' => ['geladen', 'strecke', 'dauer', 'sonnenanteil', 'kosten', 'ladestand'], 'params' => [],
         ],
         'target' => [
             'group' => 'laden', 'label' => 'Ladeziel erreicht', 'icon' => 'target', 'on' => true, 'important' => false,
             'hint' => 'Wenn ein Ladeziel erreicht ist; EMS wechselt dann in den Folgemodus.',
             'title' => 'Ladeziel erreicht', 'message' => '{ziel} erreicht, {geladen} geladen. Weiter mit {modus}.',
-            'vars' => ['ziel', 'geladen', 'modus', 'ladestand'], 'labels' => ['modus' => 'Folgemodus'], 'params' => [],
+            'vars' => ['ziel', 'geladen', 'strecke', 'modus', 'ladestand'], 'labels' => ['modus' => 'Folgemodus'], 'params' => [],
         ],
         'unplug' => [
             'group' => 'laden', 'label' => 'Auto abgesteckt', 'icon' => 'unplug', 'on' => false, 'important' => false,
             'hint' => 'Mit der Bilanz des ganzen Ladevorgangs vom Anstecken bis zum Abstecken.',
             'title' => '{auto} abgesteckt', 'message' => '{geladen} in {dauer}, {sonnenanteil} aus der Sonne, {kosten}, gespart {ersparnis}.',
-            'vars' => ['geladen', 'dauer', 'sonnenanteil', 'kosten', 'ersparnis'], 'params' => [],
+            'vars' => ['geladen', 'strecke', 'dauer', 'sonnenanteil', 'kosten', 'ersparnis'], 'params' => [],
         ],
         'mode' => [
             'group' => 'laden', 'label' => 'Lademodus geändert', 'icon' => 'sliders-horizontal', 'on' => false, 'important' => false,
@@ -128,8 +128,8 @@ final class Notify
             'group' => 'berichte', 'label' => 'Monatsbericht', 'icon' => 'chart-column', 'on' => false, 'important' => false,
             'hint' => 'Am 1. des Monats zur Berichtszeit, mit den Ladevorgängen des Vormonats.',
             'title' => '{monat}: {geladen} geladen', 'message' => '{vorgaenge} Ladevorgänge, {sonnenanteil} aus der Sonne, {kosten}, gespart {ersparnis}.',
-            'vars' => ['monat', 'geladen', 'vorgaenge', 'sonnenanteil', 'kosten', 'ersparnis', 'dauer'],
-            'labels' => ['geladen' => 'Im Monat geladen', 'sonnenanteil' => 'Anteil Sonne im Monat', 'kosten' => 'Kosten im Monat', 'ersparnis' => 'Im Monat gespart', 'dauer' => 'Ladedauer im Monat'],
+            'vars' => ['monat', 'geladen', 'strecke', 'vorgaenge', 'sonnenanteil', 'kosten', 'ersparnis', 'dauer'],
+            'labels' => ['geladen' => 'Im Monat geladen', 'strecke' => 'Kilometer aus der Energie des Monats', 'sonnenanteil' => 'Anteil Sonne im Monat', 'kosten' => 'Kosten im Monat', 'ersparnis' => 'Im Monat gespart', 'dauer' => 'Ladedauer im Monat'],
             'params' => ['report_time'],
         ],
     ];
@@ -147,6 +147,7 @@ final class Notify
         'reichweite' => 'Reichweite',
         'limit' => 'Ladelimit',
         'geladen' => 'Geladen seit dem Anstecken',
+        'strecke' => 'Kilometer aus der geladenen Energie',
         'dauer' => 'Ladedauer',
         'sonnenanteil' => 'Anteil aus der Sonne',
         'kosten' => 'Kosten des Ladevorgangs',
@@ -364,6 +365,7 @@ final class Notify
             'reichweite' => with_unit($n($vehicle['range_km'] ?? null), 0, 'km'),
             'limit' => pct($n($vehicle['limit'] ?? null)),
             'geladen' => '—',
+            'strecke' => '—',
             'dauer' => '—',
             'sonnenanteil' => '—',
             'kosten' => '—',
@@ -390,6 +392,7 @@ final class Notify
         if ($session !== null) {
             $cost = Sessions::cost($session, (array) ($cfg['tariffs'] ?? []));
             $out['geladen'] = kwh((float) $session['energy_kwh']);
+            $out['strecke'] = self::km((float) $session['energy_kwh'], $vehicle['consumption_kwh'] ?? null);
             $out['dauer'] = duration_clock((int) $session['duration_s']);
             $out['sonnenanteil'] = pct((float) $cost['solar_pct']);
             $out['kosten'] = euro((float) $cost['cost']);
@@ -425,6 +428,7 @@ final class Notify
         $counter = $snap['chargepoint']['session_kwh'] ?? null;
         if ($counter !== null && !empty($snap['vehicle']['connected']) && $session !== null && $current !== null && (int) $session['id'] === (int) $current) {
             $extra['geladen'] = kwh((float) $counter);
+            $extra['strecke'] = self::km((float) $counter, $snap['vehicle']['consumption_kwh'] ?? null);
         }
         if ($event === 'monthly') {
             $month = (string) ($data['month'] ?? '');
@@ -435,6 +439,7 @@ final class Notify
             $extra = array_merge($extra, [
                 'monat' => month_label($month),
                 'geladen' => kwh((float) $sum['energy']),
+                'strecke' => self::km((float) $sum['energy'], $snap['vehicle']['consumption_kwh'] ?? null),
                 'dauer' => duration_clock((int) $sum['duration']),
                 'sonnenanteil' => pct($sum['solar_pct'] === null ? null : (float) $sum['solar_pct']),
                 'kosten' => euro((float) $sum['cost']),
@@ -443,6 +448,13 @@ final class Notify
             ]);
         }
         return self::context($snap, $now, $session, $extra);
+    }
+
+    /** „≈ 80 km“ aus Energie ab Wallbox und Verbrauch, „—“ ohne Verbrauch. */
+    private static function km(float $kwh, mixed $consumption): string
+    {
+        $km = Energy::kmFromKwh($kwh, is_numeric($consumption) ? (float) $consumption : null);
+        return $km === null ? '—' : '≈ ' . with_unit($km, 0, 'km');
     }
 
     /** Beispielwerte für Vorschau und Test, wo ein Ereignis eigene Werte mitbringt. */

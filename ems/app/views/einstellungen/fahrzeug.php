@@ -15,6 +15,8 @@ declare(strict_types=1);
     'limit' => (float) $cfg['vehicle']['limit_soc'],
     'carLimit' => !empty($snap['vehicle']['limit_from_car']) ? (float) $snap['vehicle']['limit'] : null,
     'capacity' => is_numeric($cfg['vehicle']['capacity_kwh'] ?? null) ? (float) $cfg['vehicle']['capacity_kwh'] : null,
+    'consumption' => is_numeric($cfg['vehicle']['consumption_kwh'] ?? null) ? (float) $cfg['vehicle']['consumption_kwh'] : null,
+    'derived' => ($snap['vehicle']['consumption_source'] ?? null) === 'car' ? ['kwh' => (float) $snap['vehicle']['consumption_kwh']] : null,
     'mapping' => $cfg['mapping'],
     'suggest' => $suggest,
     'back' => $back,

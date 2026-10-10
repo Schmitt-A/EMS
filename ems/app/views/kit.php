@@ -411,7 +411,9 @@ function ui_flow_table(array $rows, string $id = 'flow-table', bool $static = fa
  * Einspeisung, wie die Tabelle Rein und Raus. Die Linien zeichnet components/energy-flow.js zwischen den Kreisen,
  * je Quelle zu jedem Ziel, das sie gerade versorgt, breiter bei mehr Leistung; Punkte laufen in der Farbe der Quelle
  * von links nach rechts. Der Ring der Sonne zeigt, wie viel der Tagesprognose schon erzeugt ist, die Ringe von Haus
- * und Auto die Mischung aus Sonne, Speicher und Netz. Daten aus Energy::flowGraph().
+ * und Auto die Mischung aus Sonne, Speicher und Netz. Unter jedem Namen steht eine Zeile mit Kennzahlen und Icons:
+ * Sonne gemessen und Prognose, Speicher Ladestand und bis voll, Netz und Einspeisung der Preis, Haus das Mittel der
+ * letzten 30 Tage, Auto Ladestand und Reichweite. Daten aus Snapshot::flowGraph().
  * opts: id, static, car (Name des Autos), links (bool: Kreise führen zu Prognose, Speicher, Ladepunkt)
  */
 function ui_energy_flow(array $graph, array $opts = []): string
@@ -438,24 +440,32 @@ function ui_energy_flow(array $graph, array $opts = []): string
         }
         return $html . '</svg>';
     };
-    $node = static function (string $key, string $label, string $sub, string $glyph, string $aria, ?string $href, string $kind) use ($n, $ring, $links): string {
+    $node = static function (string $key, string $label, string $facts, string $glyph, string $aria, ?string $href, string $kind) use ($n, $ring, $links): string {
         $tag = $links && $href !== null ? 'a' : 'div';
         $attrs = $tag === 'a' ? ' href="' . e($href) . '"' : ' role="img"';
         return '<div class="ef-node ef-' . str_replace('_', '-', $key) . '" data-ef-node="' . $key . '"' . ((float) $n[$key]['kw'] < 0.01 ? ' data-idle' : '') . '>'
             . '<' . $tag . ' class="ef-circle"' . $attrs . ' aria-label="' . e($aria) . '" data-ef-aria="' . $key . '">' . $ring($kind)
             . '<span class="ef-inner">' . icon($glyph, 'icon-20') . '<span class="ef-value" data-ef="' . $key . '">' . e(kw((float) $n[$key]['kw'])) . '</span></span></' . $tag . '>'
-            . '<span class="ef-label">' . e($label) . '<span class="ef-sub" data-ef="' . $key . '_sub">' . e($sub) . '</span></span>'
+            . '<span class="ef-label"><span class="ef-name">' . e($label) . '</span><span class="ef-facts">' . $facts . '</span></span>'
             . '</div>';
     };
+    // Zweite Zeile: Kennzahl mit Icon, ohne Wert ausgeblendet; energy-flow.js schreibt die Werte live.
+    $fact = static fn (string $key, string $glyph, string $label, ?string $text): string => '<span class="ef-fact" data-ef-fact="' . $key . '" title="' . e($label) . '"' . ($text === null ? ' hidden' : '') . '>'
+        . icon($glyph, 'icon-16') . '<span class="sr-only">' . e($label) . ': </span><span data-ef="' . $key . '">' . e((string) $text) . '</span></span>';
+    $value = static fn (mixed $number, callable $format): ?string => is_numeric($number) ? $format((float) $number) : null;
+    $battery = static fn (string $key): string => $fact($key . '_soc', 'battery-medium', 'Ladestand', $value($n[$key]['soc'] ?? null, $soc))
+        . $fact($key . '_full', 'battery-plus', 'Bis voll', $value($n[$key]['to_full_kwh'] ?? null, static fn (float $x): string => kwh($x)));
     $sun = $n['sun'];
-    $sunSub = $sun['forecast_kwh'] === null ? '' : num($sun['done_kwh'] ?? 0, 1) . ' von ' . kwh((float) $sun['forecast_kwh']);
-    $in = $node('sun', 'Sonne', $sunSub, 'sun', 'Sonne ' . kw((float) $sun['kw']) . ($sunSub !== '' ? ', heute ' . $sunSub : ''), url('/prognose'), 'progress')
-        . $node('battery_out', 'Speicher', $soc($n['battery_out']['soc']), 'battery', 'Speicher entlädt ' . kw((float) $n['battery_out']['kw']), url('/speicher'), 'full')
-        . $node('grid_in', 'Netz', '', 'utility-pole', 'Netzbezug ' . kw((float) $n['grid_in']['kw']), null, 'full');
-    $out = $node('home', 'Haus', '', 'house', 'Haus ' . kw((float) $n['home']['kw']), null, 'mix')
-        . $node('car', $car, $soc($n['car']['soc']), 'car', $car . ' lädt mit ' . kw((float) $n['car']['kw']), '#cp', 'mix')
-        . $node('battery_in', 'Speicher', $soc($n['battery_in']['soc']), 'battery', 'Speicher lädt ' . kw((float) $n['battery_in']['kw']), url('/speicher'), 'full')
-        . $node('grid_out', 'Einspeisung', '', 'utility-pole', 'Einspeisung ' . kw((float) $n['grid_out']['kw']), null, 'full');
+    $sunFacts = $fact('sun_done', 'gauge', 'Heute gemessen', $value($sun['done_kwh'] ?? null, static fn (float $x): string => kwh($x)))
+        . $fact('sun_forecast', 'cloud-sun', 'Prognose heute', $value($sun['forecast_kwh'] ?? null, static fn (float $x): string => kwh($x)));
+    $sunAria = 'Sonne ' . kw((float) $sun['kw']) . (is_numeric($sun['done_kwh'] ?? null) ? ', heute gemessen ' . kwh((float) $sun['done_kwh']) : '') . (is_numeric($sun['forecast_kwh'] ?? null) ? ', Prognose ' . kwh((float) $sun['forecast_kwh']) : '');
+    $in = $node('sun', 'Sonne', $sunFacts, 'sun', $sunAria, url('/prognose'), 'progress')
+        . $node('battery_out', 'Speicher', $battery('battery_out'), 'battery', 'Speicher entlädt ' . kw((float) $n['battery_out']['kw']), url('/speicher'), 'full')
+        . $node('grid_in', 'Netz', $fact('grid_in_price', 'coins', 'Preis Netzbezug', $value($n['grid_in']['price_ct'] ?? null, 'ct')), 'utility-pole', 'Netzbezug ' . kw((float) $n['grid_in']['kw']), null, 'full');
+    $out = $node('home', 'Haus', $fact('home_mean', 'history', 'Mittel der letzten 30 Tage', $value($n['home']['mean_kw'] ?? null, static fn (float $x): string => 'Ø ' . kw($x))), 'house', 'Haus ' . kw((float) $n['home']['kw']), null, 'mix')
+        . $node('car', $car, $fact('car_soc', 'battery-medium', 'Ladestand', $value($n['car']['soc'] ?? null, $soc)) . $fact('car_range', 'route', 'Reichweite', $value($n['car']['range_km'] ?? null, static fn (float $x): string => with_unit($x, 0, 'km'))), 'car', $car . ' lädt mit ' . kw((float) $n['car']['kw']), '#cp', 'mix')
+        . $node('battery_in', 'Speicher', $battery('battery_in'), 'battery', 'Speicher lädt ' . kw((float) $n['battery_in']['kw']), url('/speicher'), 'full')
+        . $node('grid_out', 'Einspeisung', $fact('grid_out_price', 'hand-coins', 'Vergütung Einspeisung', $value($n['grid_out']['price_ct'] ?? null, 'ct')), 'utility-pole', 'Einspeisung ' . kw((float) $n['grid_out']['kw']), null, 'full');
     return '<figure class="ef" id="' . e($id) . '" data-energy-flow="' . e(ui_json($graph)) . '"' . (!empty($opts['static']) ? ' data-static' : '') . ' aria-labelledby="' . e($id) . '-sum">'
         . '<figcaption class="sr-only" id="' . e($id) . '-sum" data-ef-summary>Energie-Flow</figcaption>'
         . '<svg class="ef-links" aria-hidden="true"></svg>'
@@ -567,7 +577,7 @@ function ui_chargepoint(array $cp, array $opts = []): string
     $item = static fn (string $label, string $key) => '<div><dt>' . e($label) . '</dt><dd' . ui_attrs(['data-live' => $p('session_view.' . $key)]) . '>' . e((string) ($session[$key] ?? '—')) . '</dd></div>';
     $sessionHtml = '<div class="cp-session" data-session' . (empty($session['open']) ? ' hidden' : '') . '>'
         . '<p class="label">Dieser Ladevorgang <span' . ui_attrs(['data-live' => $p('session_view.since')]) . '>' . e((string) ($session['since'] ?? '')) . '</span></p>'
-        . '<dl class="cp-session-list">' . $item('Dauer', 'duration') . $item('Ø Leistung', 'avg') . $item('Sonne', 'solar') . $item('Kosten', 'cost') . '</dl></div>';
+        . '<dl class="cp-session-list">' . $item('Dauer', 'duration') . $item('Strecke', 'km') . $item('Ø Leistung', 'avg') . $item('Sonne', 'solar') . $item('Kosten', 'cost') . '</dl></div>';
     $track = '<div class="chargebar-track" data-chargebar-track><span class="chargebar-clip"><span class="chargebar-fill"></span><span class="chargebar-target"></span></span>'
         . ($limit !== null && $editable && !$fromCar
             ? '<span class="limit-mark" role="slider" tabindex="0" aria-label="Ladelimit" aria-valuemin="20" aria-valuemax="100" aria-valuenow="' . (int) $limit . '" aria-valuetext="' . e(pct((float) $limit)) . '" data-limit-mark></span>'

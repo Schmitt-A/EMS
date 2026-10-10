@@ -153,8 +153,9 @@ final class ConfigStore
                 'discharge_kw' => null,
             ],
             'chargepoint' => ['name' => 'Wallbox'],
-            // capacity_kwh: Akku des Autos, wenn keine Entität ihn meldet (Tesla BLE meldet keinen).
-            'vehicle' => ['name' => 'Auto', 'limit_soc' => 80.0, 'capacity_kwh' => null],
+            // capacity_kwh: Akku des Autos, wenn keine Entität ihn meldet (Tesla BLE meldet keinen). consumption_kwh:
+            // Verbrauch in kWh/100 km, für die Reichweite, wenn keine Entität sie meldet.
+            'vehicle' => ['name' => 'Auto', 'limit_soc' => 80.0, 'capacity_kwh' => null, 'consumption_kwh' => null],
             'weather' => ['url' => 'https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/single_stations/F9519/kml/MOSMIX_L_LATEST_F9519.kmz'],
             // flow_view: Energiefluss auf Laden als Balken ('bar') oder Energie-Flow ('graph').
             'ui' => ['theme' => 'system', 'flow_view' => 'bar'],

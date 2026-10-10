@@ -101,6 +101,8 @@ check(abs($exporting['sun_kw'] - 1.38) < 0.001 && abs($exporting['charge_kw'] - 
 $graph = Energy::flowGraph(['pv_kw' => 7.8, 'battery_charge_kw' => 1.6, 'battery_discharge_kw' => 0.0, 'grid_import_kw' => 0.0, 'grid_export_kw' => 1.3, 'wallbox_kw' => 4.1, 'battery_soc' => 64.0, 'car_soc' => 57.0], ['house_base_kw' => 0.8], ['today_kwh' => 29.4, 'remaining_kwh' => 6.2, 'done_kwh' => 23.1]);
 check($graph['links']['sun_home'] === 0.8 && $graph['links']['sun_car'] === 4.1 && $graph['links']['sun_battery'] === 1.6 && abs($graph['links']['sun_grid'] - 1.3) < 0.001 && $graph['links']['grid_car'] === 0.0 && $graph['mix']['sun'] === 1.0, 'Energie-Flow mittags: Sonne direkt zu Haus und Auto, in den Speicher, der Rest ins Netz');
 check($graph['nodes']['sun']['progress'] === 0.786 && $graph['nodes']['sun']['forecast_kwh'] === 29.4, 'Die Sonne trägt den Fortschritt der Tagesprognose');
+$facts = Energy::flowGraph(['battery_soc' => 64.0, 'battery_capacity_kwh' => 8.6, 'battery_total_kwh' => 13.4, 'car_soc' => 57.0], [], null, ['house_mean_kw' => 0.624, 'import_ct' => 34.7, 'export_ct' => 8.1, 'car_range_km' => 296.4])['nodes'];
+check($facts['battery_out']['to_full_kwh'] === 4.8 && $facts['battery_in']['to_full_kwh'] === 4.8 && $facts['home']['mean_kw'] === 0.62 && $facts['grid_in']['price_ct'] === 34.7 && $facts['grid_out']['price_ct'] === 8.1 && $facts['car']['range_km'] === 296.0 && $graph['nodes']['grid_in']['price_ct'] === null, 'Zweite Zeile im Energie-Flow: bis voll, Ø Haus, Preise, Reichweite');
 $evening = Energy::flowGraph(['pv_kw' => 0.0, 'battery_charge_kw' => 0.0, 'battery_discharge_kw' => 3.0, 'grid_import_kw' => 1.9, 'grid_export_kw' => 0.0, 'wallbox_kw' => 4.1, 'battery_soc' => 60.0], ['house_base_kw' => 0.8]);
 check(abs($evening['links']['battery_car'] - 2.51) < 0.01 && abs($evening['links']['grid_car'] - 1.59) < 0.01 && abs($evening['links']['battery_home'] + $evening['links']['grid_home'] - 0.8) < 0.01 && abs($evening['mix']['battery'] - 0.6122) < 0.001, 'Energie-Flow abends: Auto direkt aus Speicher und Netz, anteilig wie das Haus');
 check(abs(Energy::distanceKm(100.0, 'mi')[0] - 160.9344) < 0.0001 && Energy::distanceKm(42.0, 'km')[0] === 42.0 && Energy::distanceKm(1.0, 'kWh')[0] === null, 'Meilen werden Kilometer');
@@ -286,8 +288,22 @@ check(Target::view($energyTarget, ['session_kwh' => 20.0], $noon)['reached'] ===
 $timeTarget = Target::build(['type' => 'time', 'until' => '11:30'], $noon, null)['target'];
 check($timeTarget['value'] === (int) strtotime('2026-10-11 11:30:00 Europe/Berlin'), 'Eine vergangene Uhrzeit meint morgen');
 $soonTarget = Target::build(['type' => 'time', 'hours' => '1,5'], $noon, null)['target'];
-check(Target::view($soonTarget, ['session_kwh' => 2.0], $noon + 3600)['text'] === 'noch 30:00 · 2,0' . NNBSP . 'kWh geladen', 'Countdown und bisher geladene kWh');
+check(Target::view($soonTarget, ['session_kwh' => 2.0], $noon + 3600)['text'] === 'noch 30:00 · bisher 2,0' . NNBSP . 'kWh', 'Countdown und bisher geladene kWh');
 check(Target::build(['type' => 'soc', 'soc' => '80'], $noon, null)['error'] !== null && Target::build(['type' => 'soc', 'soc' => '80'], $noon, 55.0)['target']['start_soc'] === 55.0, 'Ladestand-Ziel braucht den Ladestand des Autos');
+// Kilometer: 16 kWh/100 km, 8 % Ladeverlust; Verbrauch aus den Einstellungen oder so, wie das Auto seine Reichweite rechnet.
+check(Energy::consumption(17.0, 280.0, 60.0, 75.0) === ['kwh' => 17.0, 'source' => 'setting'] && Energy::consumption(null, 280.0, 60.0, 75.0) === ['kwh' => 16.1, 'source' => 'car'] && Energy::consumption(null, null, 60.0, 75.0) === null && Energy::consumption(null, 30.0, 60.0, 75.0) === null, 'Verbrauch aus den Einstellungen oder aus Reichweite, Ladestand und Akku');
+check(Energy::kmFromKwh(20.0, 16.0) === 115.0 && Energy::kwhForKm(40.0, 16.0) === 7.0 && Energy::kmFromKwh(20.0, null) === null && Energy::rangeFrom(60.0, 75.0, 16.0) === 281.0 && Energy::toFull(8.6, 13.4, 64.0) === 4.8 && Energy::toFull(null, 10.0, 75.0) === 2.5 && Energy::toFull(5.0, null, 50.0) === null, 'Kilometer aus kWh, kWh für Kilometer, Reichweite aus dem Verbrauch, Speicher bis voll');
+$kmIn = ['session_kwh' => 12.4, 'power_kw' => 11.0, 'consumption_kwh' => 16.0, 'car_soc' => 60.0, 'capacity_kwh' => 75.0, 'range_km' => 280.0];
+$energyKm = Target::view($energyTarget, $kmIn, $noon);
+check($energyKm['label'] === 'Ziel 20,0' . NNBSP . 'kWh · ≈ 115' . NNBSP . 'km' && str_starts_with($energyKm['text'], 'bisher 12,4' . NNBSP . 'kWh ≈ 71' . NNBSP . 'km, noch ca.'), 'Energieziel nennt die Kilometer');
+check(Target::view($soonTarget, ['session_kwh' => 2.0, 'power_kw' => 11.0, 'consumption_kwh' => 16.0], $noon + 3600)['label'] === 'Bis 13:30 · ≈ 43' . NNBSP . 'km', 'Uhrzeit-Ziel: Kilometer bis dahin bei der Leistung von jetzt');
+$socKm = Target::view(Target::build(['type' => 'soc', 'soc' => '80'], $noon, 60.0)['target'], $kmIn, $noon);
+check($socKm['label'] === 'Bis 80' . NNBSP . '% · ≈ 373' . NNBSP . 'km' && str_starts_with($socKm['text'], 'jetzt 60' . NNBSP . '% · noch ≈ 94' . NNBSP . 'km, ca. 1:28 h'), 'Ladestand-Ziel: Reichweite danach und Kilometer dazu');
+check(Target::build(['type' => 'range', 'km' => '300'], $noon, 60.0, null)['error'] !== null && Target::build(['type' => 'range', 'km' => '5'], $noon, 60.0, 220.0)['error'] !== null, 'Reichweiten-Ziel braucht die Reichweite und einen sinnvollen Wert');
+$rangeTarget = Target::build(['type' => 'range', 'km' => '300'], $noon, 60.0, 220.0)['target'];
+$rangeView = Target::view($rangeTarget, ['range_km' => 260.0] + $kmIn, $noon);
+check($rangeTarget['value'] === 300.0 && $rangeTarget['start_range'] === 220.0 && $rangeView['label'] === 'Bis 300' . NNBSP . 'km' && abs($rangeView['progress'] - 0.5) < 0.001
+    && $rangeView['text'] === 'jetzt 260' . NNBSP . 'km · noch 40' . NNBSP . 'km, ca. 0:38 h' && $rangeView['remaining_s'] === 2291 && Target::view($rangeTarget, ['range_km' => 301.0] + $kmIn, $noon)['reached'], 'Ziel nach Reichweite: Fortschritt, Kilometer, Dauer, erreicht');
 $targetStore = new ConfigStore(':memory:');
 $targetStore->put(Target::KEY, $energyTarget);
 $targetSnap = ['cfg' => ['charge' => ['mode' => 'schnell']], 'values' => ['wallbox_kw' => 11.0, 'wallbox_car_raw' => 'charging'], 'chargepoint' => ['session_kwh' => 20.2], 'suggestion' => [], 'vehicle' => []];

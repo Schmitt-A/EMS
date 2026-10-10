@@ -6,12 +6,16 @@ declare(strict_types=1);
  * @var float $limit Ladelimit der App
  * @var ?float $carLimit Ladelimit, das das Auto meldet (Tesla BLE); gilt dann statt des Reglers
  * @var ?float $capacity Kapazität von Hand, null wenn nicht gesetzt
+ * @var ?float $consumption Verbrauch in kWh/100 km von Hand, null wenn nicht gesetzt
+ * @var ?array $derived Verbrauch, den das Auto meldet: Reichweite, Ladestand und Akku (kwh), null ohne
  * @var array $mapping
  * @var array $suggest
  * @var string $back
  */
 $carLimit ??= null;
 $capacity ??= null;
+$consumption ??= null;
+$derived ??= null;
 $suggest ??= [];
 $entity = static fn (string $key, string $label, string $hint): string => ui_entity_field($key, $label, (string) ($mapping[$key] ?? ''), $hint, $suggest[$key] ?? '');
 ?>
@@ -24,7 +28,8 @@ $entity = static fn (string $key, string $label, string $hint): string => ui_ent
 <?php else: ?>
   <?= ui_range('limit_soc', 'Ladelimit', $limit, 20, 100, 5, '%', 'Ziel für Restzeit und Ladebalken. Die Wallbox wird nicht gestellt.') ?>
 <?php endif; ?>
-  <div class="form-rows"><?= ui_form_row('Akku', ui_input('capacity_kwh', $capacity === null ? '' : ui_field_num($capacity, 1), ['id' => 'f-capacity_kwh', 'class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off', 'placeholder' => '–']), ['for' => 'f-capacity_kwh', 'hint' => 'kWh, für die Restzeit, wenn keine Entität die Kapazität meldet.']) ?></div>
+  <div class="form-rows"><?= ui_form_row('Akku', ui_input('capacity_kwh', $capacity === null ? '' : ui_field_num($capacity, 1), ['id' => 'f-capacity_kwh', 'class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off', 'placeholder' => '–']), ['for' => 'f-capacity_kwh', 'hint' => 'kWh, für die Restzeit, wenn keine Entität die Kapazität meldet.']) ?>
+    <?= ui_form_row('Verbrauch', ui_input('consumption_kwh', $consumption === null ? '' : ui_field_num($consumption, 1), ['id' => 'f-consumption_kwh', 'class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off', 'placeholder' => $derived === null ? '–' : ui_field_num((float) $derived['kwh'], 1)]), ['for' => 'f-consumption_kwh', 'hint' => 'kWh/100 km, wie ihn das Auto anzeigt. Damit nennen Ladeziel und Ladevorgang die Kilometer. ' . ($derived !== null ? 'Leer gilt der Verbrauch, mit dem das Auto seine Reichweite rechnet, jetzt ' . num((float) $derived['kwh'], 1) . NNBSP . 'kWh/100' . NNBSP . 'km.' : 'Leer rechnet EMS ihn aus Reichweite, Ladestand und Akku, sobald das Auto sie meldet.')]) ?></div>
   <?= ui_divider('Entitäten') ?>
   <?= $entity('car_soc', 'Ladestand des Autos', 'Prozent, sobald das Fahrzeug ihn meldet.') ?>
   <?= $entity('car_range', 'Reichweite, optional', 'Kilometer oder Meilen. Die Reichweite beim Limit wird daraus geschätzt.') ?>

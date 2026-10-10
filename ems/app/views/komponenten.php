@@ -30,15 +30,16 @@ $staticFlow = Energy::flowBar(
     ['house_base_kw' => 0.8]
 );
 $staticGraph = Energy::flowGraph(
-    ['pv_kw' => 7.8, 'battery_discharge_kw' => 0.0, 'battery_charge_kw' => 1.6, 'battery_soc' => 64.0, 'grid_import_kw' => 0.0, 'grid_export_kw' => 1.3, 'wallbox_kw' => 4.1, 'car_soc' => 57.0],
+    ['pv_kw' => 7.8, 'battery_discharge_kw' => 0.0, 'battery_charge_kw' => 1.6, 'battery_soc' => 64.0, 'battery_capacity_kwh' => 8.6, 'battery_total_kwh' => 13.4, 'grid_import_kw' => 0.0, 'grid_export_kw' => 1.3, 'wallbox_kw' => 4.1, 'car_soc' => 57.0],
     ['house_base_kw' => 0.8],
-    ['today_kwh' => 29.4, 'remaining_kwh' => 6.2, 'done_kwh' => 23.1]
+    ['today_kwh' => 29.4, 'remaining_kwh' => 6.2, 'done_kwh' => 23.1],
+    ['house_mean_kw' => 0.62, 'import_ct' => 34.7, 'export_ct' => 8.1, 'car_range_km' => 296]
 );
 $vehicle = ['name' => 'ID.3', 'status' => 'Lädt …', 'soc' => 57.0, 'range_km' => 296.0, 'limit' => 80.0, 'range_at_limit' => 416.0];
 $cards = [
     'Lädt mit Ziel und Übersicht' => ['name' => 'Garage', 'mode' => 'smart', 'charging' => true, 'solar_only' => true, 'power_kw' => 7.36, 'phases' => 3, 'session_kwh' => 12.4, 'remaining_s' => 4300, 'vehicle' => $vehicle,
-        'target' => ['label' => 'Ziel 20,0' . NNBSP . 'kWh', 'text' => '12,4' . NNBSP . 'kWh von 20,0' . NNBSP . 'kWh, noch ca. 1:02 h', 'then_text' => 'Danach Nur Solar', 'progress' => 0.62],
-        'session_view' => ['open' => true, 'since' => 'seit 10:12', 'duration' => '1:41 h', 'avg' => '7,4' . NNBSP . 'kW', 'solar' => '92' . NNBSP . '%', 'cost' => '0,13' . NNBSP . '€']],
+        'target' => ['label' => 'Ziel 20,0' . NNBSP . 'kWh · ≈ 115' . NNBSP . 'km', 'text' => 'bisher 12,4' . NNBSP . 'kWh ≈ 71' . NNBSP . 'km, noch ca. 1:02 h', 'then_text' => 'Danach Nur Solar', 'progress' => 0.62],
+        'session_view' => ['open' => true, 'since' => 'seit 10:12', 'duration' => '1:41 h', 'km' => '≈ 71' . NNBSP . 'km', 'avg' => '7,4' . NNBSP . 'kW', 'solar' => '92' . NNBSP . '%', 'cost' => '0,13' . NNBSP . '€']],
     'Verbunden, wartet' => ['name' => 'Garage', 'mode' => 'smart_dauerhaft', 'charging' => false, 'solar_only' => false, 'power_kw' => 0.0, 'phases' => 0, 'session_kwh' => 0.0, 'remaining_s' => null, 'vehicle' => ['status' => 'Verbunden'] + $vehicle],
     'Fahrzeugdaten fehlen (gesperrt)' => ['name' => 'Garage', 'mode' => 'aus', 'charging' => false, 'solar_only' => false, 'power_kw' => null, 'phases' => 0, 'session_kwh' => null, 'remaining_s' => null, 'vehicle' => ['name' => 'Auto', 'status' => 'Nicht verbunden', 'soc' => null, 'range_km' => null, 'limit' => null, 'range_at_limit' => null]],
 ];
@@ -127,7 +128,7 @@ $section('Energiefluss-Balken', 'Signatur-Komponente vor dem Hintergrund: Quelle
 });
 
 $section('Energie-Flow', 'Alternative zum Balken, Rein → Raus: jede Quelle mit eigener Linie zu jedem Ziel, breiter bei mehr Leistung, Punkte in der Farbe der Quelle. Der Ring der Sonne zeigt die Tagesprognose. Oben live, darunter Mittag mit Einspeisung und Speicher.', static function (string $s) use ($v, $snap, $staticGraph): void {
-    echo ui_energy_flow(Energy::flowGraph($v, $snap['balance'], Snapshot::flowForecast($snap)), ['id' => 'g-ef-live-' . $s, 'car' => 'ID.3', 'links' => false]);
+    echo ui_energy_flow(Snapshot::flowGraph($snap), ['id' => 'g-ef-live-' . $s, 'car' => 'ID.3', 'links' => false]);
     echo ui_energy_flow($staticGraph, ['id' => 'g-ef-noon-' . $s, 'car' => 'ID.3', 'links' => false, 'static' => true]);
 });
 

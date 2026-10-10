@@ -2,7 +2,7 @@
 // Punkte in der Farbe der Quelle von links nach rechts. Werte, Ringe und Takt kommen aus /api/live (flow_graph).
 // Breiten und Wege stehen als SVG-Attribute, der Takt als data-speed (CSS); keine Inline-Styles.
 import { $, $$, svg } from '../core/dom.js';
-import { fmt, withUnit } from '../core/format.js';
+import { withUnit } from '../core/format.js';
 import { onLive } from '../core/live.js';
 
 const FROM = { sun: 'sun', battery: 'battery_out', grid: 'grid_in' };
@@ -92,14 +92,32 @@ function render(figure, graph) {
     $(`[data-ef-node="${key}"]`, figure)?.toggleAttribute('data-idle', !(n[key].kw >= 0.01));
   }
   const sun = n.sun;
-  setText(figure, 'sun_sub', sun.forecast_kwh === null || sun.forecast_kwh === undefined ? '' : `${fmt(sun.done_kwh ?? 0, 1)} von ${withUnit(sun.forecast_kwh, 'kWh')}`);
-  setText(figure, 'battery_out_sub', socText(n.battery_out.soc));
-  setText(figure, 'battery_in_sub', socText(n.battery_in.soc));
-  setText(figure, 'car_sub', socText(n.car.soc));
+  // Zweite Zeile unter den Namen; eine Kennzahl ohne Wert verschwindet mit ihrem Icon.
+  const kwh = (value) => (value === null || value === undefined ? '' : withUnit(value, 'kWh'));
+  const ct = (value) => (value === null || value === undefined ? '' : withUnit(value, 'ct/kWh'));
+  const facts = {
+    sun_done: kwh(sun.done_kwh),
+    sun_forecast: kwh(sun.forecast_kwh),
+    battery_out_soc: socText(n.battery_out.soc),
+    battery_out_full: kwh(n.battery_out.to_full_kwh),
+    grid_in_price: ct(n.grid_in.price_ct),
+    home_mean: n.home.mean_kw === null || n.home.mean_kw === undefined ? '' : `Ø ${kwText(n.home.mean_kw)}`,
+    car_soc: socText(n.car.soc),
+    car_range: n.car.range_km === null || n.car.range_km === undefined ? '' : withUnit(n.car.range_km, 'km', 0),
+    battery_in_soc: socText(n.battery_in.soc),
+    battery_in_full: kwh(n.battery_in.to_full_kwh),
+    grid_out_price: ct(n.grid_out.price_ct),
+  };
+  for (const [key, text] of Object.entries(facts)) {
+    const fact = $(`[data-ef-fact="${key}"]`, figure);
+    if (!fact) continue;
+    fact.hidden = !text;
+    setText(figure, key, text);
+  }
   links(figure, graph);
   rings(figure, graph);
 
-  const car = $('[data-ef-node="car"] .ef-label', figure)?.firstChild?.textContent || 'Auto';
+  const car = $('[data-ef-node="car"] .ef-name', figure)?.textContent || 'Auto';
   const name = (key) => (key === 'car' ? car : NAMES[key]);
   for (const key of Object.keys(n)) {
     const circle = $(`[data-ef-aria="${key}"]`, figure);

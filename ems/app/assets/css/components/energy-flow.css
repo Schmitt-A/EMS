@@ -2,8 +2,8 @@
  * Energie-Flow Rein → Raus: links die Quellen, rechts die Ziele, dazwischen die Linien als SVG über die ganze
  * Fläche. components/energy-flow.js legt die Wege zwischen die Kreise und setzt Breite (Leistung) und Takt
  * (data-speed). Farben wie bei den Balken: Sonne Amber, Speicher Taupe, Netzbezug dunkel, Einspeisung Türkis,
- * Auto Blau; aktive Kreise sind getönt und haben einen Schein. Mobil stehen die Namen unter den Kreisen, breit
- * daneben.
+ * Auto Blau; aktive Kreise sind getönt und haben einen Schein. Mobil stehen Namen und Kennzahlen unter den Kreisen,
+ * breit daneben.
  */
 .ef {
   container: ef / inline-size;
@@ -204,25 +204,47 @@ a.ef-circle:focus-visible {
   color: var(--text-3);
 }
 
+/* Name schwarz, darunter eine Zeile Kennzahlen in Grau, je mit Icon; ohne Platz bricht sie um. */
 .ef-label {
   display: grid;
   justify-items: center;
-  color: var(--text-2);
+  gap: 0.0625rem;
   font-size: 0.75rem;
-  font-weight: 600;
   line-height: 1rem;
   text-align: center;
+}
+
+.ef-name {
+  color: var(--text);
+  font-weight: 700;
   white-space: nowrap;
 }
 
-.ef-sub {
-  color: var(--text);
-  font-weight: 700;
+.ef-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 0.5rem;
+  color: var(--text-2);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
-.ef-sub:empty {
+.ef-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1875rem;
+  white-space: nowrap;
+}
+
+.ef-fact[hidden] {
   display: none;
+}
+
+.ef-fact .icon {
+  flex: none;
+  width: 0.8125rem;
+  height: 0.8125rem;
 }
 
 @container ef (min-width: 26rem) {
@@ -263,6 +285,14 @@ a.ef-circle:focus-visible {
     text-align: end;
   }
 
+  .ef-col-in .ef-facts {
+    justify-content: flex-end;
+  }
+
+  .ef-col-out .ef-facts {
+    justify-content: flex-start;
+  }
+
   .ef-col-out .ef-node {
     justify-content: start;
   }
@@ -293,5 +323,14 @@ a.ef-circle:focus-visible {
   .ef-label {
     font-size: 0.875rem;
     line-height: 1.25rem;
+  }
+
+  .ef-facts {
+    font-size: 0.8125rem;
+  }
+
+  .ef-fact .icon {
+    width: 0.875rem;
+    height: 0.875rem;
   }
 }
