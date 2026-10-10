@@ -1,5 +1,5 @@
 name: EMS
-version: "1.7.1"
+version: "1.8.0"
 slug: ems
 description: Energiefluss, Speicher, Wallbox und PV-Prognose
 arch:
