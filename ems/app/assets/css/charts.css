@@ -143,6 +143,21 @@
   fill-opacity: 0.55;
 }
 
+/* Heute im Säulendiagramm: die ganze Spalte in weichem Amber */
+.chart .today-slot {
+  fill-opacity: 1;
+}
+
+/* Tage vor dem Zeitraum (Vormonat, Vorjahr): blasser, ohne Summe */
+.chart .bar-out .bar {
+  fill-opacity: 0.35;
+}
+
+.chart .period-label {
+  fill: var(--text-2);
+  font-weight: 600;
+}
+
 .chart .day-today {
   fill: var(--text);
   font-weight: 700;
@@ -212,9 +227,25 @@
   stroke-width: 2;
 }
 
-.chart .extrema text {
+/* Tageswerte als Kapseln wie die Peaks: Maximum gefüllt, Minimum umrandet. */
+.chart .extrema .badge-max rect {
+  fill: var(--c, var(--data-solar));
+}
+
+.chart .extrema .badge-max text {
+  fill: var(--on-accent);
+  font-weight: 700;
+}
+
+.chart .extrema .badge-min rect {
+  fill: var(--surface);
+  stroke: var(--c, var(--data-solar));
+  stroke-width: 1.5;
+}
+
+.chart .extrema .badge-min text {
   fill: var(--text);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .chart .peak rect {

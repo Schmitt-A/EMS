@@ -234,6 +234,14 @@ function day_label(string $day): string
     return ($names[$dt->format('D')] ?? $dt->format('D')) . ' ' . $dt->format('d.m.');
 }
 
+/** Tag für Tooltips: „Sa., 10. Okt.“ */
+function short_day_label(DateTimeImmutable $day): string
+{
+    $days = ['Mon' => 'Mo.', 'Tue' => 'Di.', 'Wed' => 'Mi.', 'Thu' => 'Do.', 'Fri' => 'Fr.', 'Sat' => 'Sa.', 'Sun' => 'So.'];
+    $months = [1 => 'Jan.', 2 => 'Feb.', 3 => 'März', 4 => 'Apr.', 5 => 'Mai', 6 => 'Juni', 7 => 'Juli', 8 => 'Aug.', 9 => 'Sep.', 10 => 'Okt.', 11 => 'Nov.', 12 => 'Dez.'];
+    return ($days[$day->format('D')] ?? $day->format('D')) . ', ' . $day->format('j') . '. ' . ($months[(int) $day->format('n')] ?? $day->format('m.'));
+}
+
 function long_when(string $iso): string
 {
     try {

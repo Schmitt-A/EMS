@@ -13,7 +13,8 @@ $rows = [
     'in_kw' => $snap['balance']['in_kw'],
     'out_kw' => $snap['balance']['out_kw'],
     'in' => [
-        ['key' => 'pv', 'icon' => 'sun', 'tone' => 'solar', 'label' => 'PV', 'kw' => $v['pv_kw'], 'context' => ui_inline(e('Rest 8,2 von 21,4' . NNBSP . 'kWh'), ['href' => url('/prognose')])],
+        ['key' => 'pv', 'icon' => 'sun', 'tone' => 'solar', 'label' => 'PV', 'kw' => $v['pv_kw']],
+        ['key' => 'forecast', 'icon' => 'sun-medium', 'tone' => 'muted', 'label' => 'Prognose heute', 'muted' => true, 'value' => e(kwh(21.4)), 'context' => ui_inline(e('Rest 8,2' . NNBSP . 'kWh'), ['href' => url('/prognose')])],
         ['key' => 'battery', 'icon' => 'battery', 'tone' => 'battery', 'label' => 'Speicher', 'kw' => $v['battery_discharge_kw'], 'context' => ui_inline(e(pct($v['battery_soc'])), ['href' => url('/speicher')])],
         ['key' => 'grid', 'icon' => 'utility-pole', 'tone' => 'grid-in', 'label' => 'Netz', 'kw' => $v['grid_import_kw'], 'context' => e(ct(34.7))],
     ],
@@ -30,9 +31,9 @@ $staticFlow = Energy::flowBar(
 );
 $vehicle = ['name' => 'ID.3', 'status' => 'Lädt …', 'soc' => 57.0, 'range_km' => 296.0, 'limit' => 80.0, 'range_at_limit' => 416.0];
 $cards = [
-    'Lädt mit Sonne' => ['name' => 'Garage', 'mode' => 'smart', 'charging' => true, 'solar_only' => true, 'power_kw' => 7.36, 'phases' => 3, 'session_kwh' => 12.4, 'remaining_s' => 4300, 'suggestion' => 'Vorschlag 11 A, 3-phasig (7,6 kW)', 'vehicle' => $vehicle],
-    'Verbunden, wartet' => ['name' => 'Garage', 'mode' => 'smart_dauerhaft', 'charging' => false, 'solar_only' => false, 'power_kw' => 0.0, 'phases' => 0, 'session_kwh' => 0.0, 'remaining_s' => null, 'suggestion' => 'Vorschlag: aus. Unter 1,38 kW würde das Laden aussetzen.', 'vehicle' => ['status' => 'Verbunden'] + $vehicle],
-    'Fahrzeugdaten fehlen (gesperrt)' => ['name' => 'Garage', 'mode' => 'aus', 'charging' => false, 'solar_only' => false, 'power_kw' => null, 'phases' => 0, 'session_kwh' => null, 'remaining_s' => null, 'suggestion' => 'Modus Aus.', 'vehicle' => ['name' => 'Auto', 'status' => 'Nicht verbunden', 'soc' => null, 'range_km' => null, 'limit' => null, 'range_at_limit' => null]],
+    'Lädt mit Sonne' => ['name' => 'Garage', 'mode' => 'smart', 'charging' => true, 'solar_only' => true, 'power_kw' => 7.36, 'phases' => 3, 'session_kwh' => 12.4, 'remaining_s' => 4300, 'vehicle' => $vehicle],
+    'Verbunden, wartet' => ['name' => 'Garage', 'mode' => 'smart_dauerhaft', 'charging' => false, 'solar_only' => false, 'power_kw' => 0.0, 'phases' => 0, 'session_kwh' => 0.0, 'remaining_s' => null, 'vehicle' => ['status' => 'Verbunden'] + $vehicle],
+    'Fahrzeugdaten fehlen (gesperrt)' => ['name' => 'Garage', 'mode' => 'aus', 'charging' => false, 'solar_only' => false, 'power_kw' => null, 'phases' => 0, 'session_kwh' => null, 'remaining_s' => null, 'vehicle' => ['name' => 'Auto', 'status' => 'Nicht verbunden', 'soc' => null, 'range_km' => null, 'limit' => null, 'range_at_limit' => null]],
 ];
 $battery = [
     'soc' => $v['battery_soc'],

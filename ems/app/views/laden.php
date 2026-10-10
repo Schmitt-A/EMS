@@ -1,19 +1,23 @@
 <?php
 declare(strict_types=1);
 /**
- * Laden (Home, 8): Energiefluss-Balken und Ladepunkt-Karte. Ebene 2: Ladepunkt-Einstellungen, Fahrzeug, Energieübersicht.
+ * Laden (Home, 8): Energiefluss-Balken, Ladepunkt-Karte und darunter die Regelung. Ebene 2: Ladepunkt-Einstellungen, Fahrzeug, Energieübersicht.
  * @var array $snap
  * @var array $live
  * @var array $overview
  */
 $v = $snap['values'];
 $b = $snap['balance'];
-$s = $snap['setpoint'];
 $c = $snap['cfg']['charge'];
 $cp = $snap['chargepoint'] + ['vehicle' => $snap['vehicle']];
 $vehicle = $snap['vehicle'];
 $tariffs = $snap['cfg']['tariffs'];
 $f = $snap['forecast'];
+$strategy = zone_thresholds(
+    (float) ($snap['cfg']['battery_strategy']['priority_soc'] ?? 80),
+    (float) ($snap['cfg']['battery_strategy']['car_buffer_soc'] ?? 100),
+    (float) ($snap['cfg']['battery_strategy']['car_auto_soc'] ?? 100),
+);
 $month = $overview['periods']['30'];
 $share = $month['solar_pct'] !== null ? (float) $month['solar_pct'] : null;
 $price = $month['ct'] !== null ? (float) $month['ct'] : null;
@@ -37,7 +41,10 @@ $rows = [
     'in_kw' => $b['in_kw'],
     'out_kw' => $b['out_kw'],
     'in' => [
-        ['key' => 'pv', 'icon' => 'sun', 'tone' => 'solar', 'label' => 'PV', 'kw' => $v['pv_kw'], 'context' => ui_inline('<span data-live="flow_rows.pv_text">' . e(Snapshot::pvForecastText($f)) . '</span><span class="sr-only"> laut Prognose, zur Prognose</span>', ['href' => url('/prognose')])],
+        ['key' => 'pv', 'icon' => 'sun', 'tone' => 'solar', 'label' => 'PV', 'kw' => $v['pv_kw']],
+        ['key' => 'forecast', 'icon' => 'sun-medium', 'tone' => 'muted', 'label' => 'Prognose heute', 'muted' => true,
+            'value' => '<span data-live="flow_rows.forecast_value">' . e(Snapshot::forecastValue($f)) . '</span>',
+            'context' => ui_inline('<span data-live="flow_rows.forecast_text">' . e(Snapshot::forecastRest($f)) . '</span><span class="sr-only">, zur Prognose</span>', ['href' => url('/prognose')])],
         ['key' => 'battery', 'icon' => 'battery', 'tone' => 'battery', 'label' => 'Speicher', 'kw' => $v['battery_discharge_kw'], 'context' => $socLink],
         ['key' => 'grid', 'icon' => 'utility-pole', 'tone' => 'grid-in', 'label' => 'Netz', 'kw' => $v['grid_import_kw'], 'context' => e(ct((float) $tariffs['import_ct']))],
     ],
@@ -55,6 +62,7 @@ $rows = [
     <?= ui_flow(Energy::flowBar($v, $b), $rows) ?>
   </section>
   <?= ui_chargepoint($cp, ['id' => 'cp', 'live' => true]) ?>
+  <?= ui_control($snap['control'], $c, $strategy, ['live' => true]) ?>
 </div>
 <?php if ($snap['warnings']): ?>
 <section class="section" aria-labelledby="hints-title">
@@ -70,23 +78,8 @@ $rows = [
 // Ebene 2: Ladepunkt-Einstellungen
 ob_start();
 ?>
-<p class="body muted">Der Vorschlag zeigt, was eine Regelung jetzt einstellen würde. Die App schreibt nichts an die Wallbox.</p>
+<p class="body muted">Wie die Regelung mit diesen Werten gerade entscheiden würde, zeigt die Karte Regelung unter dem Ladepunkt. Die App schreibt nichts an die Wallbox.</p>
 <?php view('partials/charge-form', ['charge' => $c, 'back' => '/']); ?>
-<?= ui_divider('Regelung im Detail') ?>
-<dl class="kv">
-  <div><dt>PV</dt><dd data-live="pv"><?= e(kw($v['pv_kw'])) ?></dd></div>
-  <div><dt>Haus ohne Wallbox</dt><dd data-live="house"><?= e(kw($b['house_base_kw'])) ?></dd></div>
-  <div><dt>Speicher-Vorrang</dt><dd><span data-live="storage"><?= e(kw($b['storage_priority_kw'])) ?></span><span class="sub">Ladeleistung des Speichers, solange er unter der Hausgrenze liegt.</span></dd></div>
-  <div><dt>Überschuss</dt><dd data-live="surplus"><?= e(kw($b['surplus_kw'])) ?></dd></div>
-  <div><dt>Soll am Zähler</dt><dd><span data-live="psoll"><?= e(kw($s['p_soll_kw'], 2)) ?></span><span class="sub">Wallbox minus Netz minus Reserve, Bezug zählt positiv.</span></dd></div>
-  <div><dt>Abweichung</dt><dd data-live="delta"><?= e(kw($s['delta_kw'], 2)) ?></dd></div>
-</dl>
-<?= ui_divider('Die Modi') ?>
-<dl class="kv">
-<?php foreach (ui_mode_options() as $key => $option): ?>
-  <div><dt><?= e($option['label']) ?></dt><dd><?= e(Energy::modeText($key)) ?></dd></div>
-<?php endforeach; ?>
-</dl>
 <?= ui_divider('Ladepunkt') ?>
 <form method="post" action="<?= e(url('/mehr')) ?>" class="stack">
   <?= csrf_field() ?>

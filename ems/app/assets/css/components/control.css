@@ -1,0 +1,320 @@
+/*
+ * Regelung unter der Ladepunkt-Karte: Stufe beim Einschalten, Aufteilung von Überschuss und Ladeleistung,
+ * Phasen-Leiter und die drei Modi. Breiten setzt components/control.js per flex-grow (CSSOM).
+ */
+.ctl {
+  container: ctl / inline-size;
+}
+
+.ctl-grid {
+  display: grid;
+  gap: var(--s-5);
+}
+
+/* Breit: Aufteilung und Phasen nebeneinander, darunter die drei Modi nebeneinander */
+@container ctl (min-width: 52rem) {
+  .ctl-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--s-8);
+  }
+
+  .ctl-head,
+  .ctl-now,
+  .ctl-block-modes,
+  .ctl-details {
+    grid-column: 1 / -1;
+  }
+}
+
+.ctl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.ctl-now {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.ctl-now-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-3);
+}
+
+.ctl-level {
+  color: var(--text-2);
+}
+
+.ctl-pending {
+  color: var(--accent-on-soft);
+  font-weight: 600;
+}
+
+.ctl-block {
+  display: grid;
+  gap: var(--s-3);
+  padding-block-start: var(--s-5);
+  border-block-start: 1px solid var(--border);
+}
+
+.ctl-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Aufteilung: Name, Balken und Wert je Zeile, beide Balken auf derselben Skala */
+.ctl-split {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) 4.25rem;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.ctl-split-name {
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.ctl-split-kw {
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.ctl-bar {
+  display: flex;
+  height: 1.25rem;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+}
+
+.ctl-seg {
+  flex: 0 1 0%;
+  min-width: 0;
+  transition: flex-grow 400ms var(--ease-out);
+}
+
+.ctl-seg[data-zero] {
+  display: none;
+}
+
+.ctl-seg:not([data-zero]) ~ .ctl-seg:not([data-zero], .ctl-seg-rest) {
+  box-shadow: inset 2px 0 0 var(--surface);
+}
+
+.ctl-seg-sun {
+  background: var(--data-solar);
+}
+
+.ctl-seg-charge,
+.ctl-seg-battery {
+  background: var(--data-battery);
+}
+
+.ctl-seg-grid {
+  background: var(--data-grid-in);
+}
+
+.ctl-seg-export {
+  background: var(--data-grid-out);
+}
+
+.ctl-seg-mixed {
+  background: repeating-linear-gradient(45deg, var(--data-battery) 0 5px, var(--data-grid-in) 5px 10px);
+}
+
+.ctl-seg-rest {
+  background: transparent;
+}
+
+.ctl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-4);
+  margin: 0;
+  padding: 0;
+  color: var(--text-2);
+  list-style: none;
+}
+
+.ctl-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.ctl-legend li[hidden] {
+  display: none;
+}
+
+.ctl-key-sun .swatch { color: var(--data-solar); }
+.ctl-key-battery .swatch { color: var(--data-battery); }
+.ctl-key-grid .swatch { color: var(--data-grid-in); }
+.ctl-key-export .swatch { color: var(--data-grid-out); }
+
+.ctl-key-mixed .swatch {
+  background: repeating-linear-gradient(45deg, var(--data-battery) 0 3px, var(--data-grid-in) 3px 6px);
+}
+
+/* Phasen-Leiter: Name links, je Phase eine Zeile auf derselben kW-Achse, darunter die Sonne fürs Auto */
+.ctl-ladder {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--s-4);
+}
+
+.ladder-name {
+  display: grid;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  white-space: nowrap;
+}
+
+.ladder-row {
+  display: block;
+  width: 100%;
+  height: 2rem;
+  overflow: visible;
+}
+
+.ladder-foot {
+  height: 1.25rem;
+}
+
+.ctl-ladder text {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ladder-row .ladder-lane {
+  fill: var(--surface-2);
+}
+
+.ladder-row .ladder-tick {
+  stroke: var(--border-control);
+  stroke-width: 1.5;
+}
+
+.ladder-row .ladder-sun {
+  stroke: var(--data-solar);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
+.ladder-foot .ladder-sun-label {
+  fill: var(--accent-on-soft);
+  font-weight: 600;
+}
+
+.ladder-row .ladder-level {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 3;
+}
+
+/* Die drei Modi: aktiv mit Amber-Rahmen, ab 40 rem nebeneinander */
+.ctl-modes {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ctl-mode {
+  display: grid;
+  align-content: start;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+}
+
+.ctl-mode[data-active] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.ctl-mode-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.ctl-mode-name {
+  font-weight: 700;
+}
+
+.ctl-mode-kw {
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+
+.ctl-active-pill {
+  display: none;
+}
+
+.ctl-mode[data-active] .ctl-active-pill {
+  display: inline-flex;
+}
+
+.ctl-mode .ctl-bar {
+  height: 0.75rem;
+}
+
+@container ctl (min-width: 40rem) {
+  .ctl-modes {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Rechenweg zum Aufklappen */
+.ctl-details {
+  border-block-start: 1px solid var(--border);
+}
+
+.ctl-details summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 2.75rem;
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.ctl-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.ctl-details[open] summary .icon {
+  transform: rotate(180deg);
+}
+
+.ctl-details .kv + .kv {
+  margin-block-start: var(--s-4);
+  padding-block-start: var(--s-2);
+  border-block-start: 2px solid var(--border-control);
+}
+
+.ctl-details > .caption {
+  margin-block-start: var(--s-3);
+}

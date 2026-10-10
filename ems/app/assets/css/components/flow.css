@@ -208,7 +208,11 @@
   color: var(--text-2);
 }
 
-/* Detail-Liste „Rein“ und „Raus“: mobil per Knopf, ab 640 px immer offen. */
+/*
+ * Detail-Liste „Rein“ und „Raus“: mobil per Knopf, ab 640 px immer offen. Eine Linie trennt sie vom Balken.
+ * Beide Seiten haben vier Zeilen auf gemeinsamen Höhen (Subgrid), damit Speicher neben Speicher und
+ * Netz neben Einspeisung steht.
+ */
 .flow-toggle {
   grid-column: 1 / -1;
   display: flex;
@@ -217,6 +221,8 @@
   gap: var(--s-1);
   width: 100%;
   min-height: 2.75rem;
+  margin-block-start: var(--s-4);
+  border-block-start: 1px solid var(--border);
   color: var(--text-2);
   font-size: 0.8125rem;
   font-weight: 600;
@@ -231,8 +237,10 @@
 }
 
 .flow-columns {
+  grid-column: 1 / -1;
   display: grid;
-  gap: var(--s-5);
+  gap: var(--s-8);
+  padding-block-start: var(--s-4);
 }
 
 .flow-col-head {
@@ -240,8 +248,27 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--s-2);
-  padding-block-end: var(--s-2);
-  border-block-end: 1px solid var(--border);
+  padding-block-end: var(--s-3);
+  margin-block-end: var(--s-1);
+  border-block-end: 2px solid var(--border-control);
+}
+
+.flow-col-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.flow-col-sum {
+  color: var(--text);
+  font-size: 1.125rem;
+  line-height: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .flow-row {
@@ -249,7 +276,7 @@
   grid-template-columns: 1.25rem minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--s-3);
-  min-height: 2.75rem;
+  min-height: 3.25rem;
   border-block-end: 1px solid var(--border);
 }
 
@@ -295,17 +322,44 @@
   color: var(--text-2);
 }
 
+/* Prognose: keine Leistung, sondern Tagesenergie, deshalb leiser als die Zeilen mit kW. */
+.flow-row-muted .flow-row-name,
+.flow-row-muted .flow-row-kw {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
 @media (min-width: 40rem) {
   .flow-toggle {
     display: none;
   }
 
+  .flow-columns,
   .flow-columns[data-collapsed] {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--s-8);
+    row-gap: 0;
+    margin-block-start: var(--s-6);
+    padding-block-start: var(--s-6);
+    border-block-start: 1px solid var(--border);
   }
 
-  .flow-columns {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--s-8);
+  @supports (grid-template-rows: subgrid) {
+    .flow-columns {
+      grid-template-rows: auto repeat(4, auto);
+    }
+
+    .flow-side {
+      display: grid;
+      grid-row: span 5;
+      grid-template-rows: subgrid;
+    }
+
+    .flow-side > .flow-list {
+      display: grid;
+      grid-row: span 4;
+      grid-template-rows: subgrid;
+    }
   }
 }

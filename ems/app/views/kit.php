@@ -374,13 +374,15 @@ function ui_flow(array $flow, array $rows, string $id = 'flow'): string
     };
     $top = ['grid' => ['utility-pole', 'grid-in'], 'battery' => ['battery', 'battery'], 'pv' => ['sun', 'solar']];
     $bottom = ['house' => ['house', ''], 'wallbox' => ['car', ''], 'battery' => ['battery', 'battery'], 'grid' => ['utility-pole', 'grid-out']];
+    // Beide Seiten haben vier Zeilen auf denselben Höhen: Speicher neben Speicher, Netz neben Einspeisung.
+    // Eine Zeile mit 'value' (fertiges HTML) statt 'kw' zeigt keine Leistung, 'muted' setzt sie dezenter ab.
     $column = static function (string $title, string $side, ?float $sum, array $items): string {
-        $html = '<div data-flow-side="' . $side . '"><div class="flow-col-head"><h3 class="label">' . e($title) . '</h3><span class="metric-sm" data-flow-sum>' . e(kw($sum)) . '</span></div><ul class="plain-list" role="list">';
+        $html = '<div class="flow-side" data-flow-side="' . $side . '"><div class="flow-col-head"><h3 class="flow-col-title">' . e($title) . '</h3><span class="flow-col-sum" data-flow-sum>' . e(kw($sum)) . '</span></div><ul class="plain-list flow-list" role="list">';
         foreach ($items as $item) {
-            $idle = ($item['kw'] ?? 0) < 0.01;
-            $html .= '<li class="flow-row"' . ($idle ? ' data-idle' : '') . ' data-flow-row="' . e($item['key']) . '">' . icon($item['icon'], 'icon-20 tone-' . $item['tone'])
+            $idle = !isset($item['value']) && ($item['kw'] ?? 0) < 0.01;
+            $html .= '<li class="flow-row' . (!empty($item['muted']) ? ' flow-row-muted' : '') . '"' . ($idle ? ' data-idle' : '') . ' data-flow-row="' . e($item['key']) . '">' . icon($item['icon'], 'icon-20 tone-' . $item['tone'])
                 . '<span class="flow-row-main"><span class="flow-row-name">' . e($item['label']) . '</span>' . (isset($item['context']) ? '<span class="flow-row-context">' . $item['context'] . '</span>' : '') . '</span>'
-                . '<span class="flow-row-kw metric-sm">' . e(kw($item['kw'])) . '</span></li>';
+                . '<span class="flow-row-kw metric-sm">' . ($item['value'] ?? e(kw($item['kw']))) . '</span></li>';
         }
         return $html . '</ul></div>';
     };
@@ -491,7 +493,6 @@ function ui_chargepoint(array $cp, array $opts = []): string
         . ui_metric('Geladen', $live ? ui_live_num('chargepoint.session_kwh', $cp['session_kwh'], 'kWh') : ui_num($cp['session_kwh'], 'kWh'))
         . ui_metric('Restzeit', '<span class="num"' . ui_attrs(['data-live' => $p('chargepoint.remaining_text')]) . '>' . e($remaining) . '</span>')
         . '</div>'
-        . '<p class="cp-suggest body-sm"' . ui_attrs(['data-live' => $p('chargepoint.suggestion')]) . '>' . e((string) $cp['suggestion']) . '</p>'
         . '<hr class="rule">'
         . '<div class="cp-vehicle">' . icon('car', 'icon-24') . $name . '<span class="cp-status body-sm"' . ui_attrs(['data-live' => $p('vehicle.status')]) . '>' . e((string) $v['status']) . '</span></div>'
         . '<div class="chargebar"' . ui_attrs([
@@ -506,4 +507,120 @@ function ui_chargepoint(array $cp, array $opts = []): string
         . ui_metric('Limit', '<span class="row wrap">' . $limitHtml . $rangeLimit . '</span>')
         . '</div>'
         . '</article>';
+}
+
+/**
+ * Regelung unter der Ladepunkt-Karte: mit welcher Stufe die Wallbox jetzt laden würde, woher die Leistung
+ * käme und wohin der Überschuss ginge, die Phasen-Leiter und was die drei Modi täten. Daten aus
+ * Snapshot::control(); Breiten und Positionen setzt components/control.js (CSSOM und SVG-Attribute).
+ * opts: id, live (Texte über data-live aktualisieren)
+ */
+function ui_control(array $c, array $charge, array $strategy, array $opts = []): string
+{
+    $id = (string) ($opts['id'] ?? 'ctl');
+    $live = !empty($opts['live']);
+    $l = static fn (string $path): ?string => $live ? 'control.' . $path : null;
+    $text = static fn (string $path, string $value, string $tag = 'span', string $class = ''): string => '<' . $tag . ($class !== '' ? ' class="' . e($class) . '"' : '') . ui_attrs(['data-live' => $l($path)]) . '>' . e($value) . '</' . $tag . '>';
+    $bar = static function (string $name, array $parts, array $flows, string $label): string {
+        $html = '<div class="ctl-bar" data-ctl-bar="' . e($name) . '" role="img" aria-label="' . e($label) . '">';
+        foreach ($parts as $part) {
+            $html .= '<span class="ctl-seg ctl-seg-' . e($part) . '" data-part="' . e($part) . '"' . ((float) ($flows[$part . '_kw'] ?? 0) < 0.01 ? ' data-zero' : '') . '></span>';
+        }
+        return $html . '<span class="ctl-seg ctl-seg-rest" data-part="rest"></span></div>';
+    };
+    $f = $c['flows'];
+    $carParts = ['sun', 'battery', 'grid', 'mixed'];
+
+    // 1. Jetzt: Stufe und Leistung beim Einschalten
+    $html = '<section class="card ctl" id="' . e($id) . '" aria-labelledby="' . e($id) . '-title" data-control="' . e(ui_json(['scale_kw' => $c['scale_kw'], 'flows' => $f, 'modes' => array_map(static fn (array $m): array => ['flows' => $m['flows'], 'active' => $m['active']], $c['modes']), 'ladder' => $c['ladder']])) . '"' . ($live ? ' data-control-live' : '') . '>'
+        . '<div class="ctl-grid"><header class="ctl-head"><h2 class="card-title" id="' . e($id) . '-title">Regelung</h2>' . $text('mode_label', (string) $c['mode_label'], 'span', 'pill pill-neutral') . '</header>'
+        . '<div class="ctl-now">'
+        . $text('headline', (string) $c['headline'], 'p', 'label')
+        . '<p class="ctl-now-value">' . $text('kw_text', (string) $c['kw_text'], 'span', 'metric-xl') . $text('level_text', (string) $c['level_text'], 'span', 'ctl-level metric-sm') . '</p>'
+        . $text('reason', (string) $c['reason'], 'p', 'body-sm muted')
+        . '<p class="body-sm ctl-pending"' . ui_attrs(['data-live' => $l('pending'), 'data-live-hide' => $l('pending')]) . ($c['pending'] === '' ? ' hidden' : '') . '>' . e((string) $c['pending']) . '</p>'
+        . '</div>';
+
+    // 2. Aufteilung: der Überschuss über dem Haus und die Quellen des Autos auf derselben Skala
+    $html .= '<div class="ctl-block ctl-block-split"><h3 class="ctl-title">Aufteilung</h3><div class="ctl-split">'
+        . '<span class="ctl-split-name">Überschuss</span>'
+        . $bar('spare', ['sun', 'charge', 'export'], $f, 'Überschuss über dem Haus: ans Auto, in den Speicher, ins Netz')
+        . $text('details.spare', kw((float) $f['spare_kw']), 'span', 'ctl-split-kw')
+        . '<span class="ctl-split-name">Auto</span>'
+        . $bar('car', $carParts, $f, 'Leistung des Autos: aus der Sonne, aus dem Speicher, aus dem Netz')
+        . $text('car_text', kw((float) $f['car_kw']), 'span', 'ctl-split-kw')
+        . '</div>'
+        . $text('split_text', (string) $c['split_text'], 'p', 'body-sm')
+        . '<ul class="ctl-legend caption" role="list">'
+        . '<li class="ctl-key-sun"><span class="swatch"></span>Sonne</li>'
+        . '<li class="ctl-key-battery"><span class="swatch"></span>Speicher</li>'
+        . '<li class="ctl-key-grid"><span class="swatch"></span>Netz</li>'
+        . '<li class="ctl-key-export"><span class="swatch"></span>Einspeisung</li>'
+        . '<li class="ctl-key-mixed"><span class="swatch"></span>Speicher, dann Netz</li>'
+        . '</ul></div>';
+
+    // 3. Phasen und Stufe: je Phase eine Zeile auf derselben kW-Achse, Striche je Ampere, Punkt für die Stufe,
+    // gestrichelt die Sonne fürs Auto. Die Namen stehen links, damit die Linie keine Schrift kreuzt.
+    $minA = min(16, max(6, (int) ($charge['min_a'] ?? 6)));
+    $maxA = min(16, max($minA, (int) ($charge['max_a'] ?? 16)));
+    $phaseMode = (string) ($charge['phase_mode'] ?? 'auto');
+    $max = max(0.1, (float) $c['ladder']['max_kw']);
+    $at = static fn (float $kw): string => round(min(100, max(0, $kw / $max * 100)), 2) . '%';
+    $sun = (float) $c['ladder']['sun_kw'];
+    $level = (float) $c['ladder']['level_kw'];
+    $levelPhases = (int) $c['ladder']['level_phases'];
+    $ladder = '<div class="ctl-ladder" data-ladder role="img" aria-label="' . e('Stufen von ' . $minA . ' bis ' . $maxA . NNBSP . 'A, jetzt ' . $c['level_text'] . '.') . '">';
+    foreach ($phaseMode === '1p' ? [1] : ($phaseMode === '3p' ? [3] : [1, 3]) as $phases) {
+        $from = Energy::KW_PER_AMP * $minA * $phases;
+        $to = Energy::KW_PER_AMP * $maxA * $phases;
+        $ladder .= '<span class="ladder-name"><span>' . e($phases . '-phasig') . '</span><span class="caption muted">' . e(num($from, 1) . '–' . kw($to)) . '</span></span>'
+            . '<svg class="ladder-row" aria-hidden="true" data-lane="' . $phases . '">'
+            . '<rect class="ladder-lane" x="' . $at($from) . '" y="12" width="' . round(($to - $from) / $max * 100, 2) . '%" height="8" rx="4"></rect>';
+        for ($a = $minA; $a <= $maxA; $a++) {
+            $x = $at(Energy::KW_PER_AMP * $a * $phases);
+            $ladder .= '<line class="ladder-tick" x1="' . $x . '" x2="' . $x . '" y1="9" y2="23"></line>';
+        }
+        $ladder .= '<line class="ladder-sun" x1="' . $at($sun) . '" x2="' . $at($sun) . '" y1="0" y2="32" data-ladder-sun></line>'
+            . '<circle class="ladder-level" r="7" cx="' . $at($level) . '" cy="16"' . ($levelPhases === $phases ? '' : ' visibility="hidden"') . ' data-ladder-level></circle></svg>';
+    }
+    $ladder .= '<span></span><svg class="ladder-row ladder-foot" aria-hidden="true"><text class="ladder-sun-label" x="' . $at($sun) . '" y="13" text-anchor="' . ($sun / $max > 0.5 ? 'end' : 'start') . '" data-ladder-sun-label>' . e('Sonne fürs Auto ' . kw($sun)) . '</text></svg></div>';
+    $auto = $phaseMode === 'auto'
+        ? 'Automatisch: unter ' . kw(Energy::PHASE_DOWN_KW) . ' einphasig, ab ' . kw(Energy::PHASE_UP_KW) . ' dreiphasig, dazwischen bleibt die Phase. Ein Wechsel wartet die Schütz-Schutzzeit von ' . (int) ($charge['switch_s'] ?? 60) . NNBSP . 's ab.'
+        : 'Fest ' . ($phaseMode === '1p' ? 'einphasig' : 'dreiphasig') . ', einstellbar in den Ladeparametern.';
+    $html .= '<div class="ctl-block ctl-block-ladder"><h3 class="ctl-title">Phasen und Stufe</h3>' . $ladder . '<p class="body-sm muted">' . e($auto) . '</p></div>';
+
+    // 4. Die drei Modi: Leistung, Stufe, Quellen auf gemeinsamer Skala und die Entscheidung in einem Satz
+    $html .= '<div class="ctl-block ctl-block-modes"><h3 class="ctl-title">Die drei Modi jetzt</h3><ul class="ctl-modes" role="list">';
+    foreach ($c['modes'] as $key => $m) {
+        $html .= '<li class="ctl-mode" data-ctl-mode="' . e($key) . '"' . ($m['active'] ? ' data-active' : '') . '>'
+            . '<div class="ctl-mode-head"><span class="ctl-mode-name">' . e((string) $m['label']) . '</span><span class="pill ctl-active-pill">aktiv</span>'
+            . $text('modes.' . $key . '.kw_text', (string) $m['kw_text'], 'span', 'ctl-mode-kw metric-sm') . '</div>'
+            . $bar('mode-' . $key, $carParts, $m['flows'], 'Leistung im Modus ' . $m['label'] . ': aus der Sonne, aus dem Speicher, aus dem Netz')
+            . '<p class="caption muted ctl-mode-text">' . $text('modes.' . $key . '.level_text', (string) $m['level_text']) . ' · ' . $text('modes.' . $key . '.text', (string) $m['text']) . '</p>'
+            . '</li>';
+    }
+    $html .= '</ul></div>';
+
+    // 5. Rechenweg und die Modi im Wortlaut (vorher in den Einstellungen)
+    $details = [
+        ['PV', 'pv', ''],
+        ['Haus ohne Wallbox', 'house', ''],
+        ['Überschuss über dem Haus', 'spare', 'PV minus Haus, bevor Speicher und Auto etwas nehmen.'],
+        ['Speicher', 'battery', ''],
+        ['Sonne fürs Auto', 'solar', 'Der kleinere Wert aus Überschuss (unter der Hausgrenze ohne die Ladeleistung des Speichers) und Zähler.'],
+        ['Am Zähler verfügbar', 'meter', 'Ladeleistung plus Einspeisung minus Bezug und Regelreserve. Ab der Hausgrenze zählt Speicherladen mit, bis zur Stützung Entladen dagegen.'],
+        ['Ziel und Stufe', 'target', ''],
+        ['Abweichung zur Wallbox', 'delta', ''],
+    ];
+    $html .= '<details class="ctl-details"><summary>' . icon('chevron-down', 'icon-16') . 'Rechenweg und die Modi</summary><dl class="kv">';
+    foreach ($details as [$label, $key, $sub]) {
+        $html .= '<div><dt>' . e($label) . '</dt><dd>' . $text('details.' . $key, (string) ($c['details'][$key] ?? '—')) . ($sub !== '' ? '<span class="sub">' . e($sub) . '</span>' : '') . '</dd></div>';
+    }
+    $html .= '<div><dt>Grenzen</dt><dd>' . e('Haus bis ' . pct((float) $strategy['priority_soc']) . ', Stützung ab ' . pct((float) $strategy['car_buffer_soc']) . ', Start ab ' . pct((float) $strategy['car_auto_soc'])) . '<span class="sub">' . ui_inline('Auf der Seite Speicher ändern', ['href' => url('/speicher')]) . '</span></dd></div>'
+        . '<div><dt>Regelreserve, Sonnenanteil</dt><dd>' . e(num((float) ($charge['reserve_w'] ?? 0), 0) . NNBSP . 'W, mindestens ' . pct((float) ($charge['solar_share'] ?? 100))) . '</dd></div>'
+        . '</dl><dl class="kv">';
+    foreach (ui_mode_options() as $key => $option) {
+        $html .= '<div><dt>' . e($option['label']) . '</dt><dd>' . e(Energy::modeText($key)) . '</dd></div>';
+    }
+    return $html . '</dl><p class="caption muted">Die App schreibt nichts an die Wallbox. Sie zeigt, was eine Regelung jetzt einstellen würde.</p></details></div></section>';
 }

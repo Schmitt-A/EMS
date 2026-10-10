@@ -72,14 +72,13 @@ function bindMode(card) {
   fieldset.addEventListener('change', async (event) => {
     const input = event.target.closest('input[type="radio"]');
     if (!input) return;
-    const suggestion = $('.cp-suggest', card);
     try {
       applyLive(await postJson('/api/modus', { mode: input.value }));
       previous = input.value;
     } catch {
       const back = $(`input[value="${previous}"]`, fieldset);
       if (back) back.checked = true;
-      if (suggestion) suggestion.textContent = 'Der Modus wurde nicht gespeichert. Bitte noch einmal versuchen.';
+      card.dispatchEvent(new CustomEvent('ems:error', { bubbles: true, detail: 'Der Modus wurde nicht gespeichert. Bitte noch einmal versuchen.' }));
     }
   });
 }

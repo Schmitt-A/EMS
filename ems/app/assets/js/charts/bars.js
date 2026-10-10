@@ -45,6 +45,11 @@ export function renderBars(figure, payload, state) {
     return typeof v === 'object' ? v.y : Number(v);
   };
   const indices = Array.from({ length: count }, (_, k) => first + k);
+  // Zeitraum (Summen, volle Farbe) und heute; Tage davor stehen blasser links davon.
+  const period = payload.period || [first, last];
+  const inPeriod = (i) => i >= period[0] && i <= period[1];
+  const today = Number.isInteger(payload.today) && payload.today >= first && payload.today <= last ? payload.today : null;
+  const title = (i) => payload.titles?.[i] ?? labels[i] ?? '';
   let maxY = 0;
   for (const i of indices) {
     if (payload.stacked) maxY = Math.max(maxY, barsList.reduce((sum, series) => sum + (value(series, i) || 0), 0));
@@ -66,6 +71,15 @@ export function renderBars(figure, payload, state) {
 
   const plot = f.plot;
   if (state.first) plot.classList.add('enter');
+  // Heute bleibt hinterlegt, auch ohne Ladevorgang; die Zeitraumgrenze steht gestrichelt mit Namen.
+  if (today !== null) {
+    svg('rect', { class: 'today-zone today-slot', x: cx(today) - step / 2 + 1, y: TOP - 6, width: step - 2, height: height - BOTTOM - TOP + 6, rx: 6 }, plot);
+  }
+  if (period[0] > first && period[0] <= last) {
+    const edge = cx(period[0]) - step / 2;
+    svg('line', { class: 'day-line', x1: edge, x2: edge, y1: TOP - 6, y2: y(0) }, plot);
+    if (payload.periodLabel) svg('text', { class: 'period-label', x: edge + 6, y: TOP + 6 }, plot).textContent = payload.periodLabel;
+  }
   svg('line', { class: 'base-line', x1: 0, x2: plotWidth, y1: y(0), y2: y(0) }, plot);
 
   // Säulen
@@ -80,7 +94,7 @@ export function renderBars(figure, payload, state) {
         const yBottom = y(base) - (k ? 2 : 0);
         const h = Math.max(0, yBottom - yTop);
         const xLeft = cx(i) - groupWidth / 2;
-        const g = svg('g', { class: colorClass(part.series.color) }, plot);
+        const g = svg('g', { class: `${colorClass(part.series.color)}${inPeriod(i) ? '' : ' bar-out'}` }, plot);
         if (k === parts.length - 1) svg('path', { class: 'bar', d: topRounded(xLeft, yTop, groupWidth, h, 6) }, g);
         else svg('rect', { class: 'bar', x: xLeft, y: yTop, width: groupWidth, height: h }, g);
         base = top;
@@ -91,7 +105,7 @@ export function renderBars(figure, payload, state) {
         const v = value(series, i);
         if (v === null || v <= 0) return;
         const xLeft = cx(i) - groupWidth / 2 + k * (each + 2);
-        const g = svg('g', { class: colorClass(series.color) }, plot);
+        const g = svg('g', { class: `${colorClass(series.color)}${inPeriod(i) ? '' : ' bar-out'}` }, plot);
         svg('path', { class: `bar${series.light ? ' bar-light' : ''}`, d: topRounded(xLeft, y(v), each, y(0) - y(v), 6) }, g);
       });
     }
@@ -108,11 +122,18 @@ export function renderBars(figure, payload, state) {
     }
   }
 
-  // Beschriftung unter der Achse, so dicht wie es passt
+  // Beschriftung unter der Achse, so dicht wie es passt, im Raster von heute (oder dem Ende) aus.
+  // Heute steht immer da: „Heute“, wenn es passt, sonst die Zahl, beides fett.
   const every = Math.max(1, Math.ceil(46 / step));
-  indices.forEach((i, k) => {
-    if (k % every !== 0) return;
-    svg('text', { x: cx(i), y: height - 9, 'text-anchor': 'middle' }, plot).textContent = labels[i] ?? '';
+  const anchor = today ?? period[1];
+  const todayText = today !== null ? payload.todayLabel || null : null;
+  indices.forEach((i) => {
+    const isToday = i === today;
+    if (!isToday && ((anchor - i) % every !== 0 || (today !== null && Math.abs(i - today) < every))) return;
+    const text = isToday && todayText ? todayText : labels[i] ?? '';
+    const half = text.length * 3.6 + 2;
+    const at = Math.max(half, Math.min(plotWidth - half, cx(i)));
+    svg('text', { x: at, y: height - 9, 'text-anchor': 'middle', class: isToday ? 'day-today' : null }, plot).textContent = text;
   });
 
   // Fadenkreuz und Tooltip je Kategorie
@@ -132,7 +153,7 @@ export function renderBars(figure, payload, state) {
       rows.push({ label: 'Summe', value: `${fmt(sum, decimals)}${unit ? NNBSP + unit : ''}`, cls: 'c-ink' });
     }
     const top = Math.min(...visible.map((series) => (value(series, i) === null ? height : (series.axis === 'y1' && y1 ? y1 : y)(value(series, i)))));
-    showTip(f, cx(i), Math.min(height / 2, top), labels[i] ?? '', rows);
+    showTip(f, cx(i), Math.min(height / 2, top), i === today && payload.todayLabel ? `${payload.todayLabel}, ${title(i)}` : title(i), rows);
   };
   bindPointer(f, (px) => {
     show(first + Math.max(0, Math.min(count - 1, Math.floor(px / step))));
@@ -150,12 +171,12 @@ export function renderBars(figure, payload, state) {
     show(first + k);
   });
 
-  // Legende mit Summen im sichtbaren Bereich
+  // Legende mit Summen über den Zeitraum (ohne die blassen Tage davor)
   figure.querySelector('[data-chart-legend]')?.remove();
   if (payload.legend !== false) {
     const legend = html('ul', { class: 'chart-legend chart-legend-sums caption', 'data-chart-legend': '' });
     for (const series of visible.filter((s) => !s.dash)) {
-      const values = indices.map((i) => value(series, i)).filter((v) => v !== null);
+      const values = indices.filter(inPeriod).map((i) => value(series, i)).filter((v) => v !== null);
       let sum = '';
       if (series.type === 'bar') sum = `${fmt(values.reduce((a, b) => a + b, 0), decimals)}${unit ? NNBSP + unit : ''}`;
       else if (values.length && series.legendSum !== false) sum = `Ø ${fmtValue(series, values.reduce((a, b) => a + b, 0) / values.length)}`;
@@ -167,9 +188,9 @@ export function renderBars(figure, payload, state) {
   }
 
   const label = figure.dataset.label || 'Diagramm';
-  plot.setAttribute('aria-label', `${label}. ${labels[first] ?? ''} bis ${labels[last] ?? ''}. Pfeiltasten zeigen einzelne Werte.`);
+  plot.setAttribute('aria-label', `${label}. ${title(first)} bis ${title(last)}. Pfeiltasten zeigen einzelne Werte.`);
   dataTable(figure, label, ['', ...visible.filter((s) => !s.dash).map((series) => series.label)], indices.map((i) => [
-    labels[i] ?? '',
+    title(i),
     ...visible.filter((s) => !s.dash).map((series) => fmtValue(series, value(series, i))),
   ]));
   f.scroll.scrollLeft = f.keepScroll !== null && !state.jump ? f.keepScroll : Math.max(0, cx(Math.max(first, view[0])) - step / 2);

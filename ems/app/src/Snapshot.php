@@ -166,7 +166,18 @@ final class Snapshot
         $base['values'] = $values;
         $balance = Energy::balance($values);
         $live = array_merge($values, $balance);
-        $suggestion = Energy::suggest($live, $cfg['charge'], Energy::reportedPhases($values['wallbox_phases_raw'] ?? null));
+        $strategy = zone_thresholds(
+            (float) ($cfg['battery_strategy']['priority_soc'] ?? 80),
+            (float) ($cfg['battery_strategy']['car_buffer_soc'] ?? 100),
+            (float) ($cfg['battery_strategy']['car_auto_soc'] ?? 100),
+        );
+        $reported = Energy::reportedPhases($values['wallbox_phases_raw'] ?? null);
+        $suggestion = Energy::suggest($live, $cfg['charge'], $reported, $strategy);
+        // Was die drei Modi jetzt täten, für die Regelung unter der Ladepunkt-Karte.
+        $modes = [];
+        foreach (['smart', 'smart_dauerhaft', 'schnell'] as $mode) {
+            $modes[$mode] = $mode === $suggestion['mode'] ? $suggestion : Energy::suggest($live, ['mode' => $mode] + $cfg['charge'], $reported, $strategy);
+        }
         $latchState = $this->store->get('suggestion_latch', []);
         $latched = Energy::latch($suggestion, is_array($latchState) ? $latchState : [], $now, $cfg['charge']);
         if ($persistLatch) {
@@ -267,6 +278,7 @@ final class Snapshot
         $base['activity'] = Energy::activity($values['battery_charge_kw'] ?? null, $values['battery_discharge_kw'] ?? null);
         $base['vehicle'] = $this->vehicleView($base, $cfg);
         $base['chargepoint'] = $this->chargepointView($base, $cfg);
+        $base['control'] = self::control($live, $cfg['charge'], $strategy, $latched, $modes);
         $base['warnings'] = array_values(array_unique($base['warnings']));
         return $base;
     }
@@ -275,7 +287,6 @@ final class Snapshot
     {
         $v = $snap['values'];
         $b = $snap['balance'];
-        $s = $snap['setpoint'];
         $f = $snap['forecast'];
         $flow = match ($snap['activity'] ?? '') {
             'Laden' => 'laden',
@@ -287,13 +298,8 @@ final class Snapshot
             'error' => $snap['error'],
             'fetched_at' => $snap['fetched_at'],
             'ts' => time(),
-            // Regelung im Detail (Ladepunkt-Sheet)
-            'pv' => kw($v['pv_kw'] ?? null),
-            'house' => kw($b['house_base_kw'] ?? null),
-            'storage' => kw($b['storage_priority_kw'] ?? null),
-            'surplus' => kw($b['surplus_kw'] ?? null),
-            'psoll' => kw($s['p_soll_kw'] ?? null, 2),
-            'delta' => kw($s['delta_kw'] ?? null, 2),
+            // Regelung unter der Ladepunkt-Karte
+            'control' => $snap['control'],
             // Erklärliste des Speichers
             'house_mean' => kw($snap['house_mean_kw'] ?? null),
             'battery_full' => $this->fullText($snap['storage'] ?? []),
@@ -386,25 +392,166 @@ final class Snapshot
             'session_s' => $open ? (int) $session['duration_s'] : null,
             'remaining_s' => $remaining,
             'remaining_text' => $remaining === null ? '—' : duration_clock($remaining),
-            'suggestion' => self::suggestionText($setpoint),
         ];
     }
 
-    public static function suggestionText(array $setpoint): string
+    /**
+     * Regelung unter der Ladepunkt-Karte: mit welcher Stufe die Wallbox jetzt laden würde (verriegelt, mit
+     * anstehendem Wechsel), woher die Leistung käme und wohin der übrige Überschuss ginge, was die drei Modi
+     * täten, die Phasen-Leiter und der Rechenweg. Geschrieben wird nichts.
+     *
+     * @param array $live Messwerte und Bilanz
+     * @param array $strategy geordnete Grenzen aus zone_thresholds()
+     * @param array $setpoint Vorschlag des aktiven Modus nach Energy::latch()
+     * @param array<string, array> $modes Vorschläge für smart, smart_dauerhaft und schnell
+     */
+    public static function control(array $live, array $charge, array $strategy, array $setpoint, array $modes): array
     {
+        $active = (string) ($setpoint['mode'] ?? ($charge['mode'] ?? 'smart'));
+        $zone = (string) ($setpoint['zone'] ?? 'none');
         $amps = (int) ($setpoint['latched_amps'] ?? 0);
-        $text = $amps === 0
-            ? 'Vorschlag: aus'
-            : 'Vorschlag: ' . $amps . NNBSP . 'A, ' . (int) ($setpoint['latched_phases'] ?? 1) . '-phasig (' . kw((float) ($setpoint['latched_kw'] ?? 0)) . ')';
-        $wait = (int) ($setpoint['wait_s'] ?? 0);
-        if ($wait > 0) {
-            $text .= ', wechselt in ' . $wait . NNBSP . 's';
+        $phases = (int) ($setpoint['latched_phases'] ?? 1);
+        $kw = (float) ($setpoint['latched_kw'] ?? 0);
+        $flows = Energy::allot($kw, $active, $zone, $live);
+        $minA = min(16, max(6, (int) ($charge['min_a'] ?? 6)));
+        $maxA = min(16, max($minA, (int) ($charge['max_a'] ?? 16)));
+        $phaseMode = (string) ($charge['phase_mode'] ?? 'auto');
+        $maxKw = Energy::KW_PER_AMP * $maxA * ($phaseMode === '1p' ? 1 : 3);
+        $scale = max($maxKw, (float) $flows['spare_kw'], ...array_values(array_map(static fn (array $m): float => (float) ($m['offered_kw'] ?? 0), $modes)));
+        $rows = [];
+        foreach ($modes as $key => $mode) {
+            $rows[$key] = [
+                'label' => Energy::modeLabel($key),
+                'active' => $key === $active,
+                'kw' => round((float) $mode['offered_kw'], 3),
+                'kw_text' => (int) $mode['amps'] === 0 ? 'aus' : kw((float) $mode['offered_kw']),
+                'level_text' => self::levelText((int) $mode['amps'], (int) $mode['phases']),
+                'text' => self::decisionText($key, $mode, $strategy),
+                'flows' => $mode['flows'],
+            ];
         }
-        $reason = trim((string) ($setpoint['reason'] ?? ''));
-        return $text . '.' . ($reason !== '' ? ' ' . $reason : '');
+        $soc = isset($live['battery_soc']) ? (float) $live['battery_soc'] : null;
+        $in = (float) ($live['battery_charge_kw'] ?? 0);
+        $out = (float) ($live['battery_discharge_kw'] ?? 0);
+        $battery = $soc === null ? 'ohne Ladestand' : pct($soc) . ($in > 0.05 ? ', lädt ' . kw($in) : ($out > 0.05 ? ', entlädt ' . kw($out) : ', ruht'));
+        $target = $setpoint['target_kw'] ?? null;
+        return [
+            'mode' => $active,
+            'mode_label' => Energy::modeLabel($active),
+            'zone' => $zone,
+            'amps' => $amps,
+            'phases' => $amps === 0 ? 0 : $phases,
+            'kw' => round($kw, 3),
+            'kw_text' => $amps === 0 ? 'aus' : kw($kw),
+            'headline' => $amps === 0 ? 'Würde jetzt nicht laden' : 'Würde jetzt laden mit',
+            'level_text' => self::levelText($amps, $phases),
+            'reason' => self::zoneText($active, $zone, $strategy, $soc, $minA),
+            'pending' => self::pendingText($setpoint),
+            'flows' => $flows,
+            'car_text' => kw((float) $flows['car_kw']),
+            'split_text' => self::splitText($flows),
+            'scale_kw' => round($scale, 3),
+            'modes' => $rows,
+            'ladder' => [
+                'level_kw' => round($kw, 3),
+                'level_phases' => $amps === 0 ? 0 : $phases,
+                'sun_kw' => round(max(0.0, (float) ($modes['smart']['solar_kw'] ?? 0)), 3),
+                'max_kw' => round(Energy::KW_PER_AMP * $maxA * ($phaseMode === '1p' ? 1 : 3), 3),
+            ],
+            'details' => [
+                'pv' => kw($live['pv_kw'] ?? null),
+                'house' => kw($live['house_base_kw'] ?? null),
+                'spare' => kw((float) $flows['spare_kw']),
+                'battery' => $battery,
+                'solar' => kw($modes['smart']['solar_kw'] ?? null, 2),
+                'meter' => kw($setpoint['p_soll_kw'] ?? null, 2),
+                'target' => $target === null ? '—' : kw((float) $target, 2) . ' → ' . ($amps === 0 ? 'aus' : self::levelText($amps, $phases) . ' = ' . kw($kw, 2)),
+                'delta' => kw($setpoint['delta_kw'] ?? null, 2),
+            ],
+        ];
     }
 
-    /** Leistungen für die Detail-Liste „Rein“ und „Raus“ unter dem Energiefluss-Balken. */
+    /** Stufe als „6 A · 3-phasig“, „aus“ ohne Strom. */
+    public static function levelText(int $amps, int $phases): string
+    {
+        return $amps === 0 ? 'aus' : $amps . NNBSP . 'A · ' . $phases . '-phasig';
+    }
+
+    /** Warum der aktive Modus so entscheidet, aus Sicht der Speicherzone. */
+    public static function zoneText(string $mode, string $zone, array $strategy, ?float $soc, int $minA): string
+    {
+        if ($mode === 'aus') {
+            return 'Modus Aus: Die Wallbox bliebe aus, der Überschuss ginge in den Speicher und danach ins Netz.';
+        }
+        if ($mode === 'schnell') {
+            return 'Schnell lädt mit voller Leistung. Die Grenzen des Speichers gelten dabei nicht.';
+        }
+        $p = pct((float) $strategy['priority_soc']);
+        $b = pct((float) $strategy['car_buffer_soc']);
+        $a = pct((float) $strategy['car_auto_soc']);
+        $now = $soc === null ? '' : pct($soc);
+        $text = match ($zone) {
+            'house' => 'Der Speicher liegt mit ' . $now . ' unter der Hausgrenze von ' . $p . ' und lädt zuerst. Das Auto bekommt, was übrig bleibt.',
+            'car' => 'Der Speicher liegt mit ' . $now . ' über der Hausgrenze von ' . $p . '. Das Auto hat den Überschuss, der Speicher bekommt den Rest.',
+            'boost' => 'Der Speicher liegt mit ' . $now . ' über ' . $b . ' und darf eine laufende Ladung stützen.',
+            'start' => 'Der Speicher liegt mit ' . $now . ' über ' . $a . '. Die Ladung startet auch ohne Sonne und endet bei ' . $b . '.',
+            default => 'Ohne Ladestand des Speichers zählt nur der Überschuss am Zähler.',
+        };
+        return $mode === 'smart_dauerhaft' ? $text . ' Mindestens ' . $minA . NNBSP . 'A bleiben an.' : $text;
+    }
+
+    /** Anstehender Wechsel der Verriegelung, leer ohne Wechsel. */
+    public static function pendingText(array $setpoint): string
+    {
+        $wait = (int) ($setpoint['wait_s'] ?? 0);
+        if ($wait <= 0 || !isset($setpoint['pending_amps'])) {
+            return '';
+        }
+        $next = (int) $setpoint['pending_amps'];
+        $level = self::levelText($next, (int) ($setpoint['pending_phases'] ?? 1));
+        return match (true) {
+            $next === 0 => 'Stoppt in ' . $wait . NNBSP . 's (Ausschaltverzögerung).',
+            (int) ($setpoint['latched_amps'] ?? 0) === 0 => 'Startet in ' . $wait . NNBSP . 's mit ' . $level . ' (Einschaltverzögerung).',
+            default => 'Wechselt in ' . $wait . NNBSP . 's auf ' . $level . ' (Schütz-Schutzzeit).',
+        };
+    }
+
+    /** Ein Satz zur Aufteilung: woher das Auto die Leistung bekäme und was der Speicher täte. */
+    public static function splitText(array $flows, string $lead = 'Auto: '): string
+    {
+        $from = [];
+        foreach (['sun_kw' => 'aus der Sonne', 'battery_kw' => 'aus dem Speicher', 'grid_kw' => 'aus dem Netz', 'mixed_kw' => 'aus Speicher und Netz'] as $key => $where) {
+            if ((float) $flows[$key] >= 0.05) {
+                $from[] = kw((float) $flows[$key]) . ' ' . $where;
+            }
+        }
+        $text = $from ? $lead . implode(', ', $from) . '.' : 'Das Auto bekäme nichts.';
+        if ((float) $flows['charge_kw'] >= 0.05) {
+            $text .= ' Speicher lädt ' . kw((float) $flows['charge_kw']) . '.';
+        } elseif ((float) $flows['battery_kw'] + (float) $flows['mixed_kw'] < 0.05) {
+            $text .= ' Speicher lädt nicht.';
+        }
+        if ((float) $flows['export_kw'] >= 0.05) {
+            $text .= ' ' . kw((float) $flows['export_kw']) . ' gehen ins Netz.';
+        }
+        return $text;
+    }
+
+    /** Entscheidung eines Modus in einem Satz. */
+    public static function decisionText(string $key, array $mode, array $strategy): string
+    {
+        if ((int) $mode['amps'] === 0) {
+            $solar = (float) ($mode['solar_kw'] ?? 0);
+            return match ((string) ($mode['zone'] ?? '')) {
+                'house' => 'Lädt nicht: Der Speicher unter ' . pct((float) $strategy['priority_soc']) . ' nimmt den Überschuss' . ($solar >= 0.05 ? ', fürs Auto blieben ' . kw($solar) : '') . '.',
+                'boost' => 'Lädt nicht: Ohne genug Sonne startet keine neue Ladung' . ($solar >= 0.05 ? ', ' . kw($solar) . ' reichen nicht' : '') . '.',
+                default => 'Lädt nicht: ' . ($solar >= 0.05 ? kw($solar) . ' Überschuss reichen nicht für die kleinste Stufe.' : 'Kein Überschuss fürs Auto.'),
+            };
+        }
+        return self::splitText($mode['flows'], '');
+    }
+
+    /** Leistungen für die Detail-Liste „Rein“ und „Raus“ unter dem Energiefluss-Balken, dazu die Prognose für heute. */
     public static function flowRows(array $v, array $b, ?array $f = null): array
     {
         $kw = static fn (mixed $value): ?float => $value === null ? null : round(max(0.0, (float) $value), 3);
@@ -413,22 +560,26 @@ final class Snapshot
             'out_kw' => $kw($b['out_kw'] ?? null),
             'in' => ['pv' => $kw($v['pv_kw'] ?? null), 'battery' => $kw($v['battery_discharge_kw'] ?? null), 'grid' => $kw($v['grid_import_kw'] ?? null)],
             'out' => ['house' => $kw($b['house_base_kw'] ?? null), 'wallbox' => $kw($v['wallbox_kw'] ?? null), 'battery' => $kw($v['battery_charge_kw'] ?? null), 'grid' => $kw($v['grid_export_kw'] ?? null)],
-            'pv_text' => self::pvForecastText($f),
+            'forecast_value' => self::forecastValue($f),
+            'forecast_text' => self::forecastRest($f),
         ];
     }
 
-    /** PV-Zeile im Energiefluss: was die Prognose für den Rest des Tages noch erwartet und für den ganzen Tag. */
-    public static function pvForecastText(?array $f): string
+    /** Prognose-Zeile im Energiefluss: der ganze Tag laut Prognose. */
+    public static function forecastValue(?array $f): string
     {
         $day = $f['today_kwh'] ?? null;
-        if ($day === null) {
-            return 'Noch keine Prognose';
-        }
+        return $day === null ? '—' : kwh((float) $day);
+    }
+
+    /** Darunter, was die Prognose für den Rest des Tages noch erwartet. */
+    public static function forecastRest(?array $f): string
+    {
         $rest = $f['remaining_kwh'] ?? null;
         if ($rest === null) {
-            return 'Prognose ' . kwh((float) $day);
+            return $f === null ? 'Noch keine Prognose' : 'Rest offen';
         }
-        return 'Rest ' . num((float) $rest, 1) . ' von ' . kwh((float) $day);
+        return 'Rest ' . kwh((float) $rest);
     }
 
     public static function storedText(?float $stored, ?float $total): string

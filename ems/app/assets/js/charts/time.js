@@ -182,28 +182,39 @@ export function renderTime(figure, payload, state) {
     }
   }
 
-  // Tages-Minimum und -Maximum (Speicherverlauf), Beschriftung innerhalb des Plots
+  // Tages-Maximum und -Minimum (Speicherverlauf) als Kapseln wie die Peaks der Solarprognose:
+  // das Maximum gefüllt über dem Punkt, das Minimum umrandet darunter, am Rand des Plots auf der anderen Seite.
   const extrema = payload.extrema?.[unitKey];
   if (extrema?.length) {
     const group = svg('g', { class: `extrema ${colorClass(visible[0]?.color)}` }, plot);
     const placed = [];
     const overlaps = (box) => placed.some((other) => box.l < other.r && box.r > other.l && box.t < other.b && box.b > other.t);
+    const floor = height - bottom;
     for (const day of extrema) {
       for (const [kind, point] of [['max', day.max], ['min', day.min]]) {
         if (!point || point.x < bounds[0] || point.x > bounds[1]) continue;
         const cx = x(point.x);
         const cy = y(point.y);
-        const text = `${kind} ${fmt(point.y, axis.decimals)}${NNBSP}${unit}`;
-        const w = textWidth(text);
-        const tx = Math.max(w / 2 + 2, Math.min(plotWidth - w / 2 - 2, cx));
-        const ty = kind === 'max' ? cy - 8 : cy + 16;
-        // Beschriftungen, die sich überdecken würden, entfallen; der Punkt bleibt.
-        const box = { l: tx - w / 2 - 4, r: tx + w / 2 + 4, t: ty - 15, b: ty + 6 };
-        svg('circle', { cx, cy, r: 3.5 }, group);
+        svg('circle', { cx, cy, r: 4 }, group);
         // Unter 70 px je Tag nur die Punkte; den Wert zeigt das Antippen.
-        if (dayPx < 70 || overlaps(box)) continue;
+        if (dayPx < 70) continue;
+        const text = `${kind} ${fmt(point.y, axis.decimals)}${NNBSP}${unit}`;
+        const w = text.length * 6.4 + 16;
+        const above = cy - 34;
+        const below = cy + 10;
+        const by = kind === 'max' ? (above >= 0 ? above : below) : (below + 24 <= floor - 2 ? below : above);
+        // Die Kapsel bleibt in ihrem Tag, damit sie am Rand des Fensters nicht angeschnitten wird.
+        const dayStart = startOfDay(point.x);
+        const dayLeft = Math.max(2, x(dayStart) + 2);
+        const dayRight = Math.min(plotWidth - 2, x(dayStart + DAY) - 2);
+        const bx = dayRight - dayLeft >= w ? Math.max(dayLeft, Math.min(dayRight - w, cx - w / 2)) : Math.max(2, Math.min(plotWidth - w - 2, cx - w / 2));
+        // Kapseln, die sich überdecken würden, entfallen; der Punkt bleibt.
+        const box = { l: bx - 3, r: bx + w + 3, t: by - 3, b: by + 27 };
+        if (overlaps(box)) continue;
         placed.push(box);
-        svg('text', { x: tx, y: ty, 'text-anchor': 'middle' }, group).textContent = text;
+        const badge = svg('g', { class: `badge badge-${kind}` }, group);
+        svg('rect', { x: bx, y: by, width: w, height: 24, rx: 8 }, badge);
+        svg('text', { x: bx + w / 2, y: by + 16, 'text-anchor': 'middle' }, badge).textContent = text;
       }
     }
   }

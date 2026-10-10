@@ -393,38 +393,99 @@ final class Sessions
     }
 
     /**
-     * Diagrammdaten für Ladevorgänge: Monat nach Tagen, Jahr nach Monaten, Gesamt nach Jahren.
+     * Achse der Ladevorgänge: Monat nach Tagen, Jahr nach Monaten, Gesamt nach Jahren.
+     * Im laufenden Monat endet die Achse heute und reicht mindestens 30 Tage zurück, im laufenden Jahr endet sie
+     * mit dem aktuellen Monat und reicht zwölf Monate zurück: heute steht ganz rechts, davor liegen die vergangenen
+     * Tage, auch aus dem Vormonat. Andere Monate und Jahre zeigen genau ihren Zeitraum.
+     *
+     * @param list<string> $years Jahre mit Vorgängen, nur für „Gesamt“
+     * @return array{from: DateTimeImmutable, to: DateTimeImmutable, keys: list<string>, labels: list<string>, titles: list<string>, period: array{0:int,1:int}, today: ?int, period_label: string}
+     */
+    public static function chartAxis(string $span, string $month, int $year, ?int $now = null, array $years = []): array
+    {
+        $tz = new DateTimeZone('Europe/Berlin');
+        $today = (new DateTimeImmutable('@' . ($now ?? time())))->setTimezone($tz)->setTime(0, 0);
+        $names = [1 => 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+        $keys = $labels = $titles = [];
+        if ($span === 'all') {
+            $first = $years ? min(array_map('intval', $years)) : (int) $today->format('Y');
+            $last = max((int) $today->format('Y'), $years ? max(array_map('intval', $years)) : 0);
+            for ($y = $first; $y <= $last; $y++) {
+                $keys[] = (string) $y;
+                $labels[] = (string) $y;
+                $titles[] = (string) $y;
+            }
+            $from = new DateTimeImmutable($first . '-01-01', $tz);
+            $to = new DateTimeImmutable(($last + 1) . '-01-01', $tz);
+            $todayKey = $today->format('Y');
+            $periodKeys = [$keys[0], $keys[count($keys) - 1]];
+            $periodLabel = '';
+        } elseif ($span === 'year') {
+            $periodStart = new DateTimeImmutable(sprintf('%04d-01-01', $year), $tz);
+            $periodEnd = $periodStart->modify('+11 months');
+            $current = $today->modify('first day of this month');
+            if ($current >= $periodStart && $current <= $periodEnd) {
+                $periodEnd = $current;
+                $axisStart = min($periodStart, $current->modify('-11 months'));
+            } else {
+                $axisStart = $periodStart;
+            }
+            for ($m = $axisStart; $m <= $periodEnd; $m = $m->modify('+1 month')) {
+                $keys[] = $m->format('Y-m');
+                $labels[] = $names[(int) $m->format('n')];
+                $titles[] = $names[(int) $m->format('n')] . ' ' . $m->format('Y');
+            }
+            $from = $axisStart;
+            $to = $periodEnd->modify('+1 month');
+            $todayKey = $today->format('Y-m');
+            $periodKeys = [$periodStart->format('Y-m'), $periodEnd->format('Y-m')];
+            $periodLabel = (string) $year;
+        } else {
+            $periodStart = new DateTimeImmutable($month . '-01', $tz);
+            $periodEnd = $periodStart->modify('last day of this month');
+            if ($today >= $periodStart && $today <= $periodEnd) {
+                $periodEnd = $today;
+                $axisStart = min($periodStart, $today->modify('-29 days'));
+            } else {
+                $axisStart = $periodStart;
+            }
+            for ($d = $axisStart; $d <= $periodEnd; $d = $d->modify('+1 day')) {
+                $keys[] = $d->format('Y-m-d');
+                $labels[] = $d->format('j');
+                $titles[] = short_day_label($d);
+            }
+            $from = $axisStart;
+            $to = $periodEnd->modify('+1 day');
+            $todayKey = $today->format('Y-m-d');
+            $periodKeys = [$periodStart->format('Y-m-d'), $periodEnd->format('Y-m-d')];
+            $periodLabel = month_label($month);
+        }
+        $index = array_flip($keys);
+        return [
+            'from' => $from,
+            'to' => $to,
+            'keys' => $keys,
+            'labels' => $labels,
+            'titles' => $titles,
+            'period' => [(int) ($index[$periodKeys[0]] ?? 0), (int) ($index[$periodKeys[1]] ?? max(0, count($keys) - 1))],
+            'today' => isset($index[$todayKey]) ? (int) $index[$todayKey] : null,
+            'period_label' => $periodLabel,
+        ];
+    }
+
+    /**
+     * Diagrammdaten für Ladevorgänge auf der Achse von chartAxis(). Zeilen außerhalb der Achse fallen weg,
+     * Tage vor dem Zeitraum erscheinen blasser und zählen nicht zur Summe der Legende.
      * Kennzahl energy (Sonne/Netz in kWh), cost (Kosten in €, dazu Ø ct/kWh) oder co2 (gespart/verursacht in kg).
      */
-    public static function chart(array $rows, string $span, string $metric, array $tariffs, string $month, int $year): array
+    public static function chart(array $rows, string $span, string $metric, array $tariffs, string $month, int $year, ?int $now = null): array
     {
         $tz = new DateTimeZone('Europe/Berlin');
         $factor = (float) ($tariffs['co2_g_kwh'] ?? 380);
-        $names = [1 => 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
-        $labels = [];
-        $keys = [];
-        if ($span === 'all') {
-            $years = [];
-            foreach ($rows as $row) {
-                $years[] = (int) substr((string) $row['started_at'], 0, 4);
-            }
-            $first = $years ? min($years) : $year;
-            for ($y = $first; $y <= max($year, $years ? max($years) : $year); $y++) {
-                $keys[] = (string) $y;
-                $labels[] = (string) $y;
-            }
-        } elseif ($span === 'year') {
-            for ($m = 1; $m <= 12; $m++) {
-                $keys[] = sprintf('%04d-%02d', $year, $m);
-                $labels[] = $names[$m];
-            }
-        } else {
-            $start = new DateTimeImmutable($month . '-01', $tz);
-            for ($d = 1; $d <= (int) $start->format('t'); $d++) {
-                $keys[] = sprintf('%s-%02d', $month, $d);
-                $labels[] = (string) $d;
-            }
-        }
+        $years = array_map(static fn (array $row): string => substr((string) $row['started_at'], 0, 4), $rows);
+        $axis = self::chartAxis($span, $month, $year, $now, $years);
+        $keys = $axis['keys'];
+        $labels = $axis['labels'];
         $index = array_flip($keys);
         $a = array_fill(0, count($keys), 0.0);
         $b = array_fill(0, count($keys), 0.0);
@@ -481,19 +542,21 @@ final class Sessions
             $series[] = ['key' => 'ct', 'label' => 'Ø Preis', 'color' => 'muted', 'type' => 'line', 'axis' => 'y1', 'width' => 'thin', 'unit' => 'ct/kWh', 'decimals' => 1, 'data' => $ct];
         }
         $last = max(0, count($keys) - 1);
-        $now = new DateTimeImmutable('now', $tz);
-        $focus = match ($span) {
-            'month' => $now->format('Y-m') === $month ? (int) $now->format('j') - 1 : $last,
-            default => $last,
-        };
+        // Sichtbar sind zehn Tage oder zwölf Monate, die bis heute oder bis zum Ende des Zeitraums reichen.
+        $period = $axis['period'];
+        $focus = $axis['today'] !== null && $axis['today'] >= $period[0] && $axis['today'] <= $period[1] ? $axis['today'] : $period[1];
         $window = $span === 'month' ? 10 : 12;
-        $hi = min($last, max($focus, $window - 1));
         return [
             'axis' => 'category',
             'stacked' => true,
             'labels' => $labels,
-            'view' => [max(0, $hi - $window + 1), $hi],
+            'titles' => $axis['titles'],
+            'view' => [max(0, $focus - $window + 1), $focus],
             'bounds' => [0, $last],
+            'period' => $period,
+            'periodLabel' => $axis['period_label'],
+            'today' => $axis['today'],
+            'todayLabel' => $span === 'month' ? 'Heute' : null,
             'yTitle' => match ($metric) { 'cost' => 'Kosten (€)', 'co2' => 'CO₂ (kg)', default => 'Energie (kWh)' },
             'y1Title' => $metric === 'cost' ? 'Ø Preis (ct/kWh)' : null,
             'series' => $series,

@@ -91,15 +91,6 @@
   justify-content: center;
 }
 
-.cp-suggest {
-  color: var(--text-2);
-}
-
-.cp-suggest strong {
-  color: var(--text);
-  font-weight: 600;
-}
-
 .cp-vehicle {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

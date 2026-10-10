@@ -44,6 +44,11 @@ function paint(col) {
     mark.setAttribute('aria-valuetext', pct(value));
   }
   for (const out of $$('[data-zone-read]')) out.textContent = String(z[out.dataset.zoneRead]);
+  // Auf 100 % sind Stützung und Start ohne Sonne aus; der Satz wechselt mit.
+  for (const node of $$('[data-zone-when]')) {
+    const [key, state] = node.dataset.zoneWhen.split('-');
+    node.hidden = (z[key] >= 99.5) !== (state === 'off');
+  }
   for (const input of $$('[data-zone-input]')) {
     if (document.activeElement !== input) input.value = String(z[input.dataset.zoneInput]);
     const output = input.closest('.range')?.querySelector('output');

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 /**
- * Mehr → Ladepunkt: Name, Ladeparameter, die Modi und die Entitäten der Wallbox.
+ * Mehr → Ladepunkt: Name, Ladeparameter und die Entitäten der Wallbox. Die Modi erklärt die Karte Regelung auf „Laden“.
  * @var array $cfg
  * @var array $suggest
  * @var string $back
@@ -19,17 +19,8 @@ $m = $cfg['mapping'];
 </section>
 <section class="card stack" aria-labelledby="cp-params-title">
   <h3 class="card-title" id="cp-params-title">Ladeparameter</h3>
-  <p class="body-sm muted">Der Vorschlag zeigt, was eine Regelung jetzt einstellen würde. Die App schreibt nichts an die Wallbox.</p>
+  <p class="body-sm muted">Wie die Regelung mit diesen Werten gerade entscheiden würde und was die Modi tun, zeigt die Karte Regelung auf der Seite <?= ui_inline('Laden', ['href' => url('/')]) ?>. Die App schreibt nichts an die Wallbox.</p>
 <?php view('partials/charge-form', ['charge' => $cfg['charge'], 'back' => $back]); ?>
-</section>
-<section class="card stack" aria-labelledby="cp-modes-title">
-  <h3 class="card-title" id="cp-modes-title">Die Modi</h3>
-  <dl class="kv">
-<?php foreach (ui_mode_options() as $key => $option): ?>
-    <div><dt><?= e($option['label']) ?></dt><dd><?= e(Energy::modeText($key)) ?></dd></div>
-<?php endforeach; ?>
-  </dl>
-  <p class="body-sm muted">Den Modus wählst du auf der Seite <?= ui_inline('Laden', ['href' => url('/')]) ?>.</p>
 </section>
 <section class="card stack" aria-labelledby="cp-entities-title">
   <h3 class="card-title" id="cp-entities-title">Entitäten der Wallbox</h3>

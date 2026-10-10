@@ -64,6 +64,29 @@ $gap = Energy::suggest([
 ], array_merge($charge, ['reserve_w' => 0]), 1);
 check($gap['phases'] === 1 && $gap['amps'] === 16, 'Lücke bleibt einphasig');
 
+// Zonen des Hausspeichers: Hausgrenze 50 %, Stützung ab 80 %, Start ohne Sonne ab 90 %.
+$zones = ['priority_soc' => 50, 'car_buffer_soc' => 80, 'car_auto_soc' => 90];
+check(Energy::zone(30, $zones) === 'house' && Energy::zone(60, $zones) === 'car' && Energy::zone(85, $zones) === 'boost' && Energy::zone(95, $zones) === 'start' && Energy::zone(null, $zones) === 'none', 'Zonen nach Ladestand');
+check(Energy::zone(100, ['priority_soc' => 80, 'car_buffer_soc' => 100, 'car_auto_soc' => 100]) === 'car', 'Grenzen auf 100 % schalten Stützung und Start ab');
+$solarCfg = ['mode' => 'smart', 'phase_mode' => 'auto', 'solar_share' => 100, 'reserve_w' => 0, 'min_a' => 6, 'max_a' => 16];
+$sunny = ['pv_kw' => 4.64, 'house_base_kw' => 0.5, 'battery_charge_kw' => 4.14, 'battery_discharge_kw' => 0.0, 'wallbox_kw' => 0.0, 'grid_import_kw' => 0.0, 'grid_export_kw' => 0.0];
+$carFirst = Energy::suggest($sunny + ['battery_soc' => 60, 'surplus_kw' => 4.14], $solarCfg, 1, $zones);
+check($carFirst['amps'] === 6 && $carFirst['phases'] === 3 && abs($carFirst['flows']['sun_kw'] - 4.14) < 0.001 && $carFirst['flows']['charge_kw'] < 0.001, 'Über der Hausgrenze nimmt das Auto, was der Speicher gerade lädt');
+$batteryFirst = Energy::suggest($sunny + ['battery_soc' => 30, 'surplus_kw' => 0.0], $solarCfg, 1, $zones);
+check($batteryFirst['amps'] === 0 && abs($batteryFirst['flows']['charge_kw'] - 4.14) < 0.001, 'Unter der Hausgrenze lädt der Speicher zuerst');
+$cloudy = ['pv_kw' => 1.0, 'house_base_kw' => 0.5, 'battery_charge_kw' => 0.0, 'battery_discharge_kw' => 0.88, 'wallbox_kw' => 1.38, 'grid_import_kw' => 0.0, 'grid_export_kw' => 0.0, 'battery_soc' => 85, 'surplus_kw' => 0.5];
+$held = Energy::suggest($cloudy, $solarCfg, 1, $zones);
+check($held['amps'] === 6 && $held['phases'] === 1 && abs($held['flows']['sun_kw'] - 0.5) < 0.001 && abs($held['flows']['battery_kw'] - 0.88) < 0.001, 'Ab der Stützung hält der Speicher eine laufende Ladung');
+$idle = Energy::suggest(['wallbox_kw' => 0.0, 'battery_discharge_kw' => 0.0, 'battery_charge_kw' => 0.5] + $cloudy, $solarCfg, 1, $zones);
+check($idle['amps'] === 0, 'Ohne genug Sonne startet in der Stützung keine neue Ladung');
+$night = ['pv_kw' => 0.0, 'house_base_kw' => 0.5, 'battery_charge_kw' => 0.0, 'battery_discharge_kw' => 0.5, 'wallbox_kw' => 0.0, 'grid_import_kw' => 0.0, 'grid_export_kw' => 0.0, 'surplus_kw' => 0.0];
+$start = Energy::suggest($night + ['battery_soc' => 95], $solarCfg, 1, $zones);
+check($start['amps'] === 6 && abs($start['flows']['battery_kw'] - 1.38) < 0.001, 'Ab dem Start lädt das Auto auch nachts aus dem Speicher');
+$minimum = Energy::suggest($night + ['battery_soc' => 60], ['mode' => 'smart_dauerhaft'] + $solarCfg, 1, $zones);
+check($minimum['amps'] === 6 && abs($minimum['flows']['grid_kw'] - 1.38) < 0.001 && $minimum['flows']['battery_kw'] < 0.001, 'Min+Solar: die Mindestleistung kommt unter der Stützung aus dem Netz');
+$full = Energy::suggest(['pv_kw' => 5.0, 'house_base_kw' => 0.5, 'battery_charge_kw' => 0.0, 'battery_discharge_kw' => 0.0, 'wallbox_kw' => 0.0, 'grid_import_kw' => 0.0, 'grid_export_kw' => 4.5, 'battery_soc' => 60, 'surplus_kw' => 4.5], ['mode' => 'schnell'] + $solarCfg, 1, $zones);
+check($full['amps'] === 16 && $full['phases'] === 3 && abs($full['flows']['sun_kw'] - 4.5) < 0.001 && abs($full['flows']['mixed_kw'] - 6.54) < 0.001, 'Schnell: Sonne zuerst, der Rest aus Speicher und Netz');
+
 $fit = Forecast::regression([10, 20, 30], [12, 22, 32]);
 check(abs($fit['a'] - 2) < 0.01 && abs($fit['b'] - 1) < 0.01, 'Regression');
 $west = Forecast::geometry(13, 270);
@@ -153,7 +176,9 @@ check(abs($flow['in_kw'] - 5.5) < 0.001 && abs($flow['out_kw'] - 5.3) < 0.001 &&
 check(array_column($flow['sources'], 'key') === ['grid', 'pv'] && array_column($flow['sinks'], 'key') === ['house', 'wallbox', 'battery', 'grid'], 'Klammern nur für Flüsse über null');
 $segments = array_column($flow['segments'], 'kw', 'key');
 check(abs($segments['solar'] - 4.2) < 0.001 && abs($segments['grid_out'] - 0.8) < 0.001 && abs(array_sum($segments) - 5.5) < 0.001, 'Balken: Netzbezug, Eigenverbrauch und Einspeisung ergeben Rein');
-check(Snapshot::pvForecastText(['today_kwh' => 33.1, 'remaining_kwh' => 12.4]) === 'Rest 12,4 von 33,1' . NNBSP . 'kWh' && Snapshot::pvForecastText(null) === 'Noch keine Prognose', 'PV-Zeile mit Rest und Tagesprognose');
+$todayForecast = ['today_kwh' => 33.1, 'remaining_kwh' => 12.4];
+check(Snapshot::forecastValue($todayForecast) === '33,1' . NNBSP . 'kWh' && Snapshot::forecastRest($todayForecast) === 'Rest 12,4' . NNBSP . 'kWh', 'Prognose-Zeile mit Tageswert und Rest');
+check(Snapshot::forecastValue(null) === '—' && Snapshot::forecastRest(null) === 'Noch keine Prognose', 'Prognose-Zeile ohne Prognose');
 check(Sessions::carConnected('WaitCar') === true && Sessions::carConnected('idle') === false && Sessions::carConnected('unknown') === null && Sessions::carConnected('idle', 3.0) === true, 'Angesteckt aus dem Wallbox-Status');
 $periods = Sessions::plugPeriods([['t' => 100, 's' => 'idle'], ['t' => 200, 's' => 'wait_car'], ['t' => 300, 's' => 'charging'], ['t' => 400, 's' => 'unknown'], ['t' => 500, 's' => 'idle'], ['t' => 900, 's' => 'complete']]);
 check($periods === [[200, 500], [900, null]], 'Ansteckzeiträume aus dem Statusverlauf');
@@ -168,6 +193,18 @@ $grouped = Sessions::groups([
 check(count($grouped) === 3 && $grouped[0]['id'] === 4 && $grouped[0]['ended_at'] === null, 'Neuester Ladevorgang zuerst, offen solange ein Zyklus läuft');
 check($grouped[1]['id'] === 1 && count($grouped[1]['cycles']) === 3 && abs($grouped[1]['energy_kwh'] - 9.0) < 0.001 && $grouped[1]['ended_at'] === '2026-10-08T17:20:00+02:00', 'Drei Zyklen eines Ansteckens ergeben einen Ladevorgang');
 check(count($grouped[2]['cycles']) === 1, 'Ohne Ansteckzeit bleibt ein Zyklus für sich');
+// Diagramm der Ladevorgänge: heute ganz rechts, davor die Tage bis in den Vormonat.
+$chartNow = strtotime('2026-10-10 12:00:00 Europe/Berlin');
+$axis = Sessions::chartAxis('month', '2026-10', 2026, $chartNow);
+check(count($axis['keys']) === 30 && $axis['keys'][0] === '2026-09-11' && end($axis['keys']) === '2026-10-10' && $axis['period'] === [20, 29] && $axis['today'] === 29, 'Laufender Monat endet heute und reicht 30 Tage zurück');
+$past = Sessions::chartAxis('month', '2026-09', 2026, $chartNow);
+check(count($past['keys']) === 30 && $past['period'] === [0, 29] && $past['today'] === null, 'Vergangener Monat zeigt genau seine Tage');
+$yearAxis = Sessions::chartAxis('year', '2026-10', 2026, $chartNow);
+check($yearAxis['keys'][0] === '2025-11' && end($yearAxis['keys']) === '2026-10' && $yearAxis['period'] === [2, 11] && $yearAxis['today'] === 11, 'Laufendes Jahr endet mit dem aktuellen Monat');
+$chart = Sessions::chart([$cycle(9, '2026-09-30T10:00:00+02:00', '2026-09-30T11:00:00+02:00', 4.0, null), $cycle(10, '2026-10-09T10:00:00+02:00', '2026-10-09T11:00:00+02:00', 6.0, null)], 'month', 'energy', ['import_ct' => 30, 'export_ct' => 8], '2026-10', 2026, $chartNow);
+check($chart['view'] === [20, 29] && abs($chart['series'][0]['data'][19] - 2.0) < 0.001 && abs($chart['series'][0]['data'][28] - 3.0) < 0.001, 'Tage aus dem Vormonat stehen links im Diagramm');
+check(Snapshot::levelText(6, 3) === '6' . NNBSP . 'A · 3-phasig' && Snapshot::levelText(0, 1) === 'aus', 'Stufe als Text');
+check(Snapshot::splitText(['sun_kw' => 4.14, 'battery_kw' => 0.0, 'grid_kw' => 0.0, 'mixed_kw' => 0.0, 'charge_kw' => 0.4, 'export_kw' => 0.0]) === 'Auto: 4,1' . NNBSP . 'kW aus der Sonne. Speicher lädt 0,4' . NNBSP . 'kW.', 'Aufteilung in einem Satz');
 check(Sessions::summary(array_merge(...array_column($grouped, 'cycles')), [])['count'] === 3, 'Gezählt werden Ladevorgänge, nicht Zyklen');
 check(ui_field_num(1500.0, 0) === '1500' && ui_field_num(10.03, 2) === '10,03' && ui_field_num(13.0, 1) === '13' && ui_field_num(-2.1, 2) === '-2,1', 'Zahlenfeld ohne Tausenderpunkt und ohne Nullen am Ende');
 $_POST['co2_g_kwh'] = ui_field_num(1500.0, 0);

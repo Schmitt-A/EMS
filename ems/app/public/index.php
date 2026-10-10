@@ -93,7 +93,7 @@ if ($path === '/api/series') {
         }
         if ($chart === 'sessions') {
             $params = sessions_params($_GET);
-            json_out(Sessions::chart(sessions_rows($params), $params['span'], $params['metric'], cfg()['tariffs'], $params['month'], $params['year']));
+            json_out(Sessions::chart(sessions_chart_rows($params), $params['span'], $params['metric'], cfg()['tariffs'], $params['month'], $params['year']));
         }
     } catch (Throwable $e) {
         json_out(['series' => [], 'error' => $e->getMessage()], 500);
@@ -429,6 +429,17 @@ function sessions_params(array $source): array
 function sessions_query(array $params, array $patch = []): string
 {
     return '?' . http_build_query(array_filter(array_merge($params, $patch), static fn (mixed $v): bool => $v !== null && $v !== ''));
+}
+
+/** Vorgänge fürs Diagramm: im laufenden Monat oder Jahr auch die Tage und Monate davor, die links vom Zeitraum stehen. */
+function sessions_chart_rows(array $params): array
+{
+    $sessions = new Sessions(store());
+    if ($params['span'] === 'all') {
+        return $sessions->all();
+    }
+    $axis = Sessions::chartAxis($params['span'], $params['month'], $params['year']);
+    return $sessions->between($axis['from'], $axis['to']);
 }
 
 function sessions_rows(array $params): array

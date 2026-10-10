@@ -5,6 +5,9 @@ final class Energy
 {
     public const VOLT = 230.0;
     public const KW_PER_AMP = 0.23;
+    /** Automatik: ab 4,14 kW (6 A dreiphasig) auf drei Phasen, unter 3,68 kW (16 A einphasig) auf eine; dazwischen bleibt die Phase. */
+    public const PHASE_UP_KW = 4.14;
+    public const PHASE_DOWN_KW = 3.68;
 
     /** @return array{0:?float,1:?string} */
     public static function powerToKw(?float $value, ?string $unit): array
@@ -210,7 +213,38 @@ final class Energy
         return $seen ? $sum : null;
     }
 
-    public static function suggest(array $live, array $charge, ?int $reportedPhases): array
+    /**
+     * Zone des Hausspeichers für die Regelung: house (unter der Hausgrenze, der Speicher lädt zuerst),
+     * car (das Auto hat den Überschuss), boost (der Speicher darf eine Ladung stützen) und start (Laden startet
+     * auch ohne Sonne). Eine Grenze auf 100 % schaltet Stützung und Start ab. Ohne Ladestand: none.
+     */
+    public static function zone(?float $soc, array $strategy): string
+    {
+        if ($soc === null) {
+            return 'none';
+        }
+        $priority = (float) ($strategy['priority_soc'] ?? 80);
+        $buffer = max($priority, (float) ($strategy['car_buffer_soc'] ?? 100));
+        $auto = max($buffer, (float) ($strategy['car_auto_soc'] ?? 100));
+        if ($soc < $priority) {
+            return 'house';
+        }
+        if ($auto < 100 && $soc >= $auto) {
+            return 'start';
+        }
+        if ($buffer < 100 && $soc >= $buffer) {
+            return 'boost';
+        }
+        return 'car';
+    }
+
+    /**
+     * Vorschlag für den Modus aus $charge['mode']. Wie viel Sonne das Auto bekommt, regeln die Zonen des
+     * Hausspeichers ($strategy aus battery_strategy): unter der Hausgrenze lädt der Speicher zuerst, darüber hat
+     * das Auto den Überschuss, ab der Stützung hält der Speicher eine laufende Ladung, ab dem Start beginnt
+     * sie auch ohne Sonne. 'flows' sagt, woher die Leistung käme und wohin der übrige Überschuss ginge.
+     */
+    public static function suggest(array $live, array $charge, ?int $reportedPhases, array $strategy = []): array
     {
         $mode = (string) ($charge['mode'] ?? 'smart');
         $phaseMode = (string) ($charge['phase_mode'] ?? 'auto');
@@ -218,14 +252,21 @@ final class Energy
         $maxA = min(16, max($minA, (int) ($charge['max_a'] ?? 16)));
         $share = clamp_float((float) ($charge['solar_share'] ?? 100), 0, 100) / 100;
         $reserve = max(0, (float) ($charge['reserve_w'] ?? 0)) / 1000;
+        $soc = isset($live['battery_soc']) ? (float) $live['battery_soc'] : null;
+        $zone = self::zone($soc, $strategy + ['priority_soc' => (float) ($live['priority_soc'] ?? 80)]);
+        $batteryIn = max(0.0, (float) ($live['battery_charge_kw'] ?? 0));
+        $batteryOut = max(0.0, (float) ($live['battery_discharge_kw'] ?? 0));
         $wallboxRaw = $live['wallbox_kw'] ?? null;
         $importRaw = $live['grid_import_kw'] ?? null;
         $exportRaw = $live['grid_export_kw'] ?? null;
+        $running = (float) ($wallboxRaw ?? 0) > 0.05 || strtolower((string) ($live['wallbox_car_raw'] ?? '')) === 'charging';
         if ($wallboxRaw === null && $importRaw === null && $exportRaw === null && $mode !== 'schnell' && $mode !== 'aus') {
             return [
                 'mode' => $mode,
+                'zone' => $zone,
                 'p_soll_kw' => null,
                 'surplus_kw' => $live['surplus_kw'] ?? null,
+                'solar_kw' => null,
                 'grid_signed_kw' => null,
                 'delta_kw' => null,
                 'target_kw' => null,
@@ -233,13 +274,17 @@ final class Energy
                 'phases' => $reportedPhases ?: 1,
                 'offered_kw' => 0.0,
                 'reason' => 'Noch keine Zählerwerte.',
+                'flows' => self::allot(0.0, $mode, $zone, $live),
             ];
         }
         $wallbox = max(0, (float) ($wallboxRaw ?? 0));
         $grid = (float) ($importRaw ?? 0) - (float) ($exportRaw ?? 0);
-        $pSoll = $wallbox - $grid - $reserve;
+        // Am Zähler: was das Auto schon nimmt, plus Einspeisung, minus Bezug und Reserve. Ab der Hausgrenze darf
+        // es auch nehmen, was der Speicher gerade lädt; bis zur Stützung zählt Entladen dagegen.
+        $supported = $zone === 'boost' || $zone === 'start';
+        $pSoll = $wallbox - $grid - $reserve + ($zone === 'house' ? 0.0 : $batteryIn) - ($supported ? 0.0 : $batteryOut);
         $surplus = max(0, (float) ($live['surplus_kw'] ?? 0));
-        $cap = $share >= 0.999 ? $surplus : ($share > 0 ? $surplus / $share : $pSoll);
+        $solar = min(max(0.0, $pSoll), $surplus);
         $reason = '';
 
         if ($mode === 'aus') {
@@ -250,10 +295,7 @@ final class Energy
             $target = self::KW_PER_AMP * $maxA * $phases;
             $reason = 'Schnellladen ohne PV-Grenze.';
         } else {
-            $target = min(max(0, $pSoll), max(0, $cap));
-            if ($share >= 0.999 && $target + 0.05 < max(0, $pSoll)) {
-                $reason = 'Durch den Sonnenanteil auf den Überschuss begrenzt.';
-            }
+            $target = $share >= 0.999 ? $solar : ($share > 0 ? $solar / $share : max(0.0, $pSoll));
             if ($mode === 'smart_dauerhaft') {
                 $floor = self::KW_PER_AMP * $minA * ($phaseMode === '3p' ? 3 : 1);
                 if ($target < $floor) {
@@ -261,8 +303,14 @@ final class Energy
                     $reason = 'Dauerhaft mindestens ' . $minA . NNBSP . 'A.';
                 }
             } elseif ($target < self::KW_PER_AMP * $minA) {
-                $target = 0.0;
-                $reason = 'Unter ' . num(self::KW_PER_AMP * $minA, 2) . NNBSP . 'kW, Laden würde aussetzen.';
+                if ($zone === 'start' || ($zone === 'boost' && $running)) {
+                    // Der Speicher hält die kleinste Stufe, bis er auf die Grenze der Stützung fällt.
+                    $target = self::KW_PER_AMP * $minA * ($phaseMode === '3p' ? 3 : 1);
+                    $reason = $zone === 'start' ? 'Start ohne Sonne, der Speicher liefert.' : 'Der Speicher stützt die laufende Ladung.';
+                } else {
+                    $target = 0.0;
+                    $reason = 'Unter ' . num(self::KW_PER_AMP * $minA, 2) . NNBSP . 'kW, Laden würde aussetzen.';
+                }
             }
         }
 
@@ -281,8 +329,10 @@ final class Energy
 
         return [
             'mode' => $mode,
+            'zone' => $zone,
             'p_soll_kw' => $pSoll,
             'surplus_kw' => $surplus,
+            'solar_kw' => $solar,
             'grid_signed_kw' => $grid,
             'delta_kw' => $pSoll - $wallbox,
             'target_kw' => $target,
@@ -290,6 +340,50 @@ final class Energy
             'phases' => $phases,
             'offered_kw' => $offered,
             'reason' => $reason,
+            'flows' => self::allot($offered, $mode, $zone, $live),
+        ];
+    }
+
+    /**
+     * Aufteilung für eine Ladeleistung nach denselben Zonen wie suggest(): woher das Auto sie bekäme (Sonne,
+     * Speicher, Netz; beim Schnellladen erst Speicher, dann Netz) und wohin der übrige Überschuss ginge
+     * (Speicher, Einspeisung). spare ist der Überschuss über dem Haus, ohne Auto und Speicher.
+     */
+    public static function allot(float $carKw, string $mode, string $zone, array $live): array
+    {
+        $in = max(0.0, (float) ($live['battery_charge_kw'] ?? 0));
+        $out = max(0.0, (float) ($live['battery_discharge_kw'] ?? 0));
+        if (isset($live['pv_kw'], $live['house_base_kw'])) {
+            $spare = (float) $live['pv_kw'] - (float) $live['house_base_kw'];
+        } else {
+            $spare = max(0.0, (float) ($live['wallbox_kw'] ?? 0)) + (float) ($live['grid_export_kw'] ?? 0) - (float) ($live['grid_import_kw'] ?? 0) + $in - $out;
+        }
+        $spare = max(0.0, $spare);
+        $soc = isset($live['battery_soc']) ? (float) $live['battery_soc'] : null;
+        $first = ($zone === 'house' && $mode !== 'schnell') ? min($in, $spare) : 0.0;
+        $sun = min(max(0.0, $carKw), max(0.0, $spare - $first));
+        $charge = $first + ($soc !== null && $soc < 99.5 ? max(0.0, $spare - $first - $sun) : 0.0);
+        $short = max(0.0, $carKw - $sun);
+        $fromBattery = $fromGrid = $mixed = 0.0;
+        if ($short > 0.0) {
+            if ($mode === 'schnell' && $soc !== null && $soc > 5) {
+                $mixed = $short;
+            } elseif ($soc !== null && ($zone === 'boost' || $zone === 'start')) {
+                $fromBattery = $short;
+            } else {
+                $fromGrid = $short;
+            }
+        }
+        $r = static fn (float $v): float => round($v, 3);
+        return [
+            'spare_kw' => $r($spare),
+            'car_kw' => $r(max(0.0, $carKw)),
+            'sun_kw' => $r($sun),
+            'battery_kw' => $r($fromBattery),
+            'grid_kw' => $r($fromGrid),
+            'mixed_kw' => $r($mixed),
+            'charge_kw' => $r($charge),
+            'export_kw' => $r(max(0.0, $spare - $sun - $charge)),
         ];
     }
 
@@ -344,10 +438,10 @@ final class Energy
         if ($mode === 'schnell') {
             return 3;
         }
-        if ($target >= 3.68 && $target < 4.14) {
+        if ($target >= self::PHASE_DOWN_KW && $target < self::PHASE_UP_KW) {
             return $reported === 3 ? 3 : 1;
         }
-        return $target >= 4.14 ? 3 : 1;
+        return $target >= self::PHASE_UP_KW ? 3 : 1;
     }
 
     /** @return array{0:int,1:int} */
@@ -358,13 +452,13 @@ final class Energy
         }
         $raw = (int) round($target / (self::KW_PER_AMP * $phases));
         if (!$hold && $raw < $minA) {
-            if ($phases === 3 && $target <= 3.68) {
+            if ($phases === 3 && $target <= self::PHASE_DOWN_KW) {
                 return self::quantize($target, 1, $minA, $maxA, false);
             }
             return [0, $phases];
         }
         $amps = max($hold ? $minA : 0, min($maxA, $raw));
-        if ($phases === 1 && $amps === $maxA && $target > self::KW_PER_AMP * $maxA && $target < 4.14) {
+        if ($phases === 1 && $amps === $maxA && $target > self::KW_PER_AMP * $maxA && $target < self::PHASE_UP_KW) {
             return [$maxA, 1];
         }
         return [$amps, $phases];
@@ -435,7 +529,7 @@ final class Energy
             'aus' => 'Ladestrom 0 A. Die Wallbox bliebe aus.',
             'schnell' => 'Maximale Ladeleistung ohne Rücksicht auf den Solarüberschuss.',
             'smart_dauerhaft' => 'Lädt immer mit dem Mindeststrom. Sonnenüberschuss hebt die Leistung an.',
-            default => 'Nur Sonnenüberschuss, Ziel nahe 0 W am Zähler. Unter 1,38 kW setzt der Vorschlag aus.',
+            default => 'Nur Sonnenüberschuss, Ziel nahe 0 W am Zähler. Unter 1,38 kW setzt der Vorschlag aus, außer der Speicher stützt die Ladung.',
         };
     }
 }
