@@ -365,9 +365,125 @@ final class Actions
         } elseif ($section === 'flow_view') {
             $view = (string) ($_POST['flow_view'] ?? 'bar');
             store()->merge('ui', ['flow_view' => in_array($view, ['bar', 'graph'], true) ? $view : 'bar']);
+        } elseif (str_starts_with($section, 'notify_')) {
+            $message = self::saveNotify($section);
+            if (wants_json()) {
+                json_out(['ok' => true, 'message' => $message]);
+            }
+            flash($message);
+            self::redirectBack();
         }
         flash('Gespeichert.');
         self::redirectBack();
+    }
+
+    /**
+     * Einstellungen → Mitteilungen: Geräte und Ruhezeit (notify_targets), die angekreuzten Meldungen
+     * (notify_events), eine Meldung mit Titel, Text und Grenzen (notify_event, mit do=test als Probe und do=reset
+     * für den Standardtext) und die Test-Mitteilung ohne JavaScript (notify_test). Gibt die Rückmeldung zurück.
+     */
+    private static function saveNotify(string $section): string
+    {
+        $settings = Notify::settings(cfg());
+        if ($section === 'notify_test') {
+            return self::testNotification()['message'];
+        }
+        if ($section === 'notify_targets') {
+            $settings['targets'] = Notify::targets($_POST['targets'] ?? []);
+            $settings['open_app'] = ($_POST['open_app'] ?? '0') === '1';
+            $settings['quiet'] = ($_POST['quiet'] ?? '0') === '1';
+            $settings['quiet_from'] = Notify::clock($_POST['quiet_from'] ?? null, $settings['quiet_from']);
+            $settings['quiet_to'] = Notify::clock($_POST['quiet_to'] ?? null, $settings['quiet_to']);
+            store()->put(Notify::KEY, Notify::stored($settings));
+            $count = count($settings['targets']);
+            return $count === 0 ? 'Gespeichert. Ohne Gerät gehen keine Mitteilungen raus.' : 'Gespeichert. Mitteilungen gehen an ' . ($count === 1 ? 'ein Gerät' : $count . ' Geräte') . '.';
+        }
+        if ($section === 'notify_events') {
+            $on = array_map('strval', (array) ($_POST['events'] ?? []));
+            foreach (array_keys($settings['events']) as $key) {
+                $settings['events'][$key]['on'] = in_array($key, $on, true);
+            }
+            store()->put(Notify::KEY, Notify::stored($settings));
+            return 'Gespeichert: ' . count(array_intersect(array_keys(Notify::EVENTS), $on)) . ' von ' . count(Notify::EVENTS) . ' Meldungen an.';
+        }
+        $key = (string) ($_POST['event'] ?? '');
+        if ($section !== 'notify_event' || !isset(Notify::EVENTS[$key])) {
+            return 'Unbekannte Meldung.';
+        }
+        $label = Notify::EVENTS[$key]['label'];
+        $do = (string) ($_POST['do'] ?? 'save');
+        if ($do === 'test') {
+            return self::testNotification()['message'];
+        }
+        if ($do === 'reset') {
+            $settings['events'][$key]['title'] = Notify::EVENTS[$key]['title'];
+            $settings['events'][$key]['message'] = Notify::EVENTS[$key]['message'];
+            store()->put(Notify::KEY, Notify::stored($settings));
+            return 'Standardtext für „' . $label . '“ wiederhergestellt.';
+        }
+        $title = Notify::text($_POST['title'] ?? null, Notify::TITLE_MAX) ?? Notify::EVENTS[$key]['title'];
+        $message = Notify::text($_POST['message'] ?? null, Notify::MESSAGE_MAX, true) ?? Notify::EVENTS[$key]['message'];
+        $settings['events'][$key] = array_merge($settings['events'][$key], [
+            'on' => ($_POST['on'] ?? '0') === '1',
+            'important' => ($_POST['important'] ?? '0') === '1',
+            'title' => $title,
+            'message' => $message,
+        ]);
+        foreach (Notify::EVENTS[$key]['params'] as $param) {
+            if (!array_key_exists($param, $_POST)) {
+                continue;
+            }
+            $def = Notify::PARAMS[$param];
+            $settings[$param] = $param === 'report_time'
+                ? Notify::clock($_POST[$param], $settings[$param])
+                : post_float($param, (float) $def['min'], (float) $def['max'], (float) $settings[$param]);
+        }
+        store()->put(Notify::KEY, Notify::stored($settings));
+        $unknown = Notify::unknown($title . ' ' . $message);
+        return '„' . $label . '“ gespeichert.' . ($unknown ? ' Unbekannte Platzhalter bleiben stehen: ' . implode(', ', array_map(static fn (string $name): string => '{' . $name . '}', $unknown)) . '.' : '');
+    }
+
+    /**
+     * Test-Mitteilung (event test) oder Probe einer Meldung mit den Werten von jetzt, an die angekreuzten oder die
+     * gespeicherten Geräte (POST /api/mitteilung und die Formulare). Der Text der Test-Mitteilung bleibt gespeichert.
+     *
+     * @return array{ok: bool, message: string, row: ?array}
+     */
+    public static function testNotification(): array
+    {
+        $event = (string) ($_POST['event'] ?? 'test');
+        $event = isset(Notify::EVENTS[$event]) ? $event : 'test';
+        $settings = Notify::settings(cfg());
+        $base = $event === 'test' ? $settings['test'] : $settings['events'][$event];
+        $title = Notify::text($_POST['title'] ?? null, Notify::TITLE_MAX) ?? $base['title'];
+        $message = Notify::text($_POST['message'] ?? null, Notify::MESSAGE_MAX, true) ?? $base['message'];
+        $targets = array_key_exists('targets', $_POST) ? Notify::targets($_POST['targets']) : $settings['targets'];
+        if ($targets === []) {
+            return ['ok' => false, 'message' => 'Erst unter Geräte ein Handy ankreuzen.', 'row' => null];
+        }
+        if ($event === 'test') {
+            $settings['test'] = ['title' => $title, 'message' => $message];
+            store()->put(Notify::KEY, Notify::stored($settings));
+        }
+        $now = time();
+        $notify = new Notify(store(), ha());
+        $snap = (new Snapshot(store(), ha()))->build();
+        $context = $notify->contextFor($event, Notify::sampleData($event, $now), $snap, $now);
+        $important = $event !== 'test' && $settings['events'][$event]['important'];
+        $result = $notify->deliver($event, Notify::render($title, $context), Notify::render($message, $context), $settings, $important, $now, $targets, true);
+        try {
+            $index = ha()->index();
+        } catch (Throwable) {
+            $index = [];
+        }
+        $names = implode(', ', array_map(static fn (string $service): string => Notify::deviceName($service, $index), $result['sent']));
+        $text = match (true) {
+            $result['ok'] && $result['status'] === 'demo' => 'Demo-Modus: nur ins Protokoll, an ' . $names . '.',
+            $result['ok'] => 'Gesendet an ' . $names . '.',
+            $result['sent'] !== [] => 'Gesendet an ' . $names . ', aber nicht überall. ' . $result['error'],
+            default => 'Nicht gesendet. ' . $result['error'],
+        };
+        return ['ok' => $result['ok'], 'message' => $text, 'row' => $notify->log(1)[0] ?? null];
     }
 
     public static function portable(): array
@@ -384,6 +500,7 @@ final class Actions
             'chargepoint' => $cfg['chargepoint'],
             'weather' => ['url' => (new WeatherFeed(store()))->url()],
             'ui' => ['theme' => $cfg['ui']['theme'] ?? 'system', 'flow_view' => $cfg['ui']['flow_view'] ?? 'bar'],
+            'notify' => Notify::stored(Notify::settings($cfg)),
         ];
     }
 
@@ -556,6 +673,9 @@ final class Actions
         }
         if (isset($data['ui']['flow_view']) && in_array($data['ui']['flow_view'], ['bar', 'graph'], true)) {
             store()->merge('ui', ['flow_view' => (string) $data['ui']['flow_view']]);
+        }
+        if (isset($data['notify']) && is_array($data['notify'])) {
+            store()->put(Notify::KEY, Notify::clean($data['notify']));
         }
     }
 

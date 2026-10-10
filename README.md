@@ -12,7 +12,7 @@ Fünf Bereiche, auf dem Handy als Tab-Leiste unten, ab 1024 px als Leiste links:
 - **Speicher:** die Säule mit den Zonen Haus, Auto und batteriegestützt, Grenzen zum Ziehen, der Backup-Puffer, wann die Grenzen erreicht sind, und der Verlauf über 3 oder 7 Tage. Die Zonen gelten auch für die Regelung; eine Grenze auf 100 % schaltet Stützung und Start ohne Sonne ab.
 - **Prognose:** Sonne der nächsten drei Tage in voller Breite, gemessen und Prognose im selben Diagramm. Über jedem Tag stehen die Prognose (Orange, mit Unsicherheit, wenn Platz ist) und, bis heute, was gemessen wurde, in der Farbe der Messlinie; zurückblättern zeigt vergangene Tage. Ist und Prognose mit Güte, Modelle, Rechnung und Wetter stehen unter Details.
 - **Ladevorgänge:** Monat, Jahr oder Gesamt mit Energie, Kosten oder CO₂, Solaranteil und alle Vorgänge mit Kilometerstand und Löschen. Im laufenden Monat steht heute ganz rechts im Diagramm, davor die Tage bis in den Vormonat (blasser, ohne Summe). Ein Ladevorgang reicht vom Anstecken bis zum Abstecken; seine einzelnen Ladezyklen klappen auf.
-- **Einstellungen** (Zahnrad, schmal „Optionen“): oben der Hauptschalter „EMS regelt die Wallbox“ mit den letzten Schaltvorgängen, darunter Ladepunkt, Fahrzeug, Speicher (Grenzen, Backup-Puffer, Entladeleistung), Energie (Zuordnung), Prognose, Tarif & CO₂, Darstellung und System mit Verbindung und JSON-Export. Alte Links auf `/mehr` leiten weiter.
+- **Einstellungen** (Zahnrad, schmal „Optionen“): oben der Hauptschalter „EMS regelt die Wallbox“ mit den letzten Schaltvorgängen, darunter Ladepunkt, Fahrzeug, Speicher (Grenzen, Backup-Puffer, Entladeleistung), Energie (Zuordnung), Prognose, Tarif & CO₂, Mitteilungen, Darstellung und System mit Verbindung und JSON-Export. Alte Links auf `/mehr` leiten weiter.
 
 Die Diagramme scrollen waagerecht in Vergangenheit und Zukunft; ein erneuter Tipp auf den Zeitraum springt zurück zu heute. Werte zeigt das Antippen (Handy) oder Darüberfahren (Maus).
 
@@ -40,6 +40,19 @@ In der Ladepunkt-Karte setzt „Ladeziel setzen“ ein Ziel für den laufenden L
 Unter Einstellungen → Speicher steht der Backup-Puffer als number-Entität, dazu sein Standardwert. Beim Speichern setzt die App den Standardwert im Speicher. Ist „Speicher schonen“ an, regelt EMS und lädt das Auto im Modus Netzladen, hebt sie den Puffer auf den aktuellen Ladestand: Der Speicher gibt dann nichts ab, weder ans Auto noch ans Haus, und was die Sonne nicht schafft, kommt aus dem Netz. Nach dem Moduswechsel, dem Ende des Ladevorgangs oder dem Abstecken setzt sie den Puffer zurück auf den Standardwert. Den Stand merkt sie sich in der Datenbank, so setzt auch ein Neustart mittendrin zurück. Wird das Add-on während des Netzladens gestoppt, bleibt der Puffer oben, bis es wieder läuft.
 
 Bei der sonnenBatterie (Integration `sonnenbatterie`) heißt die Entität `number.sonnenbatterie_…_battery_reserve`. Sie erscheint erst, wenn im Speicher der Schreibzugriff der JSON-API freigeschaltet ist, und zeigt den echten Wert erst nach dem ersten Setzen.
+
+## Mitteilungen aufs Handy
+
+Unter Einstellungen → Mitteilungen schickt EMS Push-Mitteilungen über die Home-Assistant-App (`notify.mobile_app_…`). Jedes Handy, auf dem die App bei diesem Home Assistant angemeldet ist, steht dort zum Ankreuzen. Mitteilungen gehen auch raus, wenn der Hauptschalter aus ist.
+
+Zum Ankreuzen, in vier Gruppen:
+
+- **Wichtig:** Störung der Regelung (ein anderer Regler schreibt mit, ein Schreibzugriff schlägt fehl, der Backup-Puffer lässt sich nicht setzen), keine Messwerte seit 10 Minuten, Auto lädt trotz Freigabe seit 5 Minuten nicht.
+- **Laden:** angesteckt, gestartet, beendet, Ladeziel erreicht, abgesteckt mit der Bilanz des Ladevorgangs, Lademodus geändert (auch von jemand anderem oder nach einem Ladeziel) und Regelung ein oder aus. Kurze Pausen der Sonne unter 10 Minuten melden weder Ende noch Start; ist das Auto voll oder abgesteckt, kommt das Ende sofort.
+- **Speicher und Sonne:** Speicher voll, Speicher fast leer, Sonne übrig ohne Auto, sonniger Tag morgen, jeweils mit einstellbarer Grenze und höchstens einmal am Tag.
+- **Berichte:** Tagesbericht und am Ersten der Monatsbericht des Vormonats, zur Berichtszeit.
+
+Ab Werk sind Wichtig, gestartet, beendet und Ladeziel an. Der Stift neben jeder Meldung öffnet Titel und Text mit Platzhaltern wie `{auto}`, `{geladen}`, `{sonnenanteil}`, `{kosten}`, `{pv}` oder `{prognose_morgen}`; ein Tippen auf einen Platzhalter fügt ihn ein, die Vorschau zeigt die Mitteilung mit den Werten von jetzt, und „Probe senden“ schickt sie sofort. Wichtige Meldungen kommen auf dem iPhone zeitkritisch und unter Android im Kanal „EMS wichtig“, auch in der einstellbaren Ruhezeit; die übrigen kommen dann leise. Ein Tippen auf die Mitteilung öffnet EMS in der App. Darunter steht die Test-Mitteilung mit eigenem Titel und Text und die Liste der zuletzt gesendeten.
 
 ## Fahrzeugdaten über Bluetooth
 

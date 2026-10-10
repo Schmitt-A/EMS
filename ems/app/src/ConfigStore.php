@@ -52,6 +52,20 @@ final class ConfigStore
         if (!in_array('model_mode', $daily, true)) {
             $this->pdo->exec('ALTER TABLE daily ADD COLUMN model_mode TEXT');
         }
+        // Gesendete Mitteilungen (Notify), die neuesten 200.
+        $this->pdo->exec(
+            'CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY,
+                at INTEGER NOT NULL,
+                event TEXT NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                targets TEXT NOT NULL DEFAULT "",
+                status TEXT NOT NULL,
+                error TEXT,
+                test INTEGER NOT NULL DEFAULT 0
+            )'
+        );
     }
 
     public function defaults(): array
@@ -144,6 +158,22 @@ final class ConfigStore
             'weather' => ['url' => 'https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/single_stations/F9519/kml/MOSMIX_L_LATEST_F9519.kmz'],
             // flow_view: Energiefluss auf Laden als Balken ('bar') oder Energie-Flow ('graph').
             'ui' => ['theme' => 'system', 'flow_view' => 'bar'],
+            // Mitteilungen über die Home-Assistant-App: Geräte (notify-Dienste), Ruhezeit, Grenzen und je Ereignis
+            // an/aus, wichtig, Titel und Text (null = Standard aus Notify::EVENTS).
+            'notify' => [
+                'targets' => [],
+                'open_app' => true,
+                'quiet' => false,
+                'quiet_from' => '22:00',
+                'quiet_to' => '07:00',
+                'report_time' => '20:00',
+                'full_soc' => 100.0,
+                'low_soc' => 20.0,
+                'surplus_kw' => 2.0,
+                'sunny_kwh' => 25.0,
+                'events' => [],
+                'test' => ['title' => null, 'message' => null],
+            ],
         ];
     }
 

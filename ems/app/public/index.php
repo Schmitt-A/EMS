@@ -30,8 +30,18 @@ if ($path === '/api/live') {
         ]), $snap['cfg']['charge'], time());
         (new Controller(store(), ha()))->tick($snap, time());
         (new Reserve(store(), ha()))->sync($snap['values'], $snap['cfg'], time(), $sessions->open() !== null);
+        (new Notify(store(), ha()))->tick($snap, time());
     }
     json_out($snapshot->livePayload($snap));
+}
+
+// Test-Mitteilung oder Probe eines Ereignisses mit den Werten von jetzt.
+if ($path === '/api/mitteilung') {
+    if ($method !== 'POST') {
+        json_out(['error' => 'Nur POST.'], 405);
+    }
+    csrf_check();
+    json_out(Actions::testNotification());
 }
 
 // JSON-Endpunkte der Oberfläche. Das CSRF-Token kommt im Body, ingest_json_body() legt es in $_POST.

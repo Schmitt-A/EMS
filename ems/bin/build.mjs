@@ -25,12 +25,12 @@ manifest['InterVariable.woff2'] = hash(font);
 
 // Icon-Sprite: Lucide-Linien mit 1,75 px Strich, dazu die eigene Batterie (gefüllte Zelle).
 const lucide = [
-  'activity', 'arrow-down', 'arrow-left', 'arrow-right', 'arrow-up', 'battery-charging', 'calendar',
-  'car', 'chart-column', 'chart-line', 'check', 'chevron-down', 'chevron-left', 'chevron-right',
+  'activity', 'arrow-down', 'arrow-left', 'arrow-right', 'arrow-up', 'battery-charging', 'battery-full', 'battery-low',
+  'bell', 'calendar', 'car', 'chart-column', 'chart-line', 'check', 'chevron-down', 'chevron-left', 'chevron-right',
   'circle-alert', 'circle-check', 'cloud-sun', 'coins', 'compass', 'ellipsis', 'gauge', 'history',
-  'house', 'info', 'leaf', 'list', 'monitor', 'moon', 'pencil', 'plug', 'plus', 'route', 'scale',
-  'power', 'search', 'server', 'settings', 'shield', 'sliders-horizontal', 'sun', 'sun-medium', 'target', 'timer', 'trash-2',
-  'triangle-alert', 'utility-pole', 'wifi-off', 'x', 'zap',
+  'house', 'info', 'leaf', 'list', 'monitor', 'moon', 'pencil', 'plug', 'plus', 'rotate-ccw', 'route', 'scale',
+  'power', 'search', 'send', 'server', 'settings', 'shield', 'sliders-horizontal', 'smartphone', 'sun', 'sun-medium', 'target',
+  'timer', 'trash-2', 'triangle-alert', 'unplug', 'utility-pole', 'wifi-off', 'x', 'zap',
 ];
 const symbol = (id, file) => {
   const source = readFileSync(file, 'utf8').replace(/<!--[\s\S]*?-->/g, '');

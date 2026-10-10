@@ -84,6 +84,19 @@ final class DemoHaClient implements HaSource
         store()->put('demo_writes', $writes);
     }
 
+    /** Zwei Handys mit der Home-Assistant-App; Mitteilungen landen nur im Protokoll von Notify. */
+    public function notifyServices(): array
+    {
+        return ['mobile_app_iphone_15', 'mobile_app_pixel_8'];
+    }
+
+    public function notify(string $service, array $payload): void
+    {
+        if (!in_array($service, $this->notifyServices(), true)) {
+            throw new InvalidArgumentException('Das Gerät notify.' . $service . ' gibt es im Demo-Modus nicht.');
+        }
+    }
+
     /**
      * Regelt EMS im Demo-Modus (frc 1 oder 2 geschrieben), folgt die Wallbox: Strom mal Phasen, solange ein Auto
      * steckt; Speicher und Netz gleichen den Rest aus wie im Modell, der Speicher bis zum Backup-Puffer.

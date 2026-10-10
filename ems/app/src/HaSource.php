@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 /**
  * Was die App von Home Assistant liest, dazu die Schreibzugriffe bei aktivem EMS: Wallbox (Controller) und
- * Backup-Puffer (Reserve). HaClient spricht mit HA, DemoHaClient liefert Beispieldaten.
+ * Backup-Puffer (Reserve), und die Mitteilungen an die Home-Assistant-App (Notify). HaClient spricht mit HA,
+ * DemoHaClient liefert Beispieldaten.
  */
 interface HaSource
 {
@@ -12,6 +13,12 @@ interface HaSource
 
     /** Ruft einen Dienst auf, etwa select.select_option oder button.press. Wirft bei Fehlern. */
     public function service(string $domain, string $service, array $data): void;
+
+    /** Die Dienste der Domäne notify, etwa mobile_app_pixel_8, ohne notify. davor. @return list<string> */
+    public function notifyServices(): array;
+
+    /** Schickt eine Mitteilung über notify.<service> (title, message, data). Wirft bei Fehlern. */
+    public function notify(string $service, array $payload): void;
 
     public function configured(): bool;
 

@@ -9,6 +9,8 @@ declare(strict_types=1);
 final class Target
 {
     public const KEY = 'charge_target';
+    /** Zuletzt erreichtes Ziel (Zeit, Beschreibung, Folgemodus), für die Mitteilung „Ladeziel erreicht“. */
+    public const DONE = 'charge_target_done';
     public const THEN = ['aus', 'smart', 'smart_dauerhaft'];
 
     public static function get(ConfigStore $store): ?array
@@ -190,6 +192,7 @@ final class Target
         $then = in_array($target['then'] ?? '', self::THEN, true) ? (string) $target['then'] : 'smart';
         $store->put(self::KEY, []);
         $store->merge('charge', ['mode' => $then]);
+        $store->put(self::DONE, ['t' => $now, 'label' => $view['label'], 'then' => $then]);
         return ['mode' => $then, 'text' => 'Ladeziel erreicht (' . $view['label'] . '), weiter mit ' . Energy::modeLabel($then) . '.'];
     }
 }

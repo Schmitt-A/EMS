@@ -1,0 +1,358 @@
+/*
+ * Mitteilungen unter Einstellungen: Häkchen-Listen für Geräte und Meldungen, Platzhalter als Knöpfe mit dem Wert
+ * von jetzt, die Vorschau einer Mitteilung und die zuletzt gesendeten.
+ */
+
+/* Häkchen 24 × 24 wie der Toggle: das unsichtbare Feld liegt über dem Kasten, das Häkchen kommt aus dem Sprite. */
+.check {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.check input {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.check-box {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border: 2px solid var(--border-control);
+  border-radius: 0.4375rem;
+  background: var(--surface);
+  color: var(--on-accent);
+  transition: background-color var(--dur-fast), border-color var(--dur-fast);
+}
+
+.check-box .icon {
+  width: 1rem;
+  height: 1rem;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity var(--dur-fast), transform var(--dur-base) var(--ease-spring);
+}
+
+.check input:checked ~ .check-box {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.check input:checked ~ .check-box .icon {
+  opacity: 1;
+  transform: none;
+}
+
+.check input:focus-visible ~ .check-box {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+/* Gruppen: Geräte und Meldungen je als Liste mit Trennlinien, die ganze Zeile schaltet das Häkchen. */
+.nt-group {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.nt-group > legend {
+  padding: 0;
+  margin-block-end: var(--s-1);
+}
+
+.nt-list {
+  display: grid;
+}
+
+.nt-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  border-block-end: 1px solid var(--border);
+}
+
+.nt-item:last-child {
+  border-block-end: 0;
+}
+
+.nt-check {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+  min-height: 3.25rem;
+  padding-block: var(--s-2);
+  cursor: pointer;
+}
+
+.nt-check > .icon {
+  flex: none;
+  color: var(--text-2);
+}
+
+.nt-check-body {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.nt-check-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.nt-check-text {
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  overflow-wrap: anywhere;
+}
+
+/* Platzhalter: Name in Amber, daneben der Wert von jetzt; ein Tippen fügt ihn an der Schreibmarke ein. */
+.nt-vars {
+  display: grid;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.nt-vars > .label,
+.nt-preview-wrap > .label {
+  margin: 0;
+}
+
+.nt-var-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.nt-var {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--s-2);
+  min-height: 2.75rem;
+  max-width: 100%;
+  padding: 0.3125rem var(--s-3);
+  border: 1px solid var(--border-control);
+  border-radius: 1.375rem;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  text-align: start;
+  transition: background-color var(--dur-fast), border-color var(--dur-fast);
+}
+
+.nt-var code {
+  color: var(--accent-strong);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.nt-var-value {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.nt-var:active {
+  border-color: var(--accent);
+}
+
+@media (hover: hover) {
+  .nt-var:hover {
+    background: var(--surface-2);
+  }
+}
+
+.nt-var:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+.nt-more summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  color: var(--text-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.nt-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.nt-more[open] summary .icon {
+  transform: rotate(180deg);
+}
+
+.nt-more > .nt-var-list {
+  padding-block-start: var(--s-1);
+}
+
+/* Vorschau wie eine Mitteilung auf dem Sperrbildschirm. */
+.nt-preview-wrap {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.nt-preview {
+  display: grid;
+  gap: 0.125rem;
+  padding: var(--s-3) var(--s-4);
+  border-radius: 1.125rem;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.nt-preview-app {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin-block-end: 0.125rem;
+  color: var(--text-2);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+}
+
+.nt-preview-app .icon {
+  color: var(--accent-strong);
+}
+
+.nt-preview-title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.nt-preview-text {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.nt-unknown {
+  margin: 0;
+  color: var(--danger);
+}
+
+textarea.nt-text {
+  resize: vertical;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.375rem;
+}
+
+/* Rückmeldung neben dem Knopf; leer nimmt sie keinen Platz. */
+.nt-status {
+  flex: 1 1 12rem;
+  margin: 0;
+  color: var(--text-2);
+}
+
+.nt-status[data-tone="error"] {
+  color: var(--danger);
+}
+
+.nt-foot {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+}
+
+/* Zuletzt gesendet */
+.nt-log {
+  display: grid;
+}
+
+.nt-log-row {
+  display: grid;
+  gap: 0.125rem;
+  padding-block: var(--s-3);
+  border-block-end: 1px solid var(--border);
+}
+
+.nt-log-row:first-child {
+  padding-block-start: 0;
+}
+
+.nt-log-row:last-child {
+  border-block-end: 0;
+}
+
+.nt-log-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.nt-log-event {
+  color: var(--text-2);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+}
+
+.nt-log-title,
+.nt-log-text,
+.nt-log-meta,
+.nt-log-error {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.nt-log-title {
+  font-weight: 600;
+}
+
+.nt-log-text {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  white-space: pre-line;
+}
+
+.nt-log-meta {
+  color: var(--text-2);
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.nt-log-error {
+  color: var(--danger);
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+}
+
+.pill-error {
+  background: var(--danger-soft);
+  color: var(--text);
+}

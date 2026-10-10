@@ -97,6 +97,12 @@ function ingest_json_body(): void
     }
 }
 
+/** Schickt die Oberfläche ein Formular per fetch und will JSON statt einer Weiterleitung? */
+function wants_json(): bool
+{
+    return str_contains(strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? '')), 'application/json');
+}
+
 function flash(?string $message = null): ?string
 {
     if ($message !== null) {

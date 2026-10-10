@@ -407,6 +407,33 @@ final class HaClient implements HaSource
         @unlink(data_dir() . '/states-cache.json');
     }
 
+    /** Mitteilungsdienste aus /api/services; send_message braucht eine Entität und fällt heraus. */
+    public function notifyServices(): array
+    {
+        $out = [];
+        foreach ((array) $this->get('/api/services') as $row) {
+            if (!is_array($row) || ($row['domain'] ?? '') !== 'notify' || !is_array($row['services'] ?? null)) {
+                continue;
+            }
+            foreach (array_keys($row['services']) as $name) {
+                $name = (string) $name;
+                if ($name !== 'send_message' && $name !== 'persistent_notification' && preg_match('/^[a-z0-9_]{1,64}$/', $name)) {
+                    $out[] = $name;
+                }
+            }
+        }
+        sort($out);
+        return $out;
+    }
+
+    public function notify(string $service, array $payload): void
+    {
+        if (!preg_match('/^[a-z0-9_]{1,64}$/', $service) || $service === 'send_message') {
+            throw new InvalidArgumentException('Mitteilungsdienst notify.' . $service . ' ist für EMS nicht vorgesehen.');
+        }
+        $this->get('/api/services/notify/' . $service, $payload);
+    }
+
     /** GET, mit $body als POST mit JSON. */
     private function get(string $path, ?array $body = null): mixed
     {

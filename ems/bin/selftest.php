@@ -136,6 +136,8 @@ $guardHa = new class implements HaSource {
         }
         $this->writes[] = [$data['entity_id'], $data['option'] ?? $data['value'] ?? null];
     }
+    public function notifyServices(): array { return []; }
+    public function notify(string $service, array $payload): void {}
     public function configured(): bool { return true; }
     public function ping(): array { return ['ok' => true]; }
     public function states(): array { return []; }
@@ -233,6 +235,8 @@ $wallHa = new class implements HaSource {
     public array $calls = [];
     public function setNumber(string $entityId, float $value): void { $this->calls[] = [$entityId, (int) $value]; }
     public function service(string $domain, string $service, array $data): void { $this->calls[] = [$data['entity_id'], $data['option'] ?? $data['value'] ?? '']; }
+    public function notifyServices(): array { return []; }
+    public function notify(string $service, array $payload): void {}
     public function configured(): bool { return true; }
     public function ping(): array { return ['ok' => true]; }
     public function states(): array { return []; }
@@ -583,6 +587,102 @@ if (is_file($kmz)) {
     check($peak > 50 && $peak < 1400, 'Strahlung der echten Datei in W/m², Spitze ' . round($peak));
 }
 
+// Mitteilungen: Vorlagen, Platzhalter, Ruhezeit, Erkennung der Ereignisse und Versand.
+check(Notify::render('{auto} lädt mit {leistung}, {foo}', ['auto' => 'ID.3', 'leistung' => '4,1 kW']) === 'ID.3 lädt mit 4,1 kW, {foo}' && Notify::unknown('{auto} {foo} {foo}') === ['foo'], 'Platzhalter eingesetzt, unbekannte bleiben stehen und werden genannt');
+check(Notify::text("  Zeile\t1  \r\n\r\n\r\n Zeile 2 ", 500, true) === "Zeile 1\n\nZeile 2" && Notify::text("Titel\nmit Umbruch", 120) === 'Titel mit Umbruch' && Notify::text('   ', 120) === null, 'Vorlagen ohne Steuerzeichen, der Titel einzeilig, leer heißt Standard');
+check(Notify::clock('7:05', 'x') === '07:05' && Notify::clock('25:00', '20:00') === '20:00' && Notify::targets('mobile_app_a, Mobile_App_B,send_message,../x,mobile_app_a') === ['mobile_app_a', 'mobile_app_b'], 'Uhrzeiten und Geräte geprüft');
+$notifyDefaults = Notify::settings([]);
+check($notifyDefaults['events']['start']['on'] && !$notifyDefaults['events']['plug']['on'] && $notifyDefaults['events']['fault']['important'] && !$notifyDefaults['events']['start']['important'] && $notifyDefaults['report_time'] === '20:00' && $notifyDefaults['targets'] === [], 'Mitteilungen ab Werk: Wichtiges und Laden an, Geräte leer');
+$notifyCustom = Notify::settings(['notify' => ['events' => ['start' => ['title' => '⚡ {auto}', 'on' => false]], 'full_soc' => 300, 'report_time' => '7:5']]);
+$notifyStored = Notify::stored($notifyCustom);
+check($notifyCustom['events']['start']['custom'] && !$notifyCustom['events']['start']['on'] && $notifyCustom['full_soc'] === 100.0 && $notifyCustom['report_time'] === '20:00'
+    && $notifyStored['events']['start']['title'] === '⚡ {auto}' && $notifyStored['events']['start']['message'] === null && $notifyStored['events']['plug']['title'] === null, 'Eigene Texte bleiben, Grenzen und Uhrzeit geprüft, Standardtexte als null gespeichert');
+$quietCfg = ['quiet' => true, 'quiet_from' => '22:00', 'quiet_to' => '07:00'];
+$at = static fn (string $time): int => (int) strtotime('2026-10-12 ' . $time . ':00 Europe/Berlin');
+check(Notify::quiet($quietCfg, $at('23:30')) && Notify::quiet($quietCfg, $at('06:59')) && !Notify::quiet($quietCfg, $at('07:00')) && !Notify::quiet($quietCfg, $at('12:00')) && !Notify::quiet(['quiet' => false] + $quietCfg, $at('23:30')), 'Ruhezeit über Mitternacht');
+$notifyCtx = Notify::context(
+    ['values' => ['pv_kw' => 5.24, 'battery_soc' => 81.0], 'vehicle' => ['name' => 'ID.3', 'soc' => 64.0], 'cfg' => ['charge' => ['mode' => 'smart'], 'tariffs' => ['import_ct' => 30, 'export_ct' => 8]]],
+    $at('14:05'),
+    ['energy_kwh' => 12.4, 'solar_kwh' => 9.3, 'grid_kwh' => 3.1, 'duration_s' => 7800]
+);
+check($notifyCtx['auto'] === 'ID.3' && $notifyCtx['pv'] === '5,2' . NNBSP . 'kW' && $notifyCtx['geladen'] === '12,4' . NNBSP . 'kWh' && $notifyCtx['dauer'] === '2:10 h' && $notifyCtx['sonnenanteil'] === '75' . NNBSP . '%'
+    && $notifyCtx['kosten'] === '1,67' . NNBSP . '€' && $notifyCtx['modus'] === 'Nur Solar' && $notifyCtx['uhrzeit'] === '14:05' && $notifyCtx['ladestand'] === '64' . NNBSP . '%' && $notifyCtx['grund'] === '—', 'Werte der Platzhalter wie auf den Seiten');
+$notifyState = [];
+$notifyIn = ['connected' => false, 'charging' => false, 'full' => false, 'open_id' => null, 'latest_id' => null, 'latest_at' => null, 'battery_soc' => 50.0, 'export_kw' => 0.0, 'missing' => [], 'faults' => [], 'stuck' => false, 'target_done' => null, 'tomorrow_kwh' => 30.0];
+$detect = static function (array $patch, int $now) use (&$notifyState, &$notifyIn, $notifyDefaults): array {
+    $notifyIn = array_merge($notifyIn, $patch);
+    $result = Notify::detect($notifyState, $notifyIn, $notifyDefaults, $now);
+    $notifyState = $result['state'];
+    return $result['events'];
+};
+$names = static fn (array $events): array => array_column($events, 'event');
+$t = $at('09:00');
+check($detect([], $t) === [], 'Der erste Lauf übernimmt nur den Stand');
+check($names($detect(['connected' => true], $t + 10)) === ['plug'], 'Angesteckt');
+check($names($detect(['open_id' => 1, 'latest_id' => 1, 'latest_at' => $t + 20, 'charging' => true], $t + 20)) === ['start'], 'Laden gestartet');
+check($detect(['open_id' => null, 'charging' => false], $t + 600) === [] && $detect([], $t + 900) === [] && $detect(['open_id' => 2, 'latest_id' => 2, 'latest_at' => $t + 1000, 'charging' => true], $t + 1000) === [], 'Kurze Pause der Sonne meldet weder Ende noch Start');
+check($detect(['open_id' => null, 'charging' => false], $t + 3000) === [] && $names($detect([], $t + 3000 + Notify::PAUSE_S)) === ['stop'], 'Laden beendet nach 10 Minuten Ruhe');
+check($names($detect(['open_id' => 3, 'latest_id' => 3, 'latest_at' => $t + 5000, 'charging' => true], $t + 5000)) === ['start'], 'Nach langer Pause wieder ein Start');
+$unplugged = $detect(['connected' => false, 'charging' => false], $t + 6000);
+check($names($unplugged) === ['stop', 'unplug'] && $unplugged[0]['data']['session'] === 3 && $unplugged[1]['data']['session'] === 3, 'Abstecken mitten im Laden: erst das Ende, dann die Bilanz des Ladevorgangs');
+check($detect(['open_id' => null], $t + 6200) === [], 'Schließt der Zyklus danach, kommt kein zweites Ende');
+$detect(['connected' => true], $t + 7000);
+$detect(['open_id' => 4, 'latest_id' => 4, 'latest_at' => $t + 7010, 'charging' => true], $t + 7010);
+check($names($detect(['open_id' => null, 'charging' => false, 'full' => true], $t + 9000)) === ['stop'], 'Ist das Auto voll, kommt das Ende sofort');
+$target = $detect(['target_done' => ['t' => $t + 9100, 'label' => 'Ziel 20 kWh']], $t + 9100);
+check($names($target) === ['target'] && $target[0]['data']['ziel'] === 'Ziel 20 kWh' && $detect([], $t + 9110) === [], 'Ladeziel erreicht, einmal');
+check($names($detect(['faults' => ['paused' => 'evcc schreibt']], $t + 9200)) === ['fault'] && $detect([], $t + 9210) === [] && $detect(['faults' => []], $t + 9220) === [] && $names($detect(['faults' => ['paused' => 'evcc schreibt']], $t + 9230)) === ['fault'], 'Eine Störung meldet sich einmal je Auftreten');
+check($detect(['missing' => ['Wallbox']], $t + 9300) === [] && $detect([], $t + 9300 + Notify::OFFLINE_S - 10) === [] && $names($detect([], $t + 9300 + Notify::OFFLINE_S)) === ['offline'] && $detect([], $t + 9300 + 2 * Notify::OFFLINE_S) === [], 'Fehlende Messwerte nach 10 Minuten, einmal');
+$detect(['missing' => []], $t + 11000);
+check($detect(['stuck' => true], $t + 11100) === [] && $names($detect([], $t + 11100 + Notify::STUCK_S)) === ['stuck'] && $detect([], $t + 11100 + 2 * Notify::STUCK_S) === [], 'Auto lädt nicht trotz Freigabe, nach 5 Minuten einmal');
+$detect(['stuck' => false], $t + 12000);
+check($names($detect(['battery_soc' => 100.0], $t + 12100)) === ['battery_full'] && $detect(['battery_soc' => 97.0], $t + 12200) === [] && $detect(['battery_soc' => 89.0], $t + 12300) === [] && $detect(['battery_soc' => 100.0], $t + 12400) === [], 'Speicher voll höchstens einmal am Tag');
+check($names($detect(['battery_soc' => 20.0], $t + 12500)) === ['battery_low'], 'Speicher fast leer');
+$detect(['connected' => false], $t + 12600);
+check($detect(['export_kw' => 3.2], $t + 12700) === [] && $names($detect([], $t + 12700 + Notify::SURPLUS_S)) === ['surplus'] && $detect(['export_kw' => 0.0], $t + 13500) === [] && $detect(['export_kw' => 3.2], $t + 13600) === [] && $detect([], $t + 13600 + Notify::SURPLUS_S) === [], 'Sonne übrig ohne Auto, höchstens einmal am Tag');
+check($names($detect(['export_kw' => 0.0], $at('20:05'))) === ['daily', 'sunny'] && $detect([], $at('20:10')) === [], 'Tagesbericht und sonniger Tag zur Berichtszeit, einmal');
+$monthly = $detect(['tomorrow_kwh' => 12.0], (int) strtotime('2026-11-01 20:00:30 Europe/Berlin'));
+check($names($monthly) === ['daily', 'monthly'] && $monthly[1]['data']['month'] === '2026-10', 'Am Ersten der Monatsbericht für den Vormonat');
+$later = (int) strtotime('2026-11-02 10:00:00 Europe/Berlin');
+check($detect(['mode' => 'smart', 'control' => false], $later) === [], 'Modus und Hauptschalter aus einem alten Stand ohne Meldung übernommen');
+$modeChange = $detect(['mode' => 'schnell'], $later + 10);
+check($names($modeChange) === ['mode'] && $modeChange[0]['data']['vorher'] === 'Nur Solar' && $detect([], $later + 20) === [] && $names($detect(['control' => true], $later + 30)) === ['control'], 'Lademodus geändert und Regelung ein');
+$notifyHa = new class implements HaSource {
+    public array $sent = [];
+    public bool $fail = false;
+    public function setNumber(string $entityId, float $value): void {}
+    public function service(string $domain, string $service, array $data): void {}
+    public function notifyServices(): array { return ['mobile_app_pixel_8']; }
+    public function notify(string $service, array $payload): void
+    {
+        if ($this->fail) {
+            throw new RuntimeException('nicht erreichbar');
+        }
+        $this->sent[] = [$service, $payload];
+    }
+    public function configured(): bool { return true; }
+    public function ping(): array { return ['ok' => true]; }
+    public function states(): array { return []; }
+    public function state(string $entityId): ?array { return null; }
+    public function index(): array { return ['device_tracker.pixel_8' => ['attributes' => ['friendly_name' => 'Pixel von Kim']]]; }
+    public function history(string $entityId, int $start, ?int $end = null): array { return []; }
+    public function stateHistory(string $entityId, int $start, ?int $end = null): array { return []; }
+    public function statistics(string $entityId, int $start, int $end, string $period = 'hour'): array { return []; }
+    public function search(string $query, int $limit = 20): array { return []; }
+};
+$notifier = new Notify(new ConfigStore(':memory:'), $notifyHa);
+$quiet = Notify::settings(['notify' => ['targets' => ['mobile_app_pixel_8'], 'open_app' => false] + $quietCfg]);
+$sent = $notifier->deliver('start', 'ID.3 lädt', 'Mit 4,1 kW', $quiet, false, $at('23:30'));
+check($sent['ok'] && $sent['status'] === 'silent' && $notifyHa->sent[0][0] === 'mobile_app_pixel_8' && $notifyHa->sent[0][1]['data']['push']['interruption-level'] === 'passive' && $notifyHa->sent[0][1]['data']['tag'] === 'ems-start' && $notifyHa->sent[0][1]['title'] === 'ID.3 lädt', 'In der Ruhezeit leise an die App');
+$sent = $notifier->deliver('fault', 'EMS: Störung', 'evcc', $quiet, true, $at('23:31'));
+check($sent['status'] === 'sent' && $notifyHa->sent[1][1]['data']['push']['interruption-level'] === 'time-sensitive' && $notifyHa->sent[1][1]['data']['priority'] === 'high' && $notifyHa->sent[1][1]['data']['channel'] === 'EMS wichtig', 'Wichtige Meldungen mit Ton, auch in der Ruhezeit');
+$notifyHa->fail = true;
+$sent = $notifier->deliver('stop', 'x', 'y', $quiet, false, $at('23:32'), null, true);
+$notifyLog = $notifier->log(5);
+check(!$sent['ok'] && $sent['status'] === 'error' && str_contains((string) $sent['error'], 'nicht erreichbar') && count($notifyLog) === 3 && $notifyLog[0]['event'] === 'Test · Laden beendet' && $notifyLog[2]['status_text'] === 'leise', 'Fehler beim Senden stehen im Protokoll, neueste zuerst');
+$devices = $notifier->services(['mobile_app_alt']);
+check(array_column($devices['list'], 'name') === ['Alt', 'Pixel von Kim'] && $devices['list'][0]['missing'] && !$devices['list'][1]['missing'] && Notify::deviceName('notify') === 'notify.notify' && Notify::deviceName('mobile_app_iphone_15') === 'iPhone 15', 'Gerätenamen aus der App, vergessene Geräte markiert');
+
 if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
     $file = tempnam(sys_get_temp_dir(), 'ems-selftest');
     $sessionStore = new ConfigStore($file);
@@ -608,6 +708,8 @@ if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
         public function __construct(private int $plug) {}
         public function setNumber(string $entityId, float $value): void {}
         public function service(string $domain, string $service, array $data): void {}
+        public function notifyServices(): array { return []; }
+        public function notify(string $service, array $payload): void {}
         public function configured(): bool { return true; }
         public function ping(): array { return ['ok' => true]; }
         public function states(): array { return []; }
