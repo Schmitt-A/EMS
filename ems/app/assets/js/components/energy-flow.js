@@ -1,11 +1,19 @@
-// Energie-Flow: Werte in den Kreisen, Ringe für die Mischung aus Sonne, Speicher und Netz, Punkte auf den Linien.
-// Der Takt der Punkte steht als data-speed (CSS), die Ringe als SVG-Attribute; keine Inline-Styles.
-import { $, $$ } from '../core/dom.js';
-import { withUnit } from '../core/format.js';
+// Energie-Flow Rein → Raus: Linien zwischen den Kreisen nach ihrer Lage im Layout, breiter bei mehr Leistung,
+// Punkte in der Farbe der Quelle von links nach rechts. Werte, Ringe und Takt kommen aus /api/live (flow_graph).
+// Breiten und Wege stehen als SVG-Attribute, der Takt als data-speed (CSS); keine Inline-Styles.
+import { $, $$, svg } from '../core/dom.js';
+import { fmt, withUnit } from '../core/format.js';
 import { onLive } from '../core/live.js';
 
+const FROM = { sun: 'sun', battery: 'battery_out', grid: 'grid_in' };
+const TO = { home: 'home', car: 'car', battery: 'battery_in', grid: 'grid_out' };
+const COLOR = { sun: 'c-solar', battery: 'c-battery', grid: 'c-grid-in' };
+const LINKS = ['sun_home', 'sun_car', 'sun_battery', 'sun_grid', 'battery_home', 'battery_car', 'battery_grid', 'grid_home', 'grid_car', 'grid_battery'];
+const NAMES = { sun: 'Sonne', battery_out: 'Speicher', grid_in: 'Netz', home: 'Haus', battery_in: 'Speicher', grid_out: 'Einspeisung' };
 const STEPS = [[0.3, 1], [1, 2], [2.5, 3], [5, 4], [8, 5]];
+
 const speed = (kw) => (STEPS.find(([limit]) => kw < limit) || [0, 6])[1];
+const width = (kw) => Math.min(10, Math.max(2.5, 2 + kw * 1.1));
 const kwText = (value) => withUnit(Number(value) || 0, 'kW');
 const socText = (value) => (value === null || value === undefined ? '' : withUnit(value, '%', 0));
 
@@ -14,17 +22,60 @@ function setText(figure, key, value) {
   if (node && node.textContent !== value) node.textContent = value;
 }
 
-function setAria(figure, key, value) {
-  $(`[data-ef-aria="${key}"]`, figure)?.setAttribute('aria-label', value);
+/** Wege von der rechten Kante der Quelle zur linken Kante des Ziels, als weiche S-Kurve. */
+function layout(figure) {
+  const box = figure.getBoundingClientRect();
+  if (box.width < 1) return;
+  const lines = $('.ef-links', figure);
+  lines.setAttribute('viewBox', `0 0 ${box.width.toFixed(1)} ${box.height.toFixed(1)}`);
+  const point = (key) => {
+    const circle = $(`[data-ef-node="${key}"] .ef-circle`, figure)?.getBoundingClientRect();
+    return circle ? { x: circle.left - box.left + circle.width / 2, y: circle.top - box.top + circle.height / 2, r: circle.width / 2 } : null;
+  };
+  for (const key of LINKS) {
+    const [from, to] = key.split('_');
+    const a = point(FROM[from]);
+    const b = point(TO[to]);
+    if (!a || !b) continue;
+    const x1 = a.x + a.r;
+    const x2 = b.x - b.r;
+    const dx = (x2 - x1) * 0.55;
+    const d = `M${x1.toFixed(1)},${a.y.toFixed(1)} C${(x1 + dx).toFixed(1)},${a.y.toFixed(1)} ${(x2 - dx).toFixed(1)},${b.y.toFixed(1)} ${x2.toFixed(1)},${b.y.toFixed(1)}`;
+    let track = $(`.ef-track[data-link="${key}"]`, lines);
+    let dots = $(`.ef-dots[data-link="${key}"]`, lines);
+    if (!track) {
+      track = svg('path', { class: `ef-track ${COLOR[from]}`, 'data-link': key, 'data-idle': '' }, lines);
+      dots = svg('path', { class: `ef-dots ${COLOR[from]}`, 'data-link': key, 'data-idle': '' }, lines);
+    }
+    track.setAttribute('d', d);
+    dots.setAttribute('d', d);
+  }
+  if (figure._graph) links(figure, figure._graph);
 }
 
-function rings(figure, mix) {
-  for (const ring of $$('.ef-ring', figure)) {
+function links(figure, graph) {
+  const values = graph.links || {};
+  for (const path of $$('[data-link]', figure)) {
+    const kw = Number(values[path.dataset.link]) || 0;
+    path.toggleAttribute('data-idle', !(kw >= 0.01));
+    if (path.classList.contains('ef-track')) path.setAttribute('stroke-width', width(kw).toFixed(1));
+    else path.dataset.speed = String(speed(kw));
+  }
+}
+
+function rings(figure, graph) {
+  const progress = graph.nodes.sun.progress;
+  const sun = $('[data-ef-node="sun"] [data-arc="progress"]', figure);
+  if (sun) {
+    const len = progress === null || progress === undefined ? 100 : Math.max(0, Math.min(1, progress)) * 100;
+    sun.setAttribute('stroke-dasharray', `${len.toFixed(2)} ${(100 - len).toFixed(2)}`);
+  }
+  for (const node of ['home', 'car']) {
     let from = 0;
     for (const part of ['sun', 'battery', 'grid']) {
-      const arc = $(`[data-arc="${part}"]`, ring);
+      const arc = $(`[data-ef-node="${node}"] [data-arc="${part}"]`, figure);
       if (!arc) continue;
-      const len = Math.max(0, Math.min(100, (Number(mix?.[part]) || 0) * 100));
+      const len = Math.max(0, Math.min(100, (Number(graph.mix?.[part]) || 0) * 100));
       arc.setAttribute('stroke-dasharray', `${len.toFixed(2)} ${(100 - len).toFixed(2)}`);
       arc.setAttribute('stroke-dashoffset', (-from).toFixed(2));
       from += len;
@@ -34,58 +85,34 @@ function rings(figure, mix) {
 
 function render(figure, graph) {
   if (!graph?.nodes) return;
-  const { nodes: n, links = {} } = graph;
-  setText(figure, 'pv', kwText(n.pv.kw));
-  setText(figure, 'grid_in', `→ ${kwText(n.grid.in_kw)}`);
-  setText(figure, 'grid_out', `← ${kwText(n.grid.out_kw)}`);
-  setText(figure, 'battery_soc', socText(n.battery.soc));
-  setText(figure, 'battery_out', `↑ ${kwText(n.battery.out_kw)}`);
-  setText(figure, 'battery_in', `↓ ${kwText(n.battery.in_kw)}`);
-  setText(figure, 'home', kwText(n.home.kw));
-  setText(figure, 'house', `Haus ${kwText(n.home.house_kw)}`);
-  setText(figure, 'car', kwText(n.car.kw));
-  setText(figure, 'car_soc', socText(n.car.soc));
-
-  for (const path of $$('[data-link]', figure)) {
-    const kw = Number(links[path.dataset.link]) || 0;
-    path.toggleAttribute('data-idle', !(kw >= 0.01));
-    path.dataset.speed = String(speed(kw));
+  figure._graph = graph;
+  const n = graph.nodes;
+  for (const key of Object.keys(n)) {
+    setText(figure, key, kwText(n[key].kw));
+    $(`[data-ef-node="${key}"]`, figure)?.toggleAttribute('data-idle', !(n[key].kw >= 0.01));
   }
-  for (const track of $$('[data-track]', figure)) {
-    track.toggleAttribute('data-active', Boolean($(`[data-track-of="${track.dataset.track}"]:not([data-idle])`, figure)));
-  }
-  rings(figure, graph.mix);
-
-  // Kreise ohne Leistung treten zurück, Ein- und Ausgang nur, wenn etwas fließt.
-  const idle = {
-    pv: !(n.pv.kw >= 0.01),
-    grid: !(n.grid.in_kw >= 0.01 || n.grid.out_kw >= 0.01),
-    battery: !(n.battery.in_kw >= 0.01 || n.battery.out_kw >= 0.01),
-    home: !(n.home.kw >= 0.01),
-    car: !(n.car.kw >= 0.01),
-  };
-  for (const [key, value] of Object.entries(idle)) $(`[data-ef-node="${key}"]`, figure)?.toggleAttribute('data-idle', value);
-  // Speist das Netz nur ein, trägt sein Ring die Farbe der Einspeisung.
-  $('[data-ef-node="grid"]', figure)?.toggleAttribute('data-export', !(n.grid.in_kw >= 0.01) && n.grid.out_kw >= 0.01);
-  for (const [key, a, b] of [['grid', 'in_kw', 'out_kw'], ['battery', 'in_kw', 'out_kw']]) {
-    const node = $(`[data-ef-node="${key}"]`, figure);
-    $('.ef-in', node)?.toggleAttribute('data-zero', !(n[key][a] >= 0.01));
-    $('.ef-out', node)?.toggleAttribute('data-zero', !(n[key][b] >= 0.01));
-  }
+  const sun = n.sun;
+  setText(figure, 'sun_sub', sun.forecast_kwh === null || sun.forecast_kwh === undefined ? '' : `${fmt(sun.done_kwh ?? 0, 1)} von ${withUnit(sun.forecast_kwh, 'kWh')}`);
+  setText(figure, 'battery_out_sub', socText(n.battery_out.soc));
+  setText(figure, 'battery_in_sub', socText(n.battery_in.soc));
+  setText(figure, 'car_sub', socText(n.car.soc));
+  links(figure, graph);
+  rings(figure, graph);
 
   const car = $('[data-ef-node="car"] .ef-label', figure)?.firstChild?.textContent || 'Auto';
-  setAria(figure, 'pv', `Sonne ${kwText(n.pv.kw)}, zur Prognose`);
-  setAria(figure, 'grid', `Netz: Bezug ${kwText(n.grid.in_kw)}, Einspeisung ${kwText(n.grid.out_kw)}`);
-  setAria(figure, 'battery', `Speicher ${socText(n.battery.soc)}, lädt ${kwText(n.battery.in_kw)}, entlädt ${kwText(n.battery.out_kw)}, zum Speicher`);
-  setAria(figure, 'home', `Verbrauch ${kwText(n.home.kw)}, davon Haus ${kwText(n.home.house_kw)}`);
-  setAria(figure, 'car', `${car} lädt mit ${kwText(n.car.kw)}, zum Ladepunkt`);
-  const mix = graph.mix || {};
-  const pct = (part) => withUnit((Number(mix[part]) || 0) * 100, '%', 0);
+  const name = (key) => (key === 'car' ? car : NAMES[key]);
+  for (const key of Object.keys(n)) {
+    const circle = $(`[data-ef-aria="${key}"]`, figure);
+    if (circle) circle.setAttribute('aria-label', `${name(key)} ${kwText(n[key].kw)}`);
+  }
+  const flows = LINKS.filter((key) => (Number(graph.links?.[key]) || 0) >= 0.01).map((key) => {
+    const [from, to] = key.split('_');
+    return `${name(FROM[from])} zu ${name(TO[to])} ${kwText(graph.links[key])}`;
+  });
   const summary = $('[data-ef-summary]', figure);
   if (summary) {
-    summary.textContent = `Energie-Flow. Sonne ${kwText(n.pv.kw)}. Netz: Bezug ${kwText(n.grid.in_kw)}, Einspeisung ${kwText(n.grid.out_kw)}. `
-      + `Speicher ${socText(n.battery.soc)}, lädt ${kwText(n.battery.in_kw)}, entlädt ${kwText(n.battery.out_kw)}. `
-      + `Verbrauch ${kwText(n.home.kw)}, davon ${car} ${kwText(n.car.kw)}, aus Sonne ${pct('sun')}, Speicher ${pct('battery')}, Netz ${pct('grid')}.`;
+    summary.textContent = `Energie-Flow. ${flows.length ? flows.join(', ') : 'Gerade fließt nichts'}.`
+      + (sun.forecast_kwh ? ` Sonne heute ${withUnit(sun.done_kwh ?? 0, 'kWh')} von ${withUnit(sun.forecast_kwh, 'kWh')} laut Prognose.` : '');
   }
 }
 
@@ -96,6 +123,8 @@ export function initEnergyFlow(root = document) {
     } catch {
       // Ohne Startwerte bleiben die Kreise, wie der Server sie gezeichnet hat.
     }
+    layout(figure);
+    new ResizeObserver(() => layout(figure)).observe(figure);
     if (figure.hasAttribute('data-static')) continue;
     onLive((data) => render(figure, data.flow_graph));
   }

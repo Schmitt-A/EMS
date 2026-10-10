@@ -62,7 +62,7 @@ $rows = [
   <section class="home-flow" aria-labelledby="flow-title">
     <h2 class="sr-only" id="flow-title">Energiefluss</h2>
 <?php if (($snap['cfg']['ui']['flow_view'] ?? 'bar') === 'graph'): ?>
-    <?= ui_energy_flow(Energy::flowGraph($v, $b), ['car' => (string) $vehicle['name']]) ?>
+    <?= ui_energy_flow(Energy::flowGraph($v, $b, Snapshot::flowForecast($snap)), ['car' => (string) $vehicle['name']]) ?>
 <?php else: ?>
     <?= ui_flow_bar(Energy::flowBar($v, $b)) ?>
 <?php endif; ?>

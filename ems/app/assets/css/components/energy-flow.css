@@ -1,14 +1,17 @@
 /*
- * Energie-Flow: Kreise auf festen Plätzen (in Prozent der viewBox 400 × 420), darunter die Linien als SVG.
- * Punkte laufen per stroke-dashoffset von der Quelle zum Ziel, der Takt hängt an data-speed. Steht auf Laden
- * vor dem Hintergrund; mobil kleine Kreise, ab 26 rem Breite größere.
+ * Energie-Flow Rein → Raus: links die Quellen, rechts die Ziele, dazwischen die Linien als SVG über die ganze
+ * Fläche. components/energy-flow.js legt die Wege zwischen die Kreise und setzt Breite (Leistung) und Takt
+ * (data-speed). Farben wie bei den Balken: Sonne Amber, Speicher Taupe, Netzbezug dunkel, Einspeisung Türkis,
+ * Auto Blau; aktive Kreise sind getönt und haben einen Schein. Mobil stehen die Namen unter den Kreisen, breit
+ * daneben.
  */
 .ef {
   container: ef / inline-size;
   position: relative;
-  width: min(100%, 34rem);
-  aspect-ratio: 400 / 420;
-  margin: 0 auto 2.25rem;
+  display: grid;
+  grid-template-columns: auto minmax(4.5rem, 1fr) auto;
+  width: min(100%, 46rem);
+  margin: 0 auto;
 }
 
 .ef-links {
@@ -17,30 +20,28 @@
   width: 100%;
   height: 100%;
   overflow: visible;
+  pointer-events: none;
 }
 
+/* Spur in der Farbe der Quelle, Breite nach Leistung (Attribut stroke-width). */
 .ef-track {
   fill: none;
-  stroke: var(--border-control);
-  stroke-width: 2;
+  stroke: var(--c, var(--text));
   stroke-linecap: round;
-  vector-effect: non-scaling-stroke;
+  opacity: 0.28;
 }
 
-.ef-track[data-active] {
-  stroke: var(--text-3);
-}
-
-/* Punkte im Abstand von 16 Einheiten, die Strecke beginnt bei der Quelle. */
+/* Punkte im Abstand von 14 px, die Strecke beginnt bei der Quelle. */
 .ef-dots {
   fill: none;
   stroke: var(--c, var(--text));
-  stroke-width: 6;
+  stroke-width: 5;
   stroke-linecap: round;
-  stroke-dasharray: 0 16;
+  stroke-dasharray: 0 14;
   animation: ef-run 1.4s linear infinite;
 }
 
+.ef-track[data-idle],
 .ef-dots[data-idle] {
   display: none;
 }
@@ -53,7 +54,7 @@
 .ef-dots[data-speed="6"] { animation-duration: 0.55s; }
 
 @keyframes ef-run {
-  from { stroke-dashoffset: 16; }
+  from { stroke-dashoffset: 14; }
   to { stroke-dashoffset: 0; }
 }
 
@@ -63,59 +64,87 @@
   }
 }
 
-/* Kreise: Mittelpunkt auf dem Platz der viewBox, Beschriftung darunter, bei Sonne und Verbrauch darüber. */
+/* Spalten: Rein links, Raus rechts; links verteilen sich drei Kreise über die Höhe der vier rechten. */
+.ef-col {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: var(--s-3);
+}
+
+.ef-col-in {
+  grid-column: 1;
+}
+
+.ef-col-out {
+  grid-column: 3;
+}
+
+.ef-head {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.ef-stack {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: var(--s-4);
+}
+
 .ef-node {
-  --ef-node: 4.75rem;
-  --ring: var(--border-control);
-  position: absolute;
-  width: 0;
-  height: 0;
+  --ef-node: 3.75rem;
+  --node: var(--text-2);
+  display: grid;
+  justify-items: center;
+  gap: 0.375rem;
 }
 
-.ef-pv { left: 50%; top: 18.571%; --ring: var(--data-solar); }
-.ef-grid { left: 16%; top: 50%; --ring: var(--data-grid-in); }
-.ef-home { left: 84%; top: 50%; }
-.ef-battery { left: 50%; top: 81.429%; --ring: var(--data-battery); }
-.ef-car { left: 84%; top: 81.429%; }
-
-.ef-grid[data-export] {
-  --ring: var(--data-grid-out);
-}
-
-.ef-node[data-idle] {
-  --ring: var(--border-control);
-}
+.ef-sun { --node: var(--data-solar); }
+.ef-battery-out,
+.ef-battery-in { --node: var(--data-battery); }
+.ef-grid-in { --node: var(--data-grid-in); }
+.ef-grid-out { --node: var(--data-grid-out); }
+.ef-car { --node: var(--data-vehicle-1); }
 
 .ef-circle {
-  position: absolute;
-  inset-inline-start: 0;
-  inset-block-start: 0;
+  position: relative;
   display: grid;
   place-items: center;
   width: var(--ef-node);
   height: var(--ef-node);
   border-radius: 50%;
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
+  background: color-mix(in srgb, var(--node) 14%, var(--surface));
+  box-shadow: 0 0 0 0.3125rem color-mix(in srgb, var(--node) 16%, transparent), var(--shadow-card);
   color: var(--text);
   text-decoration: none;
-  transform: translate(-50%, -50%);
-  transition: transform var(--dur-base) var(--ease-out);
+  transition: transform var(--dur-base) var(--ease-out), background var(--dur-base), box-shadow var(--dur-base);
   -webkit-tap-highlight-color: transparent;
+}
+
+.ef-node[data-idle] .ef-circle {
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
 @media (hover: hover) {
   a.ef-circle:hover {
-    transform: translate(-50%, -50%) scale(1.05);
+    transform: scale(1.05);
   }
 }
 
 a.ef-circle:focus-visible {
   outline: 2px solid var(--accent-strong);
-  outline-offset: 3px;
+  outline-offset: 0.5rem;
 }
 
-/* Ring: ganz in der Farbe des Kreises, bei Verbrauch und Auto drei Bögen für Sonne, Speicher und Netz. */
+/* Ring: ganz in der Farbe des Kreises, an der Sonne der Fortschritt der Tagesprognose, an Haus und Auto die Mischung. */
 .ef-ring {
   position: absolute;
   inset: 0;
@@ -127,11 +156,21 @@ a.ef-circle:focus-visible {
 
 .ef-ring circle {
   fill: none;
-  stroke-width: 5;
+  stroke-width: 7;
 }
 
 .ef-ring-base {
-  stroke: var(--ring);
+  stroke: var(--node);
+}
+
+.ef-sun .ef-ring-base,
+.ef-home .ef-ring-base,
+.ef-car .ef-ring-base {
+  stroke: color-mix(in srgb, var(--node) 22%, var(--surface));
+}
+
+.ef-node[data-idle] .ef-ring-base {
+  stroke: var(--border-control);
 }
 
 .ef-arc {
@@ -143,8 +182,8 @@ a.ef-circle:focus-visible {
   position: relative;
   display: grid;
   justify-items: center;
-  gap: 0.125rem;
-  font-size: 0.8125rem;
+  gap: 0.0625rem;
+  font-size: 0.75rem;
   line-height: 1rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -152,56 +191,32 @@ a.ef-circle:focus-visible {
 }
 
 .ef-inner .icon {
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--node);
 }
-
-.ef-pv .ef-inner .icon { color: var(--data-solar); }
-.ef-battery .ef-inner .icon { color: var(--data-battery); }
-.ef-car .ef-inner .icon { color: var(--data-vehicle-1); }
 
 .ef-node[data-idle] .ef-inner {
   color: var(--text-2);
 }
 
-.ef-pair {
-  display: grid;
-  justify-items: center;
-  font-size: 0.6875rem;
-  line-height: 0.875rem;
-}
-
-.ef-grid .ef-in { color: var(--data-grid-in); }
-.ef-grid .ef-out { color: var(--data-grid-out); }
-
-.ef-pair [data-zero] {
-  color: var(--text-2);
-  font-weight: 500;
+.ef-node[data-idle] .ef-inner .icon {
+  color: var(--text-3);
 }
 
 .ef-label {
-  position: absolute;
-  inset-inline-start: 0;
-  inset-block-start: calc(var(--ef-node) / 2 + 0.375rem);
   display: grid;
   justify-items: center;
   color: var(--text-2);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 600;
   line-height: 1rem;
+  text-align: center;
   white-space: nowrap;
-  transform: translateX(-50%);
-}
-
-.ef-pv .ef-label,
-.ef-home .ef-label {
-  inset-block-start: auto;
-  inset-block-end: calc(var(--ef-node) / 2 + 0.375rem);
 }
 
 .ef-sub {
   color: var(--text);
-  font-size: 0.75rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -212,30 +227,71 @@ a.ef-circle:focus-visible {
 
 @container ef (min-width: 26rem) {
   .ef-node {
-    --ef-node: 6rem;
+    --ef-node: 4.25rem;
   }
 
   .ef-inner {
-    font-size: 1rem;
+    font-size: 0.8125rem;
+  }
+
+  .ef-inner .icon {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .ef-label {
+    font-size: 0.8125rem;
+  }
+}
+
+/* Breit: Namen neben den Kreisen, außen; die Kreise bleiben innen an den Linien. */
+@container ef (min-width: 40rem) {
+  .ef-node {
+    --ef-node: 4.75rem;
+    grid-template-columns: auto auto;
+    align-items: center;
+    column-gap: var(--s-3);
+  }
+
+  .ef-col-in .ef-node {
+    justify-content: end;
+  }
+
+  .ef-col-in .ef-label {
+    order: -1;
+    justify-items: end;
+    text-align: end;
+  }
+
+  .ef-col-out .ef-node {
+    justify-content: start;
+  }
+
+  .ef-col-out .ef-label {
+    justify-items: start;
+    text-align: start;
+  }
+
+  .ef-col-in .ef-head {
+    text-align: end;
+  }
+
+  .ef-col-out .ef-head {
+    text-align: start;
+  }
+
+  .ef-inner {
+    font-size: 0.875rem;
     line-height: 1.25rem;
   }
 
   .ef-inner .icon {
-    width: 1.5rem;
-    height: 1.5rem;
-  }
-
-  .ef-pair {
-    font-size: 0.8125rem;
-    line-height: 1.125rem;
+    width: 1.375rem;
+    height: 1.375rem;
   }
 
   .ef-label {
     font-size: 0.875rem;
     line-height: 1.25rem;
-  }
-
-  .ef-sub {
-    font-size: 0.8125rem;
   }
 }

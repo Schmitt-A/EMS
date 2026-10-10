@@ -316,6 +316,7 @@ final class Snapshot
             $base['warnings'][] = 'EMS soll regeln, aber der Recorder läuft nicht. Die Wallbox bleibt, wie sie ist.';
         }
         $base['forecast'] = $brief;
+        $base['yield_today'] = $actualToday;
         $base['storage'] = $outlook;
         $base['house_mean_kw'] = $mean;
         $base['car_charging'] = $charging;
@@ -374,7 +375,7 @@ final class Snapshot
             'battery_surplus' => $this->surplusText($snap['storage'] ?? [], isset($snap['house_mean_kw']) && $snap['house_mean_kw'] !== null, $snap['house_mean_kw'] ?? null),
             'remaining_kwh' => $f['remaining_kwh'] ?? null,
             'flow' => Energy::flowBar($v, $b),
-            'flow_graph' => Energy::flowGraph($v, $b),
+            'flow_graph' => Energy::flowGraph($v, $b, self::flowForecast($snap)),
             'flow_rows' => self::flowRows($v, $b, $f),
             'chargepoint' => $snap['chargepoint'],
             'vehicle' => $snap['vehicle'],
@@ -710,6 +711,16 @@ final class Snapshot
             };
         }
         return self::splitText($mode['flows'], '', $protect ? 'Der Speicher bleibt geschont.' : 'Speicher lädt nicht.');
+    }
+
+    /** Prognose für den Energie-Flow: ganzer Tag, Rest und heute gemessen. */
+    public static function flowForecast(array $snap): ?array
+    {
+        $f = $snap['forecast'] ?? null;
+        if (!is_array($f)) {
+            return null;
+        }
+        return ['today_kwh' => $f['today_kwh'] ?? null, 'remaining_kwh' => $f['remaining_kwh'] ?? null, 'done_kwh' => $snap['yield_today'] ?? null];
     }
 
     /** Leistungen für die Detail-Liste „Rein“ und „Raus“ unter dem Energiefluss-Balken, dazu die Prognose für heute. */

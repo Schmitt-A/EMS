@@ -31,7 +31,8 @@ $staticFlow = Energy::flowBar(
 );
 $staticGraph = Energy::flowGraph(
     ['pv_kw' => 7.8, 'battery_discharge_kw' => 0.0, 'battery_charge_kw' => 1.6, 'battery_soc' => 64.0, 'grid_import_kw' => 0.0, 'grid_export_kw' => 1.3, 'wallbox_kw' => 4.1, 'car_soc' => 57.0],
-    ['house_base_kw' => 0.8]
+    ['house_base_kw' => 0.8],
+    ['today_kwh' => 29.4, 'remaining_kwh' => 6.2, 'done_kwh' => 23.1]
 );
 $vehicle = ['name' => 'ID.3', 'status' => 'Lädt …', 'soc' => 57.0, 'range_km' => 296.0, 'limit' => 80.0, 'range_at_limit' => 416.0];
 $cards = [
@@ -125,8 +126,8 @@ $section('Energiefluss-Balken', 'Signatur-Komponente vor dem Hintergrund: Quelle
     echo '<div class="card"><p class="caption muted">Laden</p><div class="skeleton sk-bar"></div></div>';
 });
 
-$section('Energie-Flow', 'Alternative zum Balken: Kreise mit Ringen für die Mischung aus Sonne, Speicher und Netz, Punkte laufen von der Quelle zum Ziel. Oben live, darunter Mittag mit Einspeisung und Speicher.', static function (string $s) use ($v, $snap, $staticGraph): void {
-    echo ui_energy_flow(Energy::flowGraph($v, $snap['balance']), ['id' => 'g-ef-live-' . $s, 'car' => 'ID.3', 'links' => false]);
+$section('Energie-Flow', 'Alternative zum Balken, Rein → Raus: jede Quelle mit eigener Linie zu jedem Ziel, breiter bei mehr Leistung, Punkte in der Farbe der Quelle. Der Ring der Sonne zeigt die Tagesprognose. Oben live, darunter Mittag mit Einspeisung und Speicher.', static function (string $s) use ($v, $snap, $staticGraph): void {
+    echo ui_energy_flow(Energy::flowGraph($v, $snap['balance'], Snapshot::flowForecast($snap)), ['id' => 'g-ef-live-' . $s, 'car' => 'ID.3', 'links' => false]);
     echo ui_energy_flow($staticGraph, ['id' => 'g-ef-noon-' . $s, 'car' => 'ID.3', 'links' => false, 'static' => true]);
 });
 

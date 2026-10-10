@@ -155,12 +155,12 @@ final class Energy
     }
 
     /**
-     * Energie-Flow: wer wen versorgt, als Linien zwischen Sonne, Netz, Speicher und Verbrauch (Haus mit Auto).
-     * Die Sonne deckt zuerst den Verbrauch, dann lädt sie den Speicher, der Rest geht ins Netz. Der Speicher
-     * deckt danach den Verbrauch, das Netz den Rest und, was der Speicher sonst noch lädt. Haus und Auto teilen
-     * sich die Quellen anteilig; mix sagt, wie viel Sonne, Speicher und Netz im Verbrauch steckt.
+     * Energie-Flow Rein → Raus: wer wen versorgt, von den Quellen Sonne, Speicher und Netz zu den Zielen Haus, Auto,
+     * Speicher und Einspeisung. Die Sonne deckt zuerst den Verbrauch, dann lädt sie den Speicher, der Rest geht ins
+     * Netz; danach deckt der Speicher den Verbrauch, das Netz den Rest und, was der Speicher sonst noch lädt. Haus und
+     * Auto teilen sich die Quellen anteilig. $forecast: today_kwh und remaining_kwh der Prognose, done_kwh gemessen.
      */
-    public static function flowGraph(array $values, array $balance): array
+    public static function flowGraph(array $values, array $balance, ?array $forecast = null): array
     {
         $read = static fn (mixed $value): float => $value === null ? 0.0 : max(0.0, (float) $value);
         $pv = $read($values['pv_kw'] ?? null);
@@ -178,26 +178,42 @@ final class Energy
         $gridUse = max(0.0, $use - $pvUse - $batteryUse);
         $gridBattery = max(0.0, $charge - $pvBattery);
         $batteryGrid = max(0.0, $discharge - $batteryUse);
+        $houseShare = $use > 0.01 ? $house / $use : 0.0;
+        $carShare = $use > 0.01 ? $car / $use : 0.0;
         $share = static fn (float $part): float => $use > 0.01 ? round($part / $use, 4) : 0.0;
         $r = static fn (float $kw): float => $kw < 0.01 ? 0.0 : round($kw, 3);
         $soc = isset($values['battery_soc']) ? round((float) $values['battery_soc'], 1) : null;
+        // Prognose an der Sonne: gemessen heute gegen die Prognose für den ganzen Tag.
+        $today = isset($forecast['today_kwh']) && $forecast['today_kwh'] !== null ? (float) $forecast['today_kwh'] : null;
+        $done = isset($forecast['done_kwh']) && $forecast['done_kwh'] !== null
+            ? (float) $forecast['done_kwh']
+            : ($today !== null && isset($forecast['remaining_kwh']) ? max(0.0, $today - (float) $forecast['remaining_kwh']) : null);
         return [
             'nodes' => [
-                'pv' => ['kw' => $r($pv)],
-                'grid' => ['in_kw' => $r($import), 'out_kw' => $r($export)],
-                'battery' => ['in_kw' => $r($charge), 'out_kw' => $r($discharge), 'soc' => $soc],
-                'home' => ['kw' => $r($use), 'house_kw' => $r($house)],
+                'sun' => [
+                    'kw' => $r($pv),
+                    'forecast_kwh' => $today === null ? null : round($today, 1),
+                    'done_kwh' => $done === null ? null : round($done, 1),
+                    'progress' => $today !== null && $today > 0.05 && $done !== null ? round(min(1.0, $done / $today), 3) : null,
+                ],
+                'battery_out' => ['kw' => $r($discharge), 'soc' => $soc],
+                'grid_in' => ['kw' => $r($import)],
+                'home' => ['kw' => $r($house)],
                 'car' => ['kw' => $r($car), 'soc' => isset($values['car_soc']) ? round((float) $values['car_soc']) : null],
+                'battery_in' => ['kw' => $r($charge), 'soc' => $soc],
+                'grid_out' => ['kw' => $r($export)],
             ],
             'links' => [
-                'pv_home' => $r($pvUse),
-                'pv_battery' => $r($pvBattery),
-                'pv_grid' => $r($pvGrid),
-                'grid_home' => $r($gridUse),
-                'grid_battery' => $r($gridBattery),
-                'battery_home' => $r($batteryUse),
+                'sun_home' => $r($pvUse * $houseShare),
+                'sun_car' => $r($pvUse * $carShare),
+                'sun_battery' => $r($pvBattery),
+                'sun_grid' => $r($pvGrid),
+                'battery_home' => $r($batteryUse * $houseShare),
+                'battery_car' => $r($batteryUse * $carShare),
                 'battery_grid' => $r($batteryGrid),
-                'home_car' => $r($car),
+                'grid_home' => $r($gridUse * $houseShare),
+                'grid_car' => $r($gridUse * $carShare),
+                'grid_battery' => $r($gridBattery),
             ],
             'mix' => ['sun' => $share($pvUse), 'battery' => $share($batteryUse), 'grid' => $share($gridUse)],
         ];

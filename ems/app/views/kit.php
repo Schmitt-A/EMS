@@ -407,10 +407,11 @@ function ui_flow_table(array $rows, string $id = 'flow-table', bool $static = fa
 }
 
 /**
- * Energie-Flow: Kreise für Sonne, Netz, Verbrauch, Speicher und Auto; dazwischen Linien, auf denen Punkte von der
- * Quelle zum Ziel laufen, je mehr Leistung, desto schneller. Die Ringe an Verbrauch und Auto zeigen, wie viel
- * Sonne, Speicher und Netz darin steckt. Daten aus Energy::flowGraph(); components/energy-flow.js aktualisiert Werte,
- * Linien (data-speed) und Ringe (SVG-Attribute). Lage der Kreise: viewBox 400 × 420, gleich in CSS.
+ * Energie-Flow Rein → Raus: links die Quellen Sonne, Speicher und Netz, rechts die Ziele Haus, Auto, Speicher und
+ * Einspeisung, wie die Tabelle Rein und Raus. Die Linien zeichnet components/energy-flow.js zwischen den Kreisen,
+ * je Quelle zu jedem Ziel, das sie gerade versorgt, breiter bei mehr Leistung; Punkte laufen in der Farbe der Quelle
+ * von links nach rechts. Der Ring der Sonne zeigt, wie viel der Tagesprognose schon erzeugt ist, die Ringe von Haus
+ * und Auto die Mischung aus Sonne, Speicher und Netz. Daten aus Energy::flowGraph().
  * opts: id, static, car (Name des Autos), links (bool: Kreise führen zu Prognose, Speicher, Ladepunkt)
  */
 function ui_energy_flow(array $graph, array $opts = []): string
@@ -418,78 +419,49 @@ function ui_energy_flow(array $graph, array $opts = []): string
     $id = (string) ($opts['id'] ?? 'energy-flow');
     $links = $opts['links'] ?? true;
     $n = $graph['nodes'];
-    $l = $graph['links'];
     $mix = $graph['mix'];
-    // Takt der Punkte wie in energy-flow.js: unter 0,3 kW Stufe 1, ab 8 kW Stufe 6.
-    $speed = static function (float $kw): int {
-        foreach ([[0.3, 1], [1.0, 2], [2.5, 3], [5.0, 4], [8.0, 5]] as [$limit, $step]) {
-            if ($kw < $limit) {
-                return $step;
-            }
-        }
-        return 6;
-    };
-    // Wege von der Quelle zum Ziel; laufen beide Richtungen über dieselbe Strecke, gibt es zwei Wege.
-    $paths = [
-        'pv_grid' => ['M200,78 C200,180 166,210 64,210', 'grid-out', 'pv-grid'],
-        'pv_home' => ['M200,78 C200,180 234,210 336,210', 'solar', 'pv-home'],
-        'pv_battery' => ['M200,78 L200,342', 'solar', 'pv-battery'],
-        'grid_home' => ['M64,210 L336,210', 'grid-in', 'grid-home'],
-        'grid_battery' => ['M64,210 C166,210 200,240 200,342', 'grid-in', 'grid-battery'],
-        'battery_grid' => ['M200,342 C200,240 166,210 64,210', 'battery', 'grid-battery'],
-        'battery_home' => ['M200,342 C200,240 234,210 336,210', 'battery', 'battery-home'],
-        'home_car' => ['M336,210 L336,342', 'v1', 'home-car'],
-    ];
-    $tracks = '';
-    $flows = '';
-    $seen = [];
-    foreach ($paths as $key => [$d, $color, $track]) {
-        if (!isset($seen[$track])) {
-            $seen[$track] = true;
-            $tracks .= '<path class="ef-track" d="' . $d . '" data-track="' . $track . '"></path>';
-        }
-        $kw = (float) ($l[$key] ?? 0);
-        $flows .= '<path class="ef-dots c-' . $color . '" d="' . $d . '" data-link="' . $key . '" data-track-of="' . $track . '" data-speed="' . $speed($kw) . '"' . ($kw < 0.01 ? ' data-idle' : '') . '></path>';
-    }
-    $value = static fn (string $key, string $text, string $class = 'ef-value'): string => '<span class="' . $class . '" data-ef="' . $key . '">' . e($text) . '</span>';
-    // Ring um den Kreis: bei Verbrauch und Auto drei Bögen für Sonne, Speicher und Netz, sonst ein ganzer Ring.
-    $ring = static function (bool $split) use ($mix): string {
-        $html = '<svg class="ef-ring" viewBox="0 0 100 100" aria-hidden="true"><circle class="ef-ring-base" cx="50" cy="50" r="47" pathLength="100"></circle>';
-        if ($split) {
+    $car = (string) ($opts['car'] ?? 'Auto');
+    $soc = static fn (?float $value): string => $value === null ? '' : pct($value);
+    $arc = static fn (string $part, float $len, float $from, string $color): string => '<circle class="ef-arc c-' . $color . '" cx="50" cy="50" r="46" pathLength="100" stroke-dasharray="' . round($len, 2) . ' ' . round(100 - $len, 2) . '" stroke-dashoffset="' . round(-$from, 2) . '" data-arc="' . $part . '"></circle>';
+    // Ring: Fortschritt der Prognose (Sonne), Mischung (Haus, Auto) oder ganz in der Farbe des Kreises.
+    $ring = static function (string $kind) use ($n, $mix, $arc): string {
+        $html = '<svg class="ef-ring" viewBox="0 0 100 100" aria-hidden="true"><circle class="ef-ring-base" cx="50" cy="50" r="46" pathLength="100"></circle>';
+        if ($kind === 'progress') {
+            $html .= $arc('progress', max(0.0, (float) ($n['sun']['progress'] ?? 1)) * 100, 0, 'solar');
+        } elseif ($kind === 'mix') {
             $from = 0.0;
             foreach (['sun' => 'solar', 'battery' => 'battery', 'grid' => 'grid-in'] as $part => $color) {
-                $len = round(max(0.0, (float) ($mix[$part] ?? 0)) * 100, 2);
-                $html .= '<circle class="ef-arc c-' . $color . '" cx="50" cy="50" r="47" pathLength="100" stroke-dasharray="' . $len . ' ' . (100 - $len) . '" stroke-dashoffset="' . round(-$from, 2) . '" data-arc="' . $part . '"></circle>';
+                $len = max(0.0, (float) ($mix[$part] ?? 0)) * 100;
+                $html .= $arc($part, $len, $from, $color);
                 $from += $len;
             }
         }
         return $html . '</svg>';
     };
-    $node = static function (string $key, string $label, string $inner, string $aria, ?string $href, bool $split = false, string $sub = '') use ($ring, $links): string {
+    $node = static function (string $key, string $label, string $sub, string $glyph, string $aria, ?string $href, string $kind) use ($n, $ring, $links): string {
         $tag = $links && $href !== null ? 'a' : 'div';
         $attrs = $tag === 'a' ? ' href="' . e($href) . '"' : ' role="img"';
-        return '<div class="ef-node ef-' . $key . '" data-ef-node="' . $key . '">'
-            . '<span class="ef-label">' . e($label) . $sub . '</span>'
-            . '<' . $tag . ' class="ef-circle"' . $attrs . ' aria-label="' . e($aria) . '" data-ef-aria="' . $key . '">' . $ring($split) . '<span class="ef-inner">' . $inner . '</span></' . $tag . '>'
+        return '<div class="ef-node ef-' . str_replace('_', '-', $key) . '" data-ef-node="' . $key . '"' . ((float) $n[$key]['kw'] < 0.01 ? ' data-idle' : '') . '>'
+            . '<' . $tag . ' class="ef-circle"' . $attrs . ' aria-label="' . e($aria) . '" data-ef-aria="' . $key . '">' . $ring($kind)
+            . '<span class="ef-inner">' . icon($glyph, 'icon-20') . '<span class="ef-value" data-ef="' . $key . '">' . e(kw((float) $n[$key]['kw'])) . '</span></span></' . $tag . '>'
+            . '<span class="ef-label">' . e($label) . '<span class="ef-sub" data-ef="' . $key . '_sub">' . e($sub) . '</span></span>'
             . '</div>';
     };
-    $car = (string) ($opts['car'] ?? 'Auto');
-    $socText = static fn (?float $soc): string => $soc === null ? '' : pct($soc);
-    $html = '<figure class="ef" id="' . e($id) . '" data-energy-flow="' . e(ui_json($graph)) . '"' . (!empty($opts['static']) ? ' data-static' : '') . ' aria-labelledby="' . e($id) . '-sum">'
-        . '<figcaption class="sr-only" id="' . e($id) . '-sum" data-ef-summary></figcaption>'
-        . '<svg class="ef-links" viewBox="0 0 400 420" aria-hidden="true">' . $tracks . $flows . '</svg>'
-        . $node('pv', 'Sonne', icon('sun', 'icon-20') . $value('pv', kw($n['pv']['kw'])), 'Sonne ' . kw($n['pv']['kw']), url('/prognose'))
-        . $node('grid', 'Netz', icon('utility-pole', 'icon-20') . '<span class="ef-pair">' . $value('grid_in', '→ ' . kw($n['grid']['in_kw']), 'ef-in')
-            . $value('grid_out', '← ' . kw($n['grid']['out_kw']), 'ef-out') . '</span>', 'Netz: Bezug ' . kw($n['grid']['in_kw']) . ', Einspeisung ' . kw($n['grid']['out_kw']), null)
-        . $node('home', 'Verbrauch', icon('house', 'icon-20') . $value('home', kw($n['home']['kw'])), 'Verbrauch ' . kw($n['home']['kw']), null, true,
-            '<span class="ef-sub" data-ef="house">' . e('Haus ' . kw($n['home']['house_kw'])) . '</span>')
-        . $node('battery', 'Speicher', icon('battery', 'icon-20') . '<span class="ef-pair">'
-            . $value('battery_out', '↑ ' . kw($n['battery']['out_kw']), 'ef-out') . $value('battery_in', '↓ ' . kw($n['battery']['in_kw']), 'ef-in') . '</span>',
-            'Speicher ' . $socText($n['battery']['soc']) . ', lädt ' . kw($n['battery']['in_kw']) . ', entlädt ' . kw($n['battery']['out_kw']), url('/speicher'), false,
-            '<span class="ef-sub" data-ef="battery_soc">' . e($socText($n['battery']['soc'])) . '</span>')
-        . $node('car', $car, icon('car', 'icon-20') . $value('car', kw($n['car']['kw'])), $car . ' lädt mit ' . kw($n['car']['kw']), '#cp', true,
-            '<span class="ef-sub" data-ef="car_soc">' . e($socText($n['car']['soc'])) . '</span>');
-    return $html . '</figure>';
+    $sun = $n['sun'];
+    $sunSub = $sun['forecast_kwh'] === null ? '' : num($sun['done_kwh'] ?? 0, 1) . ' von ' . kwh((float) $sun['forecast_kwh']);
+    $in = $node('sun', 'Sonne', $sunSub, 'sun', 'Sonne ' . kw((float) $sun['kw']) . ($sunSub !== '' ? ', heute ' . $sunSub : ''), url('/prognose'), 'progress')
+        . $node('battery_out', 'Speicher', $soc($n['battery_out']['soc']), 'battery', 'Speicher entlädt ' . kw((float) $n['battery_out']['kw']), url('/speicher'), 'full')
+        . $node('grid_in', 'Netz', '', 'utility-pole', 'Netzbezug ' . kw((float) $n['grid_in']['kw']), null, 'full');
+    $out = $node('home', 'Haus', '', 'house', 'Haus ' . kw((float) $n['home']['kw']), null, 'mix')
+        . $node('car', $car, $soc($n['car']['soc']), 'car', $car . ' lädt mit ' . kw((float) $n['car']['kw']), '#cp', 'mix')
+        . $node('battery_in', 'Speicher', $soc($n['battery_in']['soc']), 'battery', 'Speicher lädt ' . kw((float) $n['battery_in']['kw']), url('/speicher'), 'full')
+        . $node('grid_out', 'Einspeisung', '', 'utility-pole', 'Einspeisung ' . kw((float) $n['grid_out']['kw']), null, 'full');
+    return '<figure class="ef" id="' . e($id) . '" data-energy-flow="' . e(ui_json($graph)) . '"' . (!empty($opts['static']) ? ' data-static' : '') . ' aria-labelledby="' . e($id) . '-sum">'
+        . '<figcaption class="sr-only" id="' . e($id) . '-sum" data-ef-summary>Energie-Flow</figcaption>'
+        . '<svg class="ef-links" aria-hidden="true"></svg>'
+        . '<div class="ef-col ef-col-in"><p class="ef-head">Rein</p><div class="ef-stack">' . $in . '</div></div>'
+        . '<div class="ef-col ef-col-out"><p class="ef-head">Raus</p><div class="ef-stack">' . $out . '</div></div>'
+        . '</figure>';
 }
 
 /** 7.5 Heimspeicher-Säule mit drei Zonen. */
