@@ -1,7 +1,9 @@
 <?php
 declare(strict_types=1);
 /**
- * Laden (Home, 8): Energiefluss-Balken, Ladepunkt-Karte und darunter die Regelung. Ebene 2: Ladepunkt-Einstellungen, Fahrzeug, Energieübersicht.
+ * Laden (Home, 8): Energiefluss als Balken oder Energie-Flow (Einstellungen → Darstellung) vor dem Hintergrund, darunter
+ * Rein und Raus in einer Karte, dann Ladepunkt und Regelung. Ebene 2: Ladepunkt-Einstellungen, Ladeziel, Fahrzeug,
+ * Energieübersicht.
  * @var array $snap
  * @var array $live
  * @var array $overview
@@ -57,9 +59,16 @@ $rows = [
 ];
 ?>
 <div class="home-grid">
-  <section class="card" aria-labelledby="flow-title">
+  <section class="home-flow" aria-labelledby="flow-title">
     <h2 class="sr-only" id="flow-title">Energiefluss</h2>
-    <?= ui_flow(Energy::flowBar($v, $b), $rows) ?>
+<?php if (($snap['cfg']['ui']['flow_view'] ?? 'bar') === 'graph'): ?>
+    <?= ui_energy_flow(Energy::flowGraph($v, $b), ['car' => (string) $vehicle['name']]) ?>
+<?php else: ?>
+    <?= ui_flow_bar(Energy::flowBar($v, $b)) ?>
+<?php endif; ?>
+  </section>
+  <section class="card home-table" aria-label="Rein und Raus">
+    <?= ui_flow_table($rows) ?>
   </section>
   <?= ui_chargepoint($cp, ['id' => 'cp', 'live' => true]) ?>
   <?= ui_control($snap['control'], $c, $strategy, ['live' => true]) ?>

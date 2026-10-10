@@ -142,7 +142,8 @@ final class ConfigStore
             // capacity_kwh: Akku des Autos, wenn keine Entität ihn meldet (Tesla BLE meldet keinen).
             'vehicle' => ['name' => 'Auto', 'limit_soc' => 80.0, 'capacity_kwh' => null],
             'weather' => ['url' => 'https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/single_stations/F9519/kml/MOSMIX_L_LATEST_F9519.kmz'],
-            'ui' => ['theme' => 'system'],
+            // flow_view: Energiefluss auf Laden als Balken ('bar') oder Energie-Flow ('graph').
+            'ui' => ['theme' => 'system', 'flow_view' => 'bar'],
         ];
     }
 

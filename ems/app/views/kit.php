@@ -334,12 +334,10 @@ function ui_ring(array $parts, string $total, string $sub, string $label): strin
 }
 
 /**
- * 7.1 Energiefluss-Balken: oben spannen Klammern die Quellen, unten die Verbraucher, jede Seite über die ganze
- * Breite. Jede Klammer trägt Icon und Leistung, beim Speicher auch den Ladestand. Darunter Legende und Detail-Liste.
- * @param array $flow Ergebnis von Energy::flowBar()
- * @param array{in: list<array>, out: list<array>, in_kw: ?float, out_kw: ?float} $rows
+ * 7.1 Energiefluss als Balken: Klammern oben für die Quellen, unten für die Verbraucher, jede Seite über die ganze
+ * Breite. Steht auf Laden ohne Karte vor dem Hintergrund; die Tabelle Rein und Raus liefert ui_flow_table().
  */
-function ui_flow(array $flow, array $rows, string $id = 'flow'): string
+function ui_flow_bar(array $flow, string $id = 'flow', bool $static = false): string
 {
     $labels = ['grid_in' => 'Netzbezug', 'battery' => 'Speicher', 'solar' => 'Eigenverbrauch', 'grid_out' => 'Einspeisung'];
     $segmentKw = [];
@@ -374,8 +372,22 @@ function ui_flow(array $flow, array $rows, string $id = 'flow'): string
     };
     $top = ['grid' => ['utility-pole', 'grid-in'], 'battery' => ['battery', 'battery'], 'pv' => ['sun', 'solar']];
     $bottom = ['house' => ['house', ''], 'wallbox' => ['car', ''], 'battery' => ['battery', 'battery'], 'grid' => ['utility-pole', 'grid-out']];
-    // Beide Seiten haben vier Zeilen auf denselben Höhen: Speicher neben Speicher, Netz neben Einspeisung.
-    // Eine Zeile mit 'value' (fertiges HTML) statt 'kw' zeigt keine Leistung, 'muted' setzt sie dezenter ab.
+    return '<figure class="flow" id="' . e($id) . '" data-flow="' . e(ui_json($flow)) . '"' . ($static ? ' data-static' : '') . '>'
+        . '<div class="flow-track">' . $brackets($top, 'top', $flow['sources'] ?? [])
+        . '<div class="flow-bar" role="img" aria-label="Energiefluss" data-flow-bar>' . $bar . '</div>'
+        . $brackets($bottom, 'bottom', $flow['sinks'] ?? []) . '</div>'
+        . '<div class="flow-sides" aria-hidden="true"><span>Rein</span><span>Raus</span></div>'
+        . '<figcaption class="flow-legend caption">' . $legend . '</figcaption>'
+        . '</figure>';
+}
+
+/**
+ * Tabelle Rein und Raus in einer Karte: mobil per Knopf aufklappbar, ab 640 px immer offen. Beide Seiten haben
+ * dieselben Zeilenhöhen, Speicher neben Speicher und Netz neben Einspeisung. Eine Zeile mit 'value' (fertiges HTML)
+ * statt 'kw' zeigt keine Leistung, 'muted' setzt sie dezenter ab.
+ */
+function ui_flow_table(array $rows, string $id = 'flow-table', bool $static = false): string
+{
     $column = static function (string $title, string $side, ?float $sum, array $items): string {
         $html = '<div class="flow-side" data-flow-side="' . $side . '"><div class="flow-col-head"><h3 class="flow-col-title">' . e($title) . '</h3><span class="flow-col-sum" data-flow-sum>' . e(kw($sum)) . '</span></div><ul class="plain-list flow-list" role="list">';
         foreach ($items as $item) {
@@ -386,15 +398,98 @@ function ui_flow(array $flow, array $rows, string $id = 'flow'): string
         }
         return $html . '</ul></div>';
     };
-    return '<figure class="flow" id="' . e($id) . '" data-flow="' . e(ui_json($flow)) . '">'
-        . '<div class="flow-track">' . $brackets($top, 'top', $flow['sources'] ?? [])
-        . '<div class="flow-bar" role="img" aria-label="Energiefluss" data-flow-bar>' . $bar . '</div>'
-        . $brackets($bottom, 'bottom', $flow['sinks'] ?? []) . '</div>'
-        . '<div class="flow-sides" aria-hidden="true"><span>Rein</span><span>Raus</span></div>'
-        . '<figcaption class="flow-legend caption">' . $legend . '</figcaption>'
-        . '<button type="button" class="flow-toggle" aria-expanded="false" aria-controls="' . e($id) . '-details" data-flow-toggle>Rein und Raus im Detail' . icon('chevron-down', 'icon-16') . '</button>'
+    // Zugeklappt (mobil) stehen die Summen im Knopf.
+    $sum = static fn (string $key): string => $static ? ui_num($rows[$key] ?? null, 'kW') : ui_live_num('flow_rows.' . $key, $rows[$key] ?? null, 'kW');
+    return '<div class="flow-table" id="' . e($id) . '" data-flow-rows' . ($static ? ' data-static' : '') . '>'
+        . '<button type="button" class="flow-toggle" aria-expanded="false" aria-controls="' . e($id) . '-details" data-flow-toggle><span class="flow-toggle-text">Rein ' . $sum('in_kw') . ' · Raus ' . $sum('out_kw') . '</span>' . icon('chevron-down', 'icon-16') . '<span class="sr-only">, im Detail</span></button>'
         . '<div class="flow-columns" id="' . e($id) . '-details" data-collapsed>' . $column('Rein', 'in', $rows['in_kw'] ?? null, $rows['in']) . $column('Raus', 'out', $rows['out_kw'] ?? null, $rows['out']) . '</div>'
-        . '</figure>';
+        . '</div>';
+}
+
+/**
+ * Energie-Flow: Kreise für Sonne, Netz, Verbrauch, Speicher und Auto; dazwischen Linien, auf denen Punkte von der
+ * Quelle zum Ziel laufen, je mehr Leistung, desto schneller. Die Ringe an Verbrauch und Auto zeigen, wie viel
+ * Sonne, Speicher und Netz darin steckt. Daten aus Energy::flowGraph(); components/energy-flow.js aktualisiert Werte,
+ * Linien (data-speed) und Ringe (SVG-Attribute). Lage der Kreise: viewBox 400 × 420, gleich in CSS.
+ * opts: id, static, car (Name des Autos), links (bool: Kreise führen zu Prognose, Speicher, Ladepunkt)
+ */
+function ui_energy_flow(array $graph, array $opts = []): string
+{
+    $id = (string) ($opts['id'] ?? 'energy-flow');
+    $links = $opts['links'] ?? true;
+    $n = $graph['nodes'];
+    $l = $graph['links'];
+    $mix = $graph['mix'];
+    // Takt der Punkte wie in energy-flow.js: unter 0,3 kW Stufe 1, ab 8 kW Stufe 6.
+    $speed = static function (float $kw): int {
+        foreach ([[0.3, 1], [1.0, 2], [2.5, 3], [5.0, 4], [8.0, 5]] as [$limit, $step]) {
+            if ($kw < $limit) {
+                return $step;
+            }
+        }
+        return 6;
+    };
+    // Wege von der Quelle zum Ziel; laufen beide Richtungen über dieselbe Strecke, gibt es zwei Wege.
+    $paths = [
+        'pv_grid' => ['M200,78 C200,180 166,210 64,210', 'grid-out', 'pv-grid'],
+        'pv_home' => ['M200,78 C200,180 234,210 336,210', 'solar', 'pv-home'],
+        'pv_battery' => ['M200,78 L200,342', 'solar', 'pv-battery'],
+        'grid_home' => ['M64,210 L336,210', 'grid-in', 'grid-home'],
+        'grid_battery' => ['M64,210 C166,210 200,240 200,342', 'grid-in', 'grid-battery'],
+        'battery_grid' => ['M200,342 C200,240 166,210 64,210', 'battery', 'grid-battery'],
+        'battery_home' => ['M200,342 C200,240 234,210 336,210', 'battery', 'battery-home'],
+        'home_car' => ['M336,210 L336,342', 'v1', 'home-car'],
+    ];
+    $tracks = '';
+    $flows = '';
+    $seen = [];
+    foreach ($paths as $key => [$d, $color, $track]) {
+        if (!isset($seen[$track])) {
+            $seen[$track] = true;
+            $tracks .= '<path class="ef-track" d="' . $d . '" data-track="' . $track . '"></path>';
+        }
+        $kw = (float) ($l[$key] ?? 0);
+        $flows .= '<path class="ef-dots c-' . $color . '" d="' . $d . '" data-link="' . $key . '" data-track-of="' . $track . '" data-speed="' . $speed($kw) . '"' . ($kw < 0.01 ? ' data-idle' : '') . '></path>';
+    }
+    $value = static fn (string $key, string $text, string $class = 'ef-value'): string => '<span class="' . $class . '" data-ef="' . $key . '">' . e($text) . '</span>';
+    // Ring um den Kreis: bei Verbrauch und Auto drei Bögen für Sonne, Speicher und Netz, sonst ein ganzer Ring.
+    $ring = static function (bool $split) use ($mix): string {
+        $html = '<svg class="ef-ring" viewBox="0 0 100 100" aria-hidden="true"><circle class="ef-ring-base" cx="50" cy="50" r="47" pathLength="100"></circle>';
+        if ($split) {
+            $from = 0.0;
+            foreach (['sun' => 'solar', 'battery' => 'battery', 'grid' => 'grid-in'] as $part => $color) {
+                $len = round(max(0.0, (float) ($mix[$part] ?? 0)) * 100, 2);
+                $html .= '<circle class="ef-arc c-' . $color . '" cx="50" cy="50" r="47" pathLength="100" stroke-dasharray="' . $len . ' ' . (100 - $len) . '" stroke-dashoffset="' . round(-$from, 2) . '" data-arc="' . $part . '"></circle>';
+                $from += $len;
+            }
+        }
+        return $html . '</svg>';
+    };
+    $node = static function (string $key, string $label, string $inner, string $aria, ?string $href, bool $split = false, string $sub = '') use ($ring, $links): string {
+        $tag = $links && $href !== null ? 'a' : 'div';
+        $attrs = $tag === 'a' ? ' href="' . e($href) . '"' : ' role="img"';
+        return '<div class="ef-node ef-' . $key . '" data-ef-node="' . $key . '">'
+            . '<span class="ef-label">' . e($label) . $sub . '</span>'
+            . '<' . $tag . ' class="ef-circle"' . $attrs . ' aria-label="' . e($aria) . '" data-ef-aria="' . $key . '">' . $ring($split) . '<span class="ef-inner">' . $inner . '</span></' . $tag . '>'
+            . '</div>';
+    };
+    $car = (string) ($opts['car'] ?? 'Auto');
+    $socText = static fn (?float $soc): string => $soc === null ? '' : pct($soc);
+    $html = '<figure class="ef" id="' . e($id) . '" data-energy-flow="' . e(ui_json($graph)) . '"' . (!empty($opts['static']) ? ' data-static' : '') . ' aria-labelledby="' . e($id) . '-sum">'
+        . '<figcaption class="sr-only" id="' . e($id) . '-sum" data-ef-summary></figcaption>'
+        . '<svg class="ef-links" viewBox="0 0 400 420" aria-hidden="true">' . $tracks . $flows . '</svg>'
+        . $node('pv', 'Sonne', icon('sun', 'icon-20') . $value('pv', kw($n['pv']['kw'])), 'Sonne ' . kw($n['pv']['kw']), url('/prognose'))
+        . $node('grid', 'Netz', icon('utility-pole', 'icon-20') . '<span class="ef-pair">' . $value('grid_in', '→ ' . kw($n['grid']['in_kw']), 'ef-in')
+            . $value('grid_out', '← ' . kw($n['grid']['out_kw']), 'ef-out') . '</span>', 'Netz: Bezug ' . kw($n['grid']['in_kw']) . ', Einspeisung ' . kw($n['grid']['out_kw']), null)
+        . $node('home', 'Verbrauch', icon('house', 'icon-20') . $value('home', kw($n['home']['kw'])), 'Verbrauch ' . kw($n['home']['kw']), null, true,
+            '<span class="ef-sub" data-ef="house">' . e('Haus ' . kw($n['home']['house_kw'])) . '</span>')
+        . $node('battery', 'Speicher', icon('battery', 'icon-20') . '<span class="ef-pair">'
+            . $value('battery_out', '↑ ' . kw($n['battery']['out_kw']), 'ef-out') . $value('battery_in', '↓ ' . kw($n['battery']['in_kw']), 'ef-in') . '</span>',
+            'Speicher ' . $socText($n['battery']['soc']) . ', lädt ' . kw($n['battery']['in_kw']) . ', entlädt ' . kw($n['battery']['out_kw']), url('/speicher'), false,
+            '<span class="ef-sub" data-ef="battery_soc">' . e($socText($n['battery']['soc'])) . '</span>')
+        . $node('car', $car, icon('car', 'icon-20') . $value('car', kw($n['car']['kw'])), $car . ' lädt mit ' . kw($n['car']['kw']), '#cp', true,
+            '<span class="ef-sub" data-ef="car_soc">' . e($socText($n['car']['soc'])) . '</span>');
+    return $html . '</figure>';
 }
 
 /** 7.5 Heimspeicher-Säule mit drei Zonen. */

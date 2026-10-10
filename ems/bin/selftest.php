@@ -97,6 +97,11 @@ $keepSpare = Energy::suggest($sunnyFull, ['mode' => 'smart_dauerhaft'] + $solarC
 check($keepSpare['flows']['grid_kw'] < 0.001 && Energy::batteryFor('smart', ['protect' => true])['protect'] === false && Energy::batteryFor('schnell', ['protect' => true])['protect'] === true, 'Geschont wird nur beim Netzladen');
 $exporting = Energy::allot(1.38, 'smart_dauerhaft', ['pv_kw' => 5.0, 'house_base_kw' => 0.5, 'battery_charge_kw' => 3.0, 'battery_discharge_kw' => 0.0, 'grid_export_kw' => 1.5, 'battery_soc' => 40]);
 check(abs($exporting['sun_kw'] - 1.38) < 0.001 && abs($exporting['charge_kw'] - 3.0) < 0.001 && abs($exporting['export_kw'] - 0.12) < 0.001, 'Lädt der Speicher schon voll, geht der Rest der Sonne ins Netz');
+// Energie-Flow: Sonne zuerst in den Verbrauch, dann Speicher, Rest ins Netz; Haus und Auto teilen sich die Quellen.
+$graph = Energy::flowGraph(['pv_kw' => 7.8, 'battery_charge_kw' => 1.6, 'battery_discharge_kw' => 0.0, 'grid_import_kw' => 0.0, 'grid_export_kw' => 1.3, 'wallbox_kw' => 4.1, 'battery_soc' => 64.0, 'car_soc' => 57.0], ['house_base_kw' => 0.8]);
+check($graph['links']['pv_home'] === 4.9 && $graph['links']['pv_battery'] === 1.6 && abs($graph['links']['pv_grid'] - 1.3) < 0.001 && $graph['links']['grid_home'] === 0.0 && $graph['links']['home_car'] === 4.1 && $graph['mix']['sun'] === 1.0, 'Energie-Flow mittags: Sonne versorgt Haus und Auto, lädt den Speicher, der Rest geht ins Netz');
+$evening = Energy::flowGraph(['pv_kw' => 0.0, 'battery_charge_kw' => 0.0, 'battery_discharge_kw' => 3.0, 'grid_import_kw' => 1.9, 'grid_export_kw' => 0.0, 'wallbox_kw' => 4.1, 'battery_soc' => 60.0], ['house_base_kw' => 0.8]);
+check($evening['links']['battery_home'] === 3.0 && abs($evening['links']['grid_home'] - 1.9) < 0.001 && abs($evening['mix']['battery'] - 0.6122) < 0.001 && $evening['nodes']['home']['kw'] === 4.9, 'Energie-Flow abends: Speicher zuerst, den Rest das Netz, Anteile am Verbrauch');
 check(abs(Energy::distanceKm(100.0, 'mi')[0] - 160.9344) < 0.0001 && Energy::distanceKm(42.0, 'km')[0] === 42.0 && Energy::distanceKm(1.0, 'kWh')[0] === null, 'Meilen werden Kilometer');
 
 // Backup-Puffer beim Netzladen: anheben, halten, zurücksetzen

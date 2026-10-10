@@ -374,6 +374,7 @@ final class Snapshot
             'battery_surplus' => $this->surplusText($snap['storage'] ?? [], isset($snap['house_mean_kw']) && $snap['house_mean_kw'] !== null, $snap['house_mean_kw'] ?? null),
             'remaining_kwh' => $f['remaining_kwh'] ?? null,
             'flow' => Energy::flowBar($v, $b),
+            'flow_graph' => Energy::flowGraph($v, $b),
             'flow_rows' => self::flowRows($v, $b, $f),
             'chargepoint' => $snap['chargepoint'],
             'vehicle' => $snap['vehicle'],

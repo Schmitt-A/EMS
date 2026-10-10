@@ -29,6 +29,10 @@ $staticFlow = Energy::flowBar(
     ['pv_kw' => 7.8, 'battery_discharge_kw' => 0.0, 'grid_import_kw' => 0.0, 'wallbox_kw' => 4.1, 'battery_charge_kw' => 1.6, 'grid_export_kw' => 1.3],
     ['house_base_kw' => 0.8]
 );
+$staticGraph = Energy::flowGraph(
+    ['pv_kw' => 7.8, 'battery_discharge_kw' => 0.0, 'battery_charge_kw' => 1.6, 'battery_soc' => 64.0, 'grid_import_kw' => 0.0, 'grid_export_kw' => 1.3, 'wallbox_kw' => 4.1, 'car_soc' => 57.0],
+    ['house_base_kw' => 0.8]
+);
 $vehicle = ['name' => 'ID.3', 'status' => 'Lädt …', 'soc' => 57.0, 'range_km' => 296.0, 'limit' => 80.0, 'range_at_limit' => 416.0];
 $cards = [
     'Lädt mit Ziel und Übersicht' => ['name' => 'Garage', 'mode' => 'smart', 'charging' => true, 'solar_only' => true, 'power_kw' => 7.36, 'phases' => 3, 'session_kwh' => 12.4, 'remaining_s' => 4300, 'vehicle' => $vehicle,
@@ -114,10 +118,16 @@ $section('Badges, Pills, Tooltips, Legende', 'Peak-Badge in Datenfarbe, Status-P
     echo '<div class="legend caption"><span class="legend-item"><span class="swatch swatch-solar"></span>Eigenverbrauch</span><span class="legend-item"><span class="swatch swatch-grid-in"></span>Netzbezug</span><span class="legend-item"><span class="swatch swatch-grid-out"></span>Einspeisung</span><span class="legend-item"><span class="swatch swatch-battery"></span>Speicher</span></div>';
 });
 
-$section('Energiefluss-Balken', 'Signatur-Komponente: Quellen oben, Verbraucher unten, Werte ab 56 px Segmentbreite. Oben die Demo-Anlage live, darunter Mittag mit Einspeisung.', static function (string $s) use ($flow, $rows, $staticFlow): void {
-    echo '<div class="card">' . ui_flow($flow, $rows, 'g-flow-live-' . $s) . '</div>';
-    echo '<div class="card">' . str_replace('<figure class="flow"', '<figure class="flow" data-static', ui_flow($staticFlow, ['in' => [], 'out' => [], 'in_kw' => 7.8, 'out_kw' => 7.8], 'g-flow-noon-' . $s)) . '</div>';
+$section('Energiefluss-Balken', 'Signatur-Komponente vor dem Hintergrund: Quellen oben, Verbraucher unten, Werte ab 56 px Segmentbreite. Oben die Demo-Anlage live, darunter Mittag mit Einspeisung, dann Rein und Raus in der Karte.', static function (string $s) use ($flow, $rows, $staticFlow): void {
+    echo ui_flow_bar($flow, 'g-flow-live-' . $s);
+    echo ui_flow_bar($staticFlow, 'g-flow-noon-' . $s, true);
+    echo '<div class="card">' . ui_flow_table($rows, 'g-flow-table-' . $s) . '</div>';
     echo '<div class="card"><p class="caption muted">Laden</p><div class="skeleton sk-bar"></div></div>';
+});
+
+$section('Energie-Flow', 'Alternative zum Balken: Kreise mit Ringen für die Mischung aus Sonne, Speicher und Netz, Punkte laufen von der Quelle zum Ziel. Oben live, darunter Mittag mit Einspeisung und Speicher.', static function (string $s) use ($v, $snap, $staticGraph): void {
+    echo ui_energy_flow(Energy::flowGraph($v, $snap['balance']), ['id' => 'g-ef-live-' . $s, 'car' => 'ID.3', 'links' => false]);
+    echo ui_energy_flow($staticGraph, ['id' => 'g-ef-noon-' . $s, 'car' => 'ID.3', 'links' => false, 'static' => true]);
 });
 
 $section('Ladepunkt-Karte mit Ladebalken', 'Modus, Leistung mit Phasen, Ladeziel, Übersicht des Ladevorgangs, Fahrzeug, Ladebalken mit ziehbarem Limit. Zustände: lädt mit Ziel, wartet, Daten fehlen.', static function (string $s) use ($cards, $state): void {

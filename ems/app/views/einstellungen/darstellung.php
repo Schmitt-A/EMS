@@ -1,7 +1,8 @@
 <?php
 declare(strict_types=1);
 /**
- * Einstellungen → Darstellung: Farbschema. Mit JS wechselt es sofort und wird per /api/darstellung gespeichert.
+ * Einstellungen → Darstellung: Farbschema (mit JS sofort, gespeichert per /api/darstellung) und ob Laden den
+ * Energiefluss als Balken oder als Energie-Flow zeigt.
  * @var array $cfg
  * @var string $back
  */
@@ -20,6 +21,19 @@ $theme = (string) ($cfg['ui']['theme'] ?? 'system');
     <noscript><div class="form-actions"><button class="btn btn-primary" type="submit">Darstellung speichern</button></div></noscript>
   </form>
   <p class="body-sm muted">System folgt der Einstellung von Telefon oder Rechner. Die Wahl gilt für alle, die EMS öffnen.</p>
+</section>
+<section class="card stack" aria-labelledby="flowview-title">
+  <h3 class="card-title" id="flowview-title">Energiefluss auf Laden</h3>
+  <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack" data-autosubmit>
+    <?= csrf_field() ?>
+    <input type="hidden" name="section" value="flow_view"><input type="hidden" name="back" value="<?= e($back) ?>">
+    <?= ui_segment('flow_view', 'Energiefluss auf Laden', [
+        'bar' => ['label' => 'Balken', 'icon' => 'chart-column'],
+        'graph' => ['label' => 'Energie-Flow', 'icon' => 'activity'],
+    ], (string) ($cfg['ui']['flow_view'] ?? 'bar'), ['id' => 'f-flow-view']) ?>
+    <noscript><div class="form-actions"><button class="btn btn-primary" type="submit">Darstellung speichern</button></div></noscript>
+  </form>
+  <p class="body-sm muted">Balken: Quellen oben, Verbraucher unten, jede Seite über die ganze Breite. Energie-Flow: Kreise für Sonne, Netz, Verbrauch, Speicher und Auto, auf den Linien laufen Punkte dorthin, wohin die Energie fließt.</p>
 </section>
 <section class="card stack" aria-labelledby="ha-title">
   <h3 class="card-title" id="ha-title">In Home Assistant</h3>

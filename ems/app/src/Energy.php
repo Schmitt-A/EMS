@@ -154,6 +154,55 @@ final class Energy
         ];
     }
 
+    /**
+     * Energie-Flow: wer wen versorgt, als Linien zwischen Sonne, Netz, Speicher und Verbrauch (Haus mit Auto).
+     * Die Sonne deckt zuerst den Verbrauch, dann lädt sie den Speicher, der Rest geht ins Netz. Der Speicher
+     * deckt danach den Verbrauch, das Netz den Rest und, was der Speicher sonst noch lädt. Haus und Auto teilen
+     * sich die Quellen anteilig; mix sagt, wie viel Sonne, Speicher und Netz im Verbrauch steckt.
+     */
+    public static function flowGraph(array $values, array $balance): array
+    {
+        $read = static fn (mixed $value): float => $value === null ? 0.0 : max(0.0, (float) $value);
+        $pv = $read($values['pv_kw'] ?? null);
+        $charge = $read($values['battery_charge_kw'] ?? null);
+        $discharge = $read($values['battery_discharge_kw'] ?? null);
+        $house = $read($balance['house_base_kw'] ?? null);
+        $car = $read($values['wallbox_kw'] ?? null);
+        $import = $read($values['grid_import_kw'] ?? null);
+        $export = $read($values['grid_export_kw'] ?? null);
+        $use = $house + $car;
+        $pvUse = min($pv, $use);
+        $pvBattery = min($pv - $pvUse, $charge);
+        $pvGrid = max(0.0, $pv - $pvUse - $pvBattery);
+        $batteryUse = min($discharge, $use - $pvUse);
+        $gridUse = max(0.0, $use - $pvUse - $batteryUse);
+        $gridBattery = max(0.0, $charge - $pvBattery);
+        $batteryGrid = max(0.0, $discharge - $batteryUse);
+        $share = static fn (float $part): float => $use > 0.01 ? round($part / $use, 4) : 0.0;
+        $r = static fn (float $kw): float => $kw < 0.01 ? 0.0 : round($kw, 3);
+        $soc = isset($values['battery_soc']) ? round((float) $values['battery_soc'], 1) : null;
+        return [
+            'nodes' => [
+                'pv' => ['kw' => $r($pv)],
+                'grid' => ['in_kw' => $r($import), 'out_kw' => $r($export)],
+                'battery' => ['in_kw' => $r($charge), 'out_kw' => $r($discharge), 'soc' => $soc],
+                'home' => ['kw' => $r($use), 'house_kw' => $r($house)],
+                'car' => ['kw' => $r($car), 'soc' => isset($values['car_soc']) ? round((float) $values['car_soc']) : null],
+            ],
+            'links' => [
+                'pv_home' => $r($pvUse),
+                'pv_battery' => $r($pvBattery),
+                'pv_grid' => $r($pvGrid),
+                'grid_home' => $r($gridUse),
+                'grid_battery' => $r($gridBattery),
+                'battery_home' => $r($batteryUse),
+                'battery_grid' => $r($batteryGrid),
+                'home_car' => $r($car),
+            ],
+            'mix' => ['sun' => $share($pvUse), 'battery' => $share($batteryUse), 'grid' => $share($gridUse)],
+        ];
+    }
+
     /** Sekunden bis zum Limit bei gleicher Leistung, null wenn etwas fehlt oder nicht geladen wird. */
     public static function timeToLimit(?float $soc, ?float $limit, ?float $capacityKwh, ?float $powerKw): ?int
     {

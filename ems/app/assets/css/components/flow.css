@@ -42,8 +42,9 @@
   transition: flex-grow 400ms var(--ease-out);
 }
 
+/* Der Balken steht vor dem Hintergrund, die Fugen haben dessen Farbe. */
 .flow-seg:not([data-zero]) ~ .flow-seg:not([data-zero]) {
-  box-shadow: inset 2px 0 0 var(--surface);
+  box-shadow: inset 2px 0 0 var(--bg);
 }
 
 .flow-seg[data-zero] {
@@ -209,23 +210,26 @@
 }
 
 /*
- * Detail-Liste „Rein“ und „Raus“: mobil per Knopf, ab 640 px immer offen. Eine Linie trennt sie vom Balken.
+ * Detail-Liste „Rein“ und „Raus“ in einer eigenen Karte: mobil per Knopf, ab 640 px immer offen.
  * Beide Seiten haben vier Zeilen auf gemeinsamen Höhen (Subgrid), damit Speicher neben Speicher und
  * Netz neben Einspeisung steht.
  */
 .flow-toggle {
-  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--s-1);
   width: 100%;
   min-height: 2.75rem;
-  margin-block-start: var(--s-4);
-  border-block-start: 1px solid var(--border);
   color: var(--text-2);
   font-size: 0.8125rem;
   font-weight: 600;
+}
+
+.flow-toggle-text {
+  color: var(--text);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .flow-toggle[aria-expanded="true"] .icon {
@@ -237,7 +241,6 @@
 }
 
 .flow-columns {
-  grid-column: 1 / -1;
   display: grid;
   gap: var(--s-8);
   padding-block-start: var(--s-4);
@@ -340,9 +343,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: var(--s-8);
     row-gap: 0;
-    margin-block-start: var(--s-6);
-    padding-block-start: var(--s-6);
-    border-block-start: 1px solid var(--border);
+    padding-block-start: 0;
   }
 
   @supports (grid-template-rows: subgrid) {

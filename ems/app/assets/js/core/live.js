@@ -86,7 +86,7 @@ async function tick() {
 }
 
 export function startLive() {
-  if (!$('[data-live], [data-live-num], [data-flow], [data-chargepoint], [data-battery-col]')) return;
+  if (!$('[data-live], [data-live-num], [data-flow], [data-energy-flow], [data-chargepoint], [data-battery-col]')) return;
   lastSaid = Date.now();
   timer = setTimeout(tick, INTERVAL);
   document.addEventListener('visibilitychange', () => {

@@ -362,6 +362,9 @@ final class Actions
                 $theme = 'system';
             }
             store()->merge('ui', ['theme' => $theme]);
+        } elseif ($section === 'flow_view') {
+            $view = (string) ($_POST['flow_view'] ?? 'bar');
+            store()->merge('ui', ['flow_view' => in_array($view, ['bar', 'graph'], true) ? $view : 'bar']);
         }
         flash('Gespeichert.');
         self::redirectBack();
@@ -380,7 +383,7 @@ final class Actions
             'vehicle' => $cfg['vehicle'],
             'chargepoint' => $cfg['chargepoint'],
             'weather' => ['url' => (new WeatherFeed(store()))->url()],
-            'ui' => ['theme' => $cfg['ui']['theme'] ?? 'system'],
+            'ui' => ['theme' => $cfg['ui']['theme'] ?? 'system', 'flow_view' => $cfg['ui']['flow_view'] ?? 'bar'],
         ];
     }
 
@@ -550,6 +553,9 @@ final class Actions
             if (in_array($theme, ['system', 'light', 'dark'], true)) {
                 store()->merge('ui', ['theme' => $theme]);
             }
+        }
+        if (isset($data['ui']['flow_view']) && in_array($data['ui']['flow_view'], ['bar', 'graph'], true)) {
+            store()->merge('ui', ['flow_view' => (string) $data['ui']['flow_view']]);
         }
     }
 

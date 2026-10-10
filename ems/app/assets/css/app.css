@@ -5,6 +5,7 @@
 @import "components/basics.css";
 @import "components/segment.css";
 @import "components/flow.css";
+@import "components/energy-flow.css";
 @import "components/chargepoint.css";
 @import "components/control.css";
 @import "components/battery.css";

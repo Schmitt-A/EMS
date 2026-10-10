@@ -1,5 +1,6 @@
 // 7.1 Energiefluss-Balken: Segmente per flex-grow, Klammern je Seite über die ganze Breite.
 // Jede Klammer zeigt Icon und Leistung; reicht der Platz nicht, nur das Icon, dann nur die Linie.
+// Die Tabelle Rein und Raus steht in einer eigenen Karte und wird hier mit aktualisiert.
 import { $, $$ } from '../core/dom.js';
 import { withUnit } from '../core/format.js';
 import { onLive } from '../core/live.js';
@@ -70,10 +71,10 @@ function render(figure, flow) {
   requestAnimationFrame(() => layout(figure, flow));
 }
 
-function renderRows(figure, rows) {
+function renderRows(table, rows) {
   if (!rows) return;
   for (const side of ['in', 'out']) {
-    const column = $(`[data-flow-side="${side}"]`, figure);
+    const column = $(`[data-flow-side="${side}"]`, table);
     if (!column) continue;
     const sum = $('[data-flow-sum]', column);
     if (sum && rows[`${side}_kw`] !== undefined) sum.textContent = withUnit(rows[`${side}_kw`], 'kW');
@@ -99,17 +100,19 @@ export function initFlow(root = document) {
     new ResizeObserver(() => {
       if (figure._flow) layout(figure, figure._flow);
     }).observe($('[data-flow-bar]', figure));
-    const toggle = $('[data-flow-toggle]', figure);
+    if (figure.hasAttribute('data-static')) continue;
+    onLive((data) => render(figure, data.flow));
+  }
+  // Tabelle Rein und Raus in ihrer eigenen Karte, mobil aufklappbar.
+  for (const table of $$('[data-flow-rows]', root)) {
+    const toggle = $('[data-flow-toggle]', table);
     toggle?.addEventListener('click', () => {
       const details = document.getElementById(toggle.getAttribute('aria-controls'));
       const open = toggle.getAttribute('aria-expanded') !== 'true';
       toggle.setAttribute('aria-expanded', String(open));
       details?.toggleAttribute('data-collapsed', !open);
     });
-    if (figure.hasAttribute('data-static')) continue;
-    onLive((data) => {
-      render(figure, data.flow);
-      renderRows(figure, data.flow_rows);
-    });
+    if (table.hasAttribute('data-static')) continue;
+    onLive((data) => renderRows(table, data.flow_rows));
   }
 }
