@@ -13,7 +13,7 @@ $rows = [
     'in_kw' => $snap['balance']['in_kw'],
     'out_kw' => $snap['balance']['out_kw'],
     'in' => [
-        ['key' => 'pv', 'icon' => 'sun', 'tone' => 'solar', 'label' => 'PV', 'kw' => $v['pv_kw'], 'context' => ui_inline(e(kwh(21.4)), ['href' => url('/prognose')])],
+        ['key' => 'pv', 'icon' => 'sun', 'tone' => 'solar', 'label' => 'PV', 'kw' => $v['pv_kw'], 'context' => ui_inline(e('Rest 8,2 von 21,4' . NNBSP . 'kWh'), ['href' => url('/prognose')])],
         ['key' => 'battery', 'icon' => 'battery', 'tone' => 'battery', 'label' => 'Speicher', 'kw' => $v['battery_discharge_kw'], 'context' => ui_inline(e(pct($v['battery_soc'])), ['href' => url('/speicher')])],
         ['key' => 'grid', 'icon' => 'utility-pole', 'tone' => 'grid-in', 'label' => 'Netz', 'kw' => $v['grid_import_kw'], 'context' => e(ct(34.7))],
     ],

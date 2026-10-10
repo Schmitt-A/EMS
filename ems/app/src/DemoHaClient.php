@@ -135,6 +135,24 @@ final class DemoHaClient implements HaSource
         return $out;
     }
 
+    /** Fahrzeugstatus aus der Simulation, nur die Wechsel. */
+    public function stateHistory(string $entityId, int $start, ?int $end = null): array
+    {
+        if ($entityId !== 'sensor.demo_wallbox_car') {
+            return [];
+        }
+        $out = [];
+        $last = null;
+        foreach ($this->model->series('status', $start, min($end ?? time(), time())) as $t => $index) {
+            $state = ['idle', 'wait_car', 'charging', 'complete'][(int) $index] ?? 'idle';
+            if ($state !== $last) {
+                $out[] = ['t' => $t, 's' => $state];
+                $last = $state;
+            }
+        }
+        return $out;
+    }
+
     public function statistics(string $entityId, int $start, int $end, string $period = 'hour'): array
     {
         $field = self::ENTITIES[$entityId][0] ?? null;

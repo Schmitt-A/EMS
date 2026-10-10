@@ -84,6 +84,13 @@ try {
             const style = getComputedStyle(el);
             if (el.scrollWidth > el.clientWidth + 1 && style.overflow !== 'visible') out.clipped.push(el.textContent.trim().slice(0, 40));
           }
+          // Beschriftungen der Navigation müssen in ihrer Kachel bleiben.
+          for (const label of document.querySelectorAll('.nav-link .tab-label')) {
+            if (!visible(label)) continue;
+            const inner = label.getBoundingClientRect();
+            const outer = label.closest('.nav-link').getBoundingClientRect();
+            if (inner.left < outer.left - 0.5 || inner.right > outer.right + 0.5) out.clipped.push(`Navigation: ${label.textContent.trim()}`);
+          }
           for (const el of document.querySelectorAll('a[href], button, input:not([type=hidden]), select, textarea, [role=slider], summary')) {
             if (!visible(el) || el.closest('p, .prose, .sr-only, .skip-link') || el.matches('input[type=radio], input[type=checkbox]')) continue;
             const w = el.offsetWidth || el.getBoundingClientRect().width;

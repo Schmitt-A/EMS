@@ -23,6 +23,8 @@ while (true) {
                 $snap['cfg']['charge'],
                 time()
             );
+            // Ältere Zyklen ohne Ansteckzeit aus dem Statusverlauf zuordnen, höchstens einmal pro Stunde.
+            $sessions->backfillPlugs(ha(), (string) ($snap['cfg']['mapping']['wallbox_car'] ?? ''), time());
             if ((int) date('G') >= 1) {
                 $series->calibrate($snap['cfg']['plant'], false);
             }

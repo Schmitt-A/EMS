@@ -177,6 +177,20 @@ function bindSteps(root) {
   list.scrollLeft = Math.max(0, offset - (list.clientWidth - current.offsetWidth) / 2);
 }
 
+// Aufklappen: Knopf mit aria-controls schaltet das Ziel ein und aus (Ladezyklen eines Ladevorgangs).
+function bindExpand() {
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-expand]');
+    const target = button && document.getElementById(button.getAttribute('aria-controls'));
+    if (!target) return;
+    const open = button.getAttribute('aria-expanded') !== 'true';
+    button.setAttribute('aria-expanded', String(open));
+    target.hidden = !open;
+    const label = button.getAttribute('aria-label');
+    if (label) button.setAttribute('aria-label', open ? label.replace('zeigen', 'ausblenden') : label.replace('ausblenden', 'zeigen'));
+  });
+}
+
 // Fehler aus Komponenten als kurze Meldung im Kopf zeigen.
 function bindErrors() {
   document.addEventListener('ems:error', (event) => {
@@ -205,5 +219,6 @@ export function initForms(root = document) {
 export function initGlobal() {
   bindTips();
   bindFill();
+  bindExpand();
   bindErrors();
 }

@@ -33,6 +33,34 @@
   flex: none;
 }
 
+/* Mehrere Chips: auf dem Handy eine eigene Zeile über die ganze Breite, ab 480 px rechts neben dem Titel. */
+.page-head:has(.head-chips) {
+  flex-wrap: wrap;
+}
+
+.head-chips {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-2);
+  width: 100%;
+}
+
+.head-chips .head-chip {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+@media (min-width: 30rem) {
+  .head-chips {
+    width: auto;
+    margin-inline-start: auto;
+  }
+
+  .head-chips .head-chip {
+    flex: none;
+  }
+}
+
 .section {
   display: grid;
   gap: var(--s-4);
@@ -238,6 +266,15 @@
     font-size: 0.75rem;
   }
 
+  /* In der schmalen Leiste passt „Ladevorgänge“ nicht in die Kachel; dort steht die Kurzform. */
+  .nav-link:has(.tab-label-short) .tab-label-long {
+    display: none;
+  }
+
+  .nav-link .tab-label-short {
+    display: inline;
+  }
+
   .nav-link[aria-current="page"] {
     background: var(--accent-soft);
     color: var(--accent-on-soft);
@@ -285,6 +322,14 @@
   .nav-link .tab-label {
     font-size: 0.9375rem;
     font-weight: 600;
+  }
+
+  .nav-link:has(.tab-label-short) .tab-label-long {
+    display: inline;
+  }
+
+  .nav-link .tab-label-short {
+    display: none;
   }
 
   .nav-link[aria-current="page"],

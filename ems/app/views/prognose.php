@@ -43,17 +43,20 @@ if (!empty($weather['fetched_at'])) {
         'window' => '3',
         'class' => 'chart-tall',
         'tools' => '<div class="chart-tools">' . ui_segment('power-window', 'Zeitraum', ['today' => 'Heute', '3' => '3 Tage', '7' => '7 Tage'], '3', ['compact' => true, 'id' => 'pw', 'attrs' => ['data-chart-window' => true]])
-            . '<div class="chart-toggles"><button type="button" class="toggle-chip c-ink" aria-pressed="true" data-chart-series="actual"><span class="swatch swatch-dot"></span>Gemessen</button></div></div>',
+            . '<div class="chart-toggles">'
+            . '<button type="button" class="toggle-chip c-solar" aria-pressed="true" data-chart-series="forecast"><span class="swatch swatch-dot"></span>Prognose</button>'
+            . '<button type="button" class="toggle-chip c-ink" aria-pressed="true" data-chart-series="actual"><span class="swatch swatch-dot"></span>Gemessen</button>'
+            . '</div></div>',
         'style' => [
-            'forecast' => ['color' => 'solar', 'type' => 'area', 'peak' => true, 'label' => 'Prognose', 'unit' => 'kWh', 'decimals' => 2],
-            'actual' => ['color' => 'ink', 'width' => 'thin', 'label' => 'Gemessen', 'unit' => 'kWh', 'decimals' => 2],
+            'forecast' => ['color' => 'solar', 'type' => 'area', 'peak' => true, 'label' => 'Prognose', 'unit' => 'kW', 'decimals' => 2],
+            'actual' => ['color' => 'ink', 'width' => 'bold', 'label' => 'Gemessen', 'unit' => 'kW', 'decimals' => 2],
         ],
         'empty' => 'Noch keine Prognose. Die DWD-Datei wird beim nächsten Abruf geladen.',
     ]) ?>
     <div class="day-values">
-      <?= ui_metric('Heute, Rest', ui_live_num('remaining_kwh', $f['remaining_kwh'] ?? null, 'kWh'), ['after' => '<span class="caption muted">von ' . e(kwh($f['today_kwh'] ?? null)) . '</span>']) ?>
-      <?= ui_metric('Morgen', ui_num($f['tomorrow_kwh'] ?? null, 'kWh')) ?>
-      <?= ui_metric('Übermorgen', ui_num($after !== null ? (float) $after : null, 'kWh')) ?>
+      <?= ui_metric('Heute, Rest', ui_live_num('remaining_kwh', $f['remaining_kwh'] ?? null, 'kWh'), ['after' => '<span class="caption muted">von ' . e(kwh($f['today_kwh'] ?? null)) . '</span>' . ui_spread($f['today_sd'] ?? null)]) ?>
+      <?= ui_metric('Morgen', ui_num($f['tomorrow_kwh'] ?? null, 'kWh'), ['after' => ui_spread($f['tomorrow_sd'] ?? null)]) ?>
+      <?= ui_metric('Übermorgen', ui_num($after !== null ? (float) $after : null, 'kWh'), ['after' => ui_spread($captions[$day(2)]['sd'] ?? null)]) ?>
     </div>
     <p class="caption muted">Gemessen heute <?= e(kwh($yield)) ?>, gestern <?= e(kwh($yesterday)) ?>. <?= e($stamp) ?></p>
   </section>

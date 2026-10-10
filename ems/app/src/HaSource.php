@@ -18,6 +18,9 @@ interface HaSource
     /** @return array<int, array{t:int, v:float}> */
     public function history(string $entityId, int $start, ?int $end = null): array;
 
+    /** Zustände als Text, etwa der Fahrzeugstatus der Wallbox. @return list<array{t:int, s:string}> */
+    public function stateHistory(string $entityId, int $start, ?int $end = null): array;
+
     /** @return array<int, array{start:int, mean:?float, min:?float, max:?float, change:?float}> */
     public function statistics(string $entityId, int $start, int $end, string $period = 'hour'): array;
 

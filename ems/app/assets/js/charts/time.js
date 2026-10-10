@@ -1,15 +1,18 @@
-// Zeitreihen (9.1, 9.2): Fläche mit monotoner Kurve, Tagesgrenzen gestrichelt, Wochentag unter der Achse,
-// „Jetzt“-Linie, Peak-Badges mit Tagesenergie, Tages-Min/Max. Lange Reihen scrollen, die y-Achse bleibt.
+// Zeitreihen (9.1, 9.2): Fläche mit monotoner Kurve, Tagesgrenzen gestrichelt, Tag unter der Achse,
+// heute hinterlegt, „Jetzt“-Linie, Peak-Badges mit Tagesenergie, Tages-Min/Max.
+// Lange Reihen scrollen waagerecht, die y-Achse bleibt stehen.
 import { svg } from '../core/dom.js';
 import { dayLabel, fmt, NNBSP, timeLabel, weekday } from '../core/format.js';
-import { bindKeys, buildFrame, dataTable, drawAxis, hideTip, showTip } from './frame.js';
+import { bindKeys, bindPointer, buildFrame, dataTable, drawAxis, hideTip, showTip } from './frame.js';
 import { colorClass, curve, linear, nearest, nice, runs, ticks, unitFromTitle } from './util.js';
 
 const DAY = 86400000;
 const TOP = 36;
-const BOTTOM = 30;
 const MAX_WIDTH = 16000;
 let uid = 0;
+
+// Breite einer Beschriftung in 12-px-Inter, grob geschätzt, damit nichts am Rand klebt.
+const textWidth = (text) => String(text).length * 6.6 + 6;
 
 function startOfDay(ms) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
@@ -18,13 +21,14 @@ function startOfDay(ms) {
   return guess - Number(offset) * 3600000;
 }
 
+/** Sichtbares Fenster: „today“ ab heute, anchor „now“ volle Tage bis heute (heute ganz rechts). */
 export function windowRange(name, anchor, payload, bounds) {
   const now = payload.now || Date.now();
   const today = payload.today ? payload.today[0] : startOfDay(now);
   if (name === 'all') return bounds;
   if (name === 'today') return [today, today + DAY];
   const days = name === '24' ? 1 : Number(name) || 3;
-  return anchor === 'now' ? [now - days * DAY, now] : [today, today + days * DAY];
+  return anchor === 'now' ? [today + DAY - days * DAY, today + DAY] : [today, today + days * DAY];
 }
 
 function dayMarks(payload, b0, b1) {
@@ -47,6 +51,8 @@ export function renderTime(figure, payload, state) {
   const f = buildFrame(figure, { right: all.some((series) => series.axis === 'y1') });
   const width = Math.max(1, f.width);
   const height = Math.max(120, f.height);
+  const now = payload.now || Date.now();
+  const today = payload.today || [startOfDay(now), startOfDay(now) + DAY];
 
   const xs = all.flatMap((series) => (series.data || []).map((point) => point.x)).filter((x) => Number.isFinite(x));
   let bounds = payload.bounds || [Math.min(...xs), Math.max(...xs)];
@@ -59,6 +65,10 @@ export function renderTime(figure, payload, state) {
   f.plot.setAttribute('height', String(height));
   f.plot.setAttribute('viewBox', `0 0 ${plotWidth} ${height}`);
   const x = linear(bounds, [0, plotWidth]);
+  // Mit Uhrzeiten gibt es zwei Zeilen unter der Achse: oben die Stunden, darunter der Tag.
+  const dayPx = DAY * perMs;
+  const hours = dayPx >= 260;
+  const bottom = hours ? 46 : 30;
 
   let axis = null;
   if (payload.axes && payload.axes[unitKey]) {
@@ -71,14 +81,14 @@ export function renderTime(figure, payload, state) {
     const n = nice(maxY * 1.08, 4);
     axis = { max: n.max, step: n.step, dataMax: n.max, decimals: n.step < 1 ? 1 : 0, title: payload.yTitle };
   }
-  const y = linear([0, axis.max], [height - BOTTOM, TOP]);
+  const y = linear([0, axis.max], [height - bottom, TOP]);
   const unit = style._unit || unitFromTitle(axis.title);
   drawAxis(f.yAxis, y, ticks(axis.dataMax ?? axis.max, axis.step), (v) => fmt(v, axis.decimals), { unit });
   let y1 = null;
   if (f.y1Axis) {
     const max1 = Math.max(1, ...right.flatMap((series) => (series.data || []).map((p) => p.y ?? 0)));
     const n1 = nice(max1 * 1.05, 4);
-    y1 = linear([0, n1.max], [height - BOTTOM, TOP]);
+    y1 = linear([0, n1.max], [height - bottom, TOP]);
     drawAxis(f.y1Axis, y1, ticks(n1.max, n1.step), (v) => fmt(v, n1.step < 1 ? 1 : 0), { right: true, unit: unitFromTitle(payload.y1Title) });
   }
 
@@ -86,23 +96,40 @@ export function renderTime(figure, payload, state) {
   if (state.first) plot.classList.add('enter');
   const id = `g${(uid += 1)}`;
   const defs = svg('defs', {}, plot);
+
+  // Heute hinterlegt, damit der aktuelle Tag beim Scrollen eindeutig bleibt.
+  if (today[1] > bounds[0] && today[0] < bounds[1]) {
+    const from = x(Math.max(today[0], bounds[0]));
+    svg('rect', { class: 'today-zone', x: from, y: TOP - 8, width: x(Math.min(today[1], bounds[1])) - from, height: height - bottom - TOP + 8 }, plot);
+  }
   svg('line', { class: 'base-line', x1: 0, x2: plotWidth, y1: y(0), y2: y(0) }, plot);
 
-  // Tagesgrenzen um Mitternacht und Wochentag unter der Achse
+  // Tagesgrenzen um Mitternacht; der Tag mittig im sichtbaren Teil, nie über den Rand hinaus.
   const marks = dayMarks(payload, bounds[0], bounds[1]);
-  const dayPx = DAY * perMs;
+  const dayY = hours ? height - 6 : height - 9;
   for (const mark of marks) {
     if (mark.start > bounds[0] + 1000 && mark.start < bounds[1]) {
-      svg('line', { class: 'day-line', x1: x(mark.start), x2: x(mark.start), y1: TOP - 8, y2: height - BOTTOM }, plot);
+      svg('line', { class: 'day-line', x1: x(mark.start), x2: x(mark.start), y1: TOP - 8, y2: height - bottom }, plot);
     }
-    const cx = Math.max(x(bounds[0]) + 24, Math.min(x(bounds[1]) - 24, x(mark.x)));
-    if (mark.x < bounds[0] || mark.x > bounds[1]) continue;
-    svg('text', { x: cx, y: height - 9, 'text-anchor': 'middle' }, plot).textContent = dayPx < 90 ? weekday(mark.x) : mark.label || dayLabel(mark.x);
-    if (dayPx >= 260) {
+    const from = Math.max(mark.start, bounds[0]);
+    const to = Math.min(mark.start + DAY, bounds[1]);
+    if (to <= from) continue;
+    const isToday = mark.x >= today[0] && mark.x < today[1];
+    const room = x(to) - x(from);
+    const long = isToday ? 'Heute' : mark.label || dayLabel(mark.x);
+    const text = room >= textWidth(long) + 8 ? long : isToday ? 'Heute' : weekday(mark.x);
+    const w = textWidth(text);
+    // Heute steht immer da, notfalls etwas breiter als sein Tag; die anderen Tage nur, wenn sie passen.
+    if (room >= w + 4 || isToday) {
+      const middle = (x(from) + x(to)) / 2;
+      const cx = room >= w + 4 ? Math.max(x(from) + w / 2 + 2, Math.min(x(to) - w / 2 - 2, middle)) : Math.max(w / 2 + 2, Math.min(plotWidth - w / 2 - 2, middle));
+      svg('text', { x: cx, y: dayY, 'text-anchor': 'middle', class: isToday ? 'day-today' : null }, plot).textContent = text;
+    }
+    if (hours) {
       for (const hour of [6, 12, 18]) {
         const at = mark.start + hour * 3600000;
-        if (at <= bounds[0] || at >= bounds[1]) continue;
-        svg('text', { x: x(at), y: height - BOTTOM + 13, 'text-anchor': 'middle', class: 'hour' }, plot).textContent = `${hour}:00`;
+        if (at <= bounds[0] + 1800000 || at >= bounds[1] - 1800000) continue;
+        svg('text', { x: x(at), y: height - bottom + 14, 'text-anchor': 'middle', class: 'hour' }, plot).textContent = `${hour}:00`;
       }
     }
   }
@@ -118,7 +145,7 @@ export function renderTime(figure, payload, state) {
     const kind = series.curve || (series.type === 'step' ? 'step' : 'monotone');
     if (series.type === 'area') {
       const gradient = svg('linearGradient', { id: `${id}-${series.key}`, x1: 0, y1: 0, x2: 0, y2: 1, class: colorClass(series.color) }, defs);
-      svg('stop', { offset: 0, class: 'grad-stop', 'stop-opacity': 0.35 }, gradient);
+      svg('stop', { offset: 0, class: 'grad-stop', 'stop-opacity': series.opacity ?? 0.35 }, gradient);
       svg('stop', { offset: 1, class: 'grad-stop', 'stop-opacity': 0 }, gradient);
       for (const run of runs(points)) {
         const d = `${curve(run, kind)}L${run[run.length - 1][0]},${scaleY(0)}L${run[0][0]},${scaleY(0)}Z`;
@@ -126,12 +153,13 @@ export function renderTime(figure, payload, state) {
       }
     }
     for (const run of runs(points)) {
-      svg('path', { class: `series-line${series.width === 'thin' ? ' thin' : ''}${series.dash ? ' dashed' : ''}`, d: curve(run, kind) }, group);
+      const cls = `series-line${series.width === 'thin' ? ' thin' : ''}${series.width === 'bold' ? ' bold' : ''}${series.dash ? ' dashed' : ''}`;
+      svg('path', { class: cls, d: curve(run, kind) }, group);
     }
     lines.push({ series, xs: (series.data || []).map((p) => p.x), scaleY });
   }
 
-  // Peak-Badge pro Tag über dem höchsten Punkt der Prognose
+  // Peak-Badge pro Tag über dem höchsten Punkt der Prognose, mit Unsicherheit, wenn sie in den Tag passt.
   const peakSeries = visible.find((series) => series.peak) || null;
   if (peakSeries) {
     for (const mark of marks) {
@@ -139,11 +167,13 @@ export function renderTime(figure, payload, state) {
       const inDay = (peakSeries.data || []).filter((p) => p.x >= mark.start && p.x < mark.start + DAY && p.y !== null);
       if (!inDay.length) continue;
       const top = inDay.reduce((best, p) => (p.y > best.y ? p : best), inDay[0]);
-      const [energy] = String(mark.text).split(' ± ');
-      const label = /kWh$/.test(energy) ? energy : `${energy}${NNBSP}kWh`;
-      const w = label.length * 6.4 + 16;
+      const full = String(mark.text);
+      const [energy] = full.split(' ± ');
+      const short = /kWh$/.test(energy) ? energy : `${energy}${NNBSP}kWh`;
       const dayLeft = Math.max(x(mark.start), x(bounds[0])) + 2;
       const dayRight = Math.min(x(mark.start + DAY), x(bounds[1])) - 2;
+      const label = dayRight - dayLeft >= full.length * 6.4 + 20 ? full : short;
+      const w = label.length * 6.4 + 16;
       const bx = dayRight - dayLeft < w ? x(top.x) - w / 2 : Math.max(dayLeft, Math.min(dayRight - w, x(top.x) - w / 2));
       const by = Math.max(4, y(top.y) - 32);
       const badge = svg('g', { class: 'peak' }, plot);
@@ -152,26 +182,35 @@ export function renderTime(figure, payload, state) {
     }
   }
 
-  // Tages-Minimum und -Maximum (Speicherverlauf)
+  // Tages-Minimum und -Maximum (Speicherverlauf), Beschriftung innerhalb des Plots
   const extrema = payload.extrema?.[unitKey];
   if (extrema?.length) {
     const group = svg('g', { class: `extrema ${colorClass(visible[0]?.color)}` }, plot);
+    const placed = [];
+    const overlaps = (box) => placed.some((other) => box.l < other.r && box.r > other.l && box.t < other.b && box.b > other.t);
     for (const day of extrema) {
       for (const [kind, point] of [['max', day.max], ['min', day.min]]) {
         if (!point || point.x < bounds[0] || point.x > bounds[1]) continue;
         const cx = x(point.x);
         const cy = y(point.y);
-        svg('circle', { cx, cy, r: 3.5 }, group);
         const text = `${kind} ${fmt(point.y, axis.decimals)}${NNBSP}${unit}`;
-        svg('text', { x: cx, y: kind === 'max' ? cy - 8 : cy + 16, 'text-anchor': 'middle' }, group).textContent = text;
+        const w = textWidth(text);
+        const tx = Math.max(w / 2 + 2, Math.min(plotWidth - w / 2 - 2, cx));
+        const ty = kind === 'max' ? cy - 8 : cy + 16;
+        // Beschriftungen, die sich überdecken würden, entfallen; der Punkt bleibt.
+        const box = { l: tx - w / 2 - 4, r: tx + w / 2 + 4, t: ty - 15, b: ty + 6 };
+        svg('circle', { cx, cy, r: 3.5 }, group);
+        // Unter 70 px je Tag nur die Punkte; den Wert zeigt das Antippen.
+        if (dayPx < 70 || overlaps(box)) continue;
+        placed.push(box);
+        svg('text', { x: tx, y: ty, 'text-anchor': 'middle' }, group).textContent = text;
       }
     }
   }
 
   // „Jetzt“: senkrechte Linie mit Punkt auf der ersten Serie
-  const now = payload.now || Date.now();
   if (now > bounds[0] && now < bounds[1]) {
-    svg('line', { class: 'now-line', x1: x(now), x2: x(now), y1: TOP - 8, y2: height - BOTTOM }, plot);
+    svg('line', { class: 'now-line', x1: x(now), x2: x(now), y1: TOP - 8, y2: height - bottom }, plot);
     const first = lines[0];
     if (first) {
       const i = nearest(first.xs, now);
@@ -180,9 +219,10 @@ export function renderTime(figure, payload, state) {
     }
   }
 
-  // Fadenkreuz, Tooltip und Tastatur
-  const cross = svg('line', { class: 'crosshair', x1: 0, x2: 0, y1: TOP - 8, y2: height - BOTTOM, visibility: 'hidden' }, plot);
+  // Fadenkreuz, Tooltip, Tippen und Tastatur über alle Zeitpunkte der sichtbaren Serien
+  const cross = svg('line', { class: 'crosshair', x1: 0, x2: 0, y1: TOP - 8, y2: height - bottom, visibility: 'hidden' }, plot);
   const primary = lines.find((line) => line.xs.length) || null;
+  const stamps = [...new Set(lines.flatMap((line) => line.xs))].sort((a, b) => a - b);
   const valueOf = (line, ms) => {
     const i = nearest(line.xs, ms);
     if (i < 0) return null;
@@ -199,21 +239,19 @@ export function renderTime(figure, payload, state) {
       const u = line.series.unit || (line.series.axis === 'y1' ? unitFromTitle(payload.y1Title) : unit);
       return { label: line.series.label, value: v === null ? '—' : `${fmt(v, line.series.decimals ?? axis.decimals)}${u ? NNBSP + u : ''}`, cls: colorClass(line.series.color) };
     });
-    const v0 = primary ? valueOf(primary, ms) : null;
-    showTip(f, px, v0 === null ? height / 2 : primary.scaleY(v0), `${dayLabel(ms)}, ${timeLabel(ms)}`, rows);
+    const anchor = lines.find((line) => valueOf(line, ms) !== null);
+    const v0 = anchor ? valueOf(anchor, ms) : null;
+    showTip(f, px, v0 === null ? height / 2 : anchor.scaleY(v0), `${dayLabel(ms)}, ${timeLabel(ms)}`, rows);
   };
-  plot.addEventListener('pointermove', (event) => {
-    const box = plot.getBoundingClientRect();
-    const ms = x.invert(event.clientX - box.left);
-    if (!primary) return;
-    const i = nearest(primary.xs, ms);
-    if (i >= 0) show(primary.xs[i]);
-  });
-  plot.addEventListener('pointerleave', () => {
+  const clear = () => {
     hideTip(f);
     cross.setAttribute('visibility', 'hidden');
-  });
-  const inView = () => (primary ? primary.xs.filter((ms) => ms >= bounds[0] && ms <= bounds[1]) : []);
+  };
+  bindPointer(f, (px) => {
+    const i = nearest(stamps, x.invert(px));
+    if (i >= 0) show(stamps[i]);
+  }, clear);
+  const inView = () => stamps.filter((ms) => ms >= bounds[0] && ms <= bounds[1]);
   bindKeys(f, () => inView().length, (index) => {
     const list = inView();
     if (index < 0 || !list.length) {
@@ -230,7 +268,7 @@ export function renderTime(figure, payload, state) {
   const label = figure.dataset.label || 'Diagramm';
   plot.setAttribute('aria-label', `${label}. ${dayLabel(view[0])} bis ${dayLabel(view[1] - 1)}. Pfeiltasten zeigen einzelne Werte.`);
   if (primary) {
-    const shown = primary.xs.filter((ms) => ms >= view[0] && ms <= view[1]);
+    const shown = stamps.filter((ms) => ms >= view[0] && ms <= view[1]);
     const step = Math.max(1, Math.ceil(shown.length / 48));
     const rows = shown.filter((_, i) => i % step === 0).map((ms) => [
       `${dayLabel(ms)}, ${timeLabel(ms)}`,

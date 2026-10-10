@@ -73,6 +73,31 @@ final class HaClient implements HaSource
     }
 
     /** @return array<int, array{t:int, v:float}> */
+    public function stateHistory(string $entityId, int $start, ?int $end = null): array
+    {
+        if (!is_entity_id($entityId)) {
+            return [];
+        }
+        $query = '/api/history/period/' . gmdate('Y-m-d\TH:i:s\Z', $start) . '?filter_entity_id=' . rawurlencode($entityId) . '&minimal_response=1&no_attributes=1';
+        if ($end !== null) {
+            $query .= '&end_time=' . rawurlencode(gmdate('Y-m-d\TH:i:s\Z', $end));
+        }
+        $payload = $this->get($query);
+        $rows = is_array($payload) && isset($payload[0]) && is_array($payload[0]) ? $payload[0] : [];
+        $out = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $when = self::stamp($row);
+            if ($when > 0) {
+                $out[] = ['t' => $when, 's' => (string) ($row['state'] ?? $row['s'] ?? '')];
+            }
+        }
+        usort($out, static fn (array $a, array $b): int => $a['t'] <=> $b['t']);
+        return $out;
+    }
+
     public function history(string $entityId, int $start, ?int $end = null): array
     {
         if (!is_entity_id($entityId)) {

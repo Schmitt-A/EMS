@@ -63,13 +63,27 @@
   inset-inline: var(--axis-w) var(--axis-w-right);
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: none;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
 }
 
-.chart-scroll::-webkit-scrollbar {
-  display: none;
+/* Mit Maus ohne Leiste (gezogen wird direkt im Plot); auf Touch-Geräten zeigt das System beim Wischen seinen Indikator. */
+@media (pointer: fine) {
+  .chart-scroll {
+    scrollbar-width: none;
+  }
+
+  .chart-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .chart-plot[data-pannable] {
+    cursor: grab;
+  }
+
+  .chart-plot[data-dragging] {
+    cursor: grabbing;
+  }
 }
 
 .chart-plot {
@@ -123,6 +137,17 @@
   fill: var(--accent-soft);
 }
 
+/* Heute im Zeitdiagramm: leicht hinterlegt, Tag fett */
+.chart .today-zone {
+  fill: var(--accent-soft);
+  fill-opacity: 0.55;
+}
+
+.chart .day-today {
+  fill: var(--text);
+  font-weight: 700;
+}
+
 .chart .now-line {
   stroke: var(--text);
   stroke-width: 1;
@@ -146,6 +171,10 @@
 
 .chart .series-line.thin {
   stroke-width: 1.5;
+}
+
+.chart .series-line.bold {
+  stroke-width: 2.5;
 }
 
 .chart .series-line.dashed {

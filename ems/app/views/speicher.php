@@ -66,11 +66,11 @@ if (!$snap['connected']) {
     <section class="card" aria-labelledby="history-title">
       <h2 class="card-title" id="history-title">Speicherverlauf</h2>
       <?= ui_chart('time', '/api/series?chart=battery', 'Ladestand des Hausspeichers', [
-          'window' => '24',
+          'window' => '3',
           'anchor' => 'now',
           'style' => ['soc' => ['color' => 'battery', 'curve' => 'linear', 'unit' => '%', 'decimals' => 0], 'cap' => ['color' => 'battery', 'curve' => 'linear', 'unit' => 'kWh', 'decimals' => 1]],
           'tools' => '<div class="chart-tools">'
-              . ui_segment('battery-window', 'Zeitraum', ['24' => '24 h', '3' => '3 Tage', '7' => '7 Tage', '30' => '30 Tage'], '24', ['compact' => true, 'id' => 'bw', 'attrs' => ['data-chart-window' => true]])
+              . ui_segment('battery-window', 'Zeitraum', ['3' => '3 Tage', '7' => '7 Tage'], '3', ['compact' => true, 'id' => 'bw', 'attrs' => ['data-chart-window' => true]])
               . ui_segment('battery-unit', 'Einheit', ['soc' => '%', 'cap' => 'kWh'], 'soc', ['compact' => true, 'fit' => true, 'id' => 'bu', 'attrs' => ['data-chart-unit' => true]])
               . '</div>',
           'empty' => 'Noch kein Verlauf. Der Ladestand braucht die Statistik von Home Assistant.',

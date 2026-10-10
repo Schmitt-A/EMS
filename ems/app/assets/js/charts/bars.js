@@ -2,7 +2,7 @@
 // 2 px Lücke statt Rändern, Linien (Güte, Ø ct/kWh) auf einer zweiten Achse, Legende mit Summen.
 import { html, svg } from '../core/dom.js';
 import { fmt, NNBSP } from '../core/format.js';
-import { bindKeys, buildFrame, dataTable, drawAxis, hideTip, showTip } from './frame.js';
+import { bindKeys, bindPointer, buildFrame, dataTable, drawAxis, hideTip, showTip } from './frame.js';
 import { colorClass, curve, linear, nice, runs, ticks, unitFromTitle } from './util.js';
 
 const TOP = 20;
@@ -134,12 +134,9 @@ export function renderBars(figure, payload, state) {
     const top = Math.min(...visible.map((series) => (value(series, i) === null ? height : (series.axis === 'y1' && y1 ? y1 : y)(value(series, i)))));
     showTip(f, cx(i), Math.min(height / 2, top), labels[i] ?? '', rows);
   };
-  plot.addEventListener('pointermove', (event) => {
-    const box = plot.getBoundingClientRect();
-    const k = Math.max(0, Math.min(count - 1, Math.floor((event.clientX - box.left) / step)));
-    show(first + k);
-  });
-  plot.addEventListener('pointerleave', () => {
+  bindPointer(f, (px) => {
+    show(first + Math.max(0, Math.min(count - 1, Math.floor(px / step))));
+  }, () => {
     hideTip(f);
     cross.setAttribute('visibility', 'hidden');
   });

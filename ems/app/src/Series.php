@@ -251,12 +251,18 @@ final class Series
         $today = (new DateTimeImmutable('now', $tz))->setTime(0, 0);
         $historyStart = $today->modify('-45 days')->getTimestamp();
         $pvId = (string) ($mapping['pv_power'] ?? '');
-        $actual = $this->points($pvId, $historyStart, $now, 'hour', $this->wattScale($pvId));
+        // Gemessen: Stundenmittel, die letzten zwei Tage in 5-Minuten-Schritten, dazu der Wert von jetzt.
+        [$actual] = $this->spanSeries($pvId, $historyStart, $now - 2 * 86400, $now, $this->wattScale($pvId));
+        $live = $this->liveKw($pvId);
+        if ($live !== null && (!$actual || $actual[count($actual) - 1]['x'] < ($now - 300) * 1000)) {
+            $actual[] = ['x' => $now * 1000, 'y' => round($live, 3)];
+        }
         $this->repairKnownDays();
         $feed = new WeatherFeed($this->store);
+        // Gemerkt wird nur ab gestern wie bisher; für die Anzeige reicht die Prognose so weit zurück wie das Wetter.
         $horizon = $feed->hours($today->modify('-1 day')->getTimestamp(), $now + 12 * 86400);
-        $forecast = Forecast::fromRadiation($horizon, $plant);
-        Forecast::rememberDays($this->store->pdo(), $forecast, $plant);
+        Forecast::rememberDays($this->store->pdo(), Forecast::fromRadiation($horizon, $plant), $plant);
+        $forecast = Forecast::fromRadiation($feed->hours($today->modify('-14 days')->getTimestamp(), $now + 12 * 86400), $plant);
         $future = [];
         $last = $now;
         $yMax = 0.0;
@@ -264,15 +270,12 @@ final class Series
             $yMax = max($yMax, (float) $point['y']);
         }
         foreach ($forecast as $point) {
-            if ($point['t'] < $today->getTimestamp()) {
-                continue;
-            }
             $last = max($last, $point['t']);
             $y = round($point['kw'], 3);
             $yMax = max($yMax, $y);
             $future[] = ['x' => $point['t'] * 1000, 'y' => $y];
         }
-        $firstMs = $actual[0]['x'] ?? ($today->getTimestamp() * 1000);
+        $firstMs = min($actual[0]['x'] ?? PHP_INT_MAX, $future[0]['x'] ?? PHP_INT_MAX, $today->modify('-7 days')->getTimestamp() * 1000);
         $viewStart = $today->getTimestamp();
         $viewEnd = $today->modify('+3 days')->getTimestamp();
         $boundStart = (new DateTimeImmutable('@' . (int) floor($firstMs / 1000)))->setTimezone($tz)->setTime(0, 0)->getTimestamp();
@@ -306,7 +309,7 @@ final class Series
             'yStep' => $scale['step'],
             'yDataMax' => $scale['dataMax'],
             'yMax' => $scale['max'],
-            'yTitle' => 'Energie (kWh)',
+            'yTitle' => 'Leistung (kW)',
             'series' => [
                 ['key' => 'actual', 'label' => 'PV gemessen', 'color' => 'pv', 'axis' => 'y', 'data' => $actual],
                 ['key' => 'forecast', 'label' => 'Prognose', 'color' => 'export', 'axis' => 'y', 'data' => $future],
@@ -549,7 +552,7 @@ final class Series
     {
         $tz = new DateTimeZone('Europe/Berlin');
         $today = (new DateTimeImmutable('now', $tz))->setTime(0, 0);
-        $rows = (new WeatherFeed($this->store))->hours($today->modify('-2 days')->getTimestamp(), time() + 12 * 86400);
+        $rows = (new WeatherFeed($this->store))->hours($today->modify('-7 days')->getTimestamp(), time() + 12 * 86400);
         $sun = $cloud = $temp = $radiation = [];
         $last = time();
         foreach ($rows as $row) {
@@ -568,7 +571,7 @@ final class Series
                 $radiation[] = ['x' => $x, 'y' => round($row['radiation'], 0)];
             }
         }
-        $origin = $today->modify('-2 days')->getTimestamp();
+        $origin = $today->modify('-7 days')->getTimestamp();
         $span = max(1, (int) ceil(($last - $origin) / 86400));
         $viewStart = $today->getTimestamp();
         $viewEnd = $today->modify('+3 days')->getTimestamp();
@@ -931,17 +934,40 @@ final class Series
         return day_label($day);
     }
 
-    private function statisticRows(string $entity, int $start, int $end, string $period): array
+    /** Statistik aus Home Assistant; mit $fallback ersetzt der Zustandsverlauf eine leere Statistik (Diagramme). */
+    private function statisticRows(string $entity, int $start, int $end, string $period, bool $fallback = false): array
     {
         if ($entity === '' || !$this->ha->configured()) {
             return [];
         }
         try {
-            return $this->ha->statistics($entity, $start, $end, $period);
+            $rows = $this->ha->statistics($entity, $start, $end, $period);
         } catch (Throwable $e) {
             $this->statNote = $e->getMessage();
             return $this->historyBuckets($entity, $start, $end, $period);
         }
+        if ($rows || !$fallback) {
+            return $rows;
+        }
+        // Ohne Langzeitstatistik (etwa ohne state_class) bleibt der Zustandsverlauf, höchstens sieben Tage.
+        return $this->historyBuckets($entity, max($start, $end - 7 * 86400), $end, $period);
+    }
+
+    /** Aktueller Wert einer Leistungs-Entität in kW, null ohne Zahl. */
+    private function liveKw(string $entity): ?float
+    {
+        if ($entity === '' || !$this->ha->configured()) {
+            return null;
+        }
+        try {
+            $state = $this->ha->state($entity);
+        } catch (Throwable) {
+            return null;
+        }
+        if (!is_array($state) || !is_numeric($state['state'] ?? null)) {
+            return null;
+        }
+        return max(0.0, (float) $state['state'] * $this->wattScale($entity));
     }
 
     private function withNote(array $payload): array
@@ -986,6 +1012,9 @@ final class Series
     {
         [$coarse, $coarseExt] = $this->tracked($entity, $historyStart, $end, 'hour', $scale);
         [$fine, $fineExt] = $this->tracked($entity, $fineStart, $end, '5minute', $scale);
+        if (!$coarse && !$fine) {
+            [$fine, $fineExt] = $this->tracked($entity, $fineStart, $end, '5minute', $scale, true);
+        }
         if (!$fine) {
             return [$coarse, $coarseExt];
         }
@@ -996,11 +1025,11 @@ final class Series
     }
 
     /** @return array{0:array<int, array{x:int, y:float}>, 1:array<int, array{x:int, min:float, max:float}>} */
-    private function tracked(string $entity, int $start, int $end, string $period, float $scale): array
+    private function tracked(string $entity, int $start, int $end, string $period, float $scale, bool $fallback = false): array
     {
         $points = [];
         $extrema = [];
-        foreach ($this->statisticRows($entity, $start, $end, $period) as $row) {
+        foreach ($this->statisticRows($entity, $start, $end, $period, $fallback) as $row) {
             $x = (int) $row['start'] * 1000;
             if ($x >= $end * 1000) {
                 continue;
@@ -1067,19 +1096,6 @@ final class Series
             }
         }
         return Energy::meanHouseBase($house, $wall, $includes);
-    }
-
-    private function points(string $entity, int $start, int $end, string $period, float $scale): array
-    {
-        $rows = $this->statisticRows($entity, $start, $end, $period);
-        $out = [];
-        foreach ($rows as $row) {
-            if ($row['mean'] === null) {
-                continue;
-            }
-            $out[] = ['x' => $row['start'] * 1000, 'y' => round($row['mean'] * $scale, 3)];
-        }
-        return $out;
     }
 
     private function flat(array $points, float $value): array

@@ -83,11 +83,9 @@ final class Energy
     }
 
     /**
-     * Energiefluss-Balken: Quellen (Netzbezug, Speicher, PV) und Verbraucher (Haus, Wallbox, Speicher, Einspeisung)
-     * liegen auf einer gemeinsamen Breite. Die Einspeisung steht in beiden Zerlegungen rechts, so treffen sich
-     * die Klammern oben und unten. Eine Messdifferenz über 50 W wird zur neutralen Restfläche ohne Klammer.
-     *
-     * @return array{total_kw: ?float, segments: list<array{key: string, kw: float}>, sources: list<array{key: string, kw: float, from: float, to: float}>, sinks: list<array{key: string, kw: float, from: float, to: float}>}
+     * Energiefluss-Balken: Quellen (Netzbezug, Speicher entladen, PV) und Verbraucher (Haus, Ladepunkt,
+     * Speicher laden, Einspeisung). Jede Seite füllt die ganze Breite für sich, auch wenn die Zähler nicht
+     * genau dieselbe Summe melden. Der Balken zeigt die Quellen, PV geteilt in Eigenverbrauch und Einspeisung.
      */
     public static function flowBar(array $values, array $balance): array
     {
@@ -101,42 +99,41 @@ final class Energy
             'charge' => $read($values['battery_charge_kw'] ?? null),
             'export' => $read($values['grid_export_kw'] ?? null),
         ];
+        $soc = isset($values['battery_soc']) ? round((float) $values['battery_soc'], 1) : null;
+        $empty = ['total_kw' => null, 'in_kw' => null, 'out_kw' => null, 'soc' => $soc, 'segments' => [], 'sources' => [], 'sinks' => []];
         if (count(array_filter($parts, static fn (?float $v): bool => $v !== null)) === 0) {
-            return ['total_kw' => null, 'segments' => [], 'sources' => [], 'sinks' => []];
+            return $empty;
         }
         $kw = array_map(static fn (?float $v): float => ($v ?? 0.0) < 0.01 ? 0.0 : (float) $v, $parts);
-        $self = max(0.0, $kw['pv'] - $kw['export']);
-        $in = $kw['import'] + $kw['discharge'] + $self + $kw['export'];
+        $in = $kw['import'] + $kw['discharge'] + $kw['pv'];
         $out = $kw['house'] + $kw['wallbox'] + $kw['charge'] + $kw['export'];
-        $restTop = $out - $in > 0.05 ? $out - $in : 0.0;
-        $restBottom = $in - $out > 0.05 ? $in - $out : 0.0;
-        $total = $in + $restTop;
-        if ($total <= 0.0) {
-            return ['total_kw' => 0.0, 'segments' => [], 'sources' => [], 'sinks' => []];
-        }
-        $span = static function (array $items) use ($total): array {
-            $out = [];
+        $pvExport = min($kw['export'], $kw['pv']);
+        $span = static function (array $items, float $total): array {
+            $list = [];
             $cursor = 0.0;
             foreach ($items as [$key, $value]) {
+                if ($total <= 0.0 || $value <= 0.0) {
+                    continue;
+                }
                 $from = $cursor / $total;
                 $cursor += $value;
-                if ($key !== 'rest' && $value > 0) {
-                    $out[] = ['key' => $key, 'kw' => round($value, 3), 'from' => round($from, 4), 'to' => round(min(1, $cursor / $total), 4)];
-                }
+                $list[] = ['key' => $key, 'kw' => round($value, 3), 'from' => round($from, 4), 'to' => round(min(1.0, $cursor / $total), 4)];
             }
-            return $out;
+            return $list;
         };
         return [
-            'total_kw' => round($total, 3),
-            'segments' => [
+            'total_kw' => round(max($in, $out), 3),
+            'in_kw' => round($in, 3),
+            'out_kw' => round($out, 3),
+            'soc' => $soc,
+            'segments' => $in > 0.0 ? [
                 ['key' => 'grid_in', 'kw' => round($kw['import'], 3)],
                 ['key' => 'battery', 'kw' => round($kw['discharge'], 3)],
-                ['key' => 'rest', 'kw' => round($restTop, 3)],
-                ['key' => 'solar', 'kw' => round($self, 3)],
-                ['key' => 'grid_out', 'kw' => round($kw['export'], 3)],
-            ],
-            'sources' => $span([['grid', $kw['import']], ['battery', $kw['discharge']], ['rest', $restTop], ['pv', $self + $kw['export']]]),
-            'sinks' => $span([['house', $kw['house']], ['wallbox', $kw['wallbox']], ['battery', $kw['charge']], ['rest', $restBottom + max(0.0, $total - $out - $restBottom)], ['grid', $kw['export']]]),
+                ['key' => 'solar', 'kw' => round($kw['pv'] - $pvExport, 3)],
+                ['key' => 'grid_out', 'kw' => round($pvExport, 3)],
+            ] : [],
+            'sources' => $span([['grid', $kw['import']], ['battery', $kw['discharge']], ['pv', $kw['pv']]], $in),
+            'sinks' => $span([['house', $kw['house']], ['wallbox', $kw['wallbox']], ['battery', $kw['charge']], ['grid', $kw['export']]], $out),
         ];
     }
 

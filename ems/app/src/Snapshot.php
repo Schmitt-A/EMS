@@ -242,10 +242,12 @@ final class Snapshot
             $captions = Forecast::captions($this->store->pdo(), $cfg['plant']);
             if (isset($captions[$todayKey]['kwh'])) {
                 $brief['today_kwh'] = round((float) $captions[$todayKey]['kwh'], 2);
+                $brief['today_sd'] = isset($captions[$todayKey]['sd']) ? round((float) $captions[$todayKey]['sd'], 2) : null;
             }
             $tomorrowKey = (new DateTimeImmutable('@' . $todayStart))->setTimezone($tz)->modify('+1 day')->format('Y-m-d');
             if (isset($captions[$tomorrowKey]['kwh'])) {
                 $brief['tomorrow_kwh'] = round((float) $captions[$tomorrowKey]['kwh'], 2);
+                $brief['tomorrow_sd'] = isset($captions[$tomorrowKey]['sd']) ? round((float) $captions[$tomorrowKey]['sd'], 2) : null;
             }
         }
         $sessions = new Sessions($this->store);
@@ -259,6 +261,7 @@ final class Snapshot
         $base['car_buffer_soc'] = $bufferSoc;
         $base['house_known'] = $balance['house_base_kw'] !== null;
         $base['session'] = $session;
+        $base['plug_group'] = is_array($session) && !empty($session['plug_at']) ? $sessions->group((int) $session['id']) : null;
         $base['car_label'] = Energy::carLabel($values['wallbox_car_raw'] ?? null);
         $base['phase_label'] = Energy::phaseLabel($values['wallbox_phases_raw'] ?? null);
         $base['activity'] = Energy::activity($values['battery_charge_kw'] ?? null, $values['battery_discharge_kw'] ?? null);
@@ -299,7 +302,7 @@ final class Snapshot
             'battery_surplus' => $this->surplusText($snap['storage'] ?? [], isset($snap['house_mean_kw']) && $snap['house_mean_kw'] !== null, $snap['house_mean_kw'] ?? null),
             'remaining_kwh' => $f['remaining_kwh'] ?? null,
             'flow' => Energy::flowBar($v, $b),
-            'flow_rows' => self::flowRows($v, $b),
+            'flow_rows' => self::flowRows($v, $b, $f),
             'chargepoint' => $snap['chargepoint'],
             'vehicle' => $snap['vehicle'],
             'battery' => [
@@ -366,7 +369,8 @@ final class Snapshot
         $phases = $charging ? (Energy::reportedPhases($v['wallbox_phases_raw'] ?? null) ?? (int) ($setpoint['latched_phases'] ?? 1)) : 0;
         $energy = null;
         if ($open || ($vehicle['connected'] && is_array($session))) {
-            $energy = round((float) $session['energy_kwh'], 3);
+            // Geladen seit dem Anstecken: alle Zyklen dieses Ladevorgangs.
+            $energy = round((float) ($base['plug_group']['energy_kwh'] ?? $session['energy_kwh']), 3);
         } elseif ($power !== null) {
             $energy = 0.0;
         }
@@ -401,7 +405,7 @@ final class Snapshot
     }
 
     /** Leistungen für die Detail-Liste „Rein“ und „Raus“ unter dem Energiefluss-Balken. */
-    public static function flowRows(array $v, array $b): array
+    public static function flowRows(array $v, array $b, ?array $f = null): array
     {
         $kw = static fn (mixed $value): ?float => $value === null ? null : round(max(0.0, (float) $value), 3);
         return [
@@ -409,7 +413,22 @@ final class Snapshot
             'out_kw' => $kw($b['out_kw'] ?? null),
             'in' => ['pv' => $kw($v['pv_kw'] ?? null), 'battery' => $kw($v['battery_discharge_kw'] ?? null), 'grid' => $kw($v['grid_import_kw'] ?? null)],
             'out' => ['house' => $kw($b['house_base_kw'] ?? null), 'wallbox' => $kw($v['wallbox_kw'] ?? null), 'battery' => $kw($v['battery_charge_kw'] ?? null), 'grid' => $kw($v['grid_export_kw'] ?? null)],
+            'pv_text' => self::pvForecastText($f),
         ];
+    }
+
+    /** PV-Zeile im Energiefluss: was die Prognose für den Rest des Tages noch erwartet und für den ganzen Tag. */
+    public static function pvForecastText(?array $f): string
+    {
+        $day = $f['today_kwh'] ?? null;
+        if ($day === null) {
+            return 'Noch keine Prognose';
+        }
+        $rest = $f['remaining_kwh'] ?? null;
+        if ($rest === null) {
+            return 'Prognose ' . kwh((float) $day);
+        }
+        return 'Rest ' . num((float) $rest, 1) . ' von ' . kwh((float) $day);
     }
 
     public static function storedText(?float $stored, ?float $total): string

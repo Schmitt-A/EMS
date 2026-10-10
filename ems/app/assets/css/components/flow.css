@@ -1,6 +1,7 @@
 /*
  * 7.1 Energiefluss-Balken. Breiten setzt JS per flex-grow (CSSOM), Klammern per left/width.
- * Oben spannen Klammern die Quellen, unten die Verbraucher; die Icons sitzen in der Lücke.
+ * Oben spannen Klammern die Quellen, unten die Verbraucher, jede Seite über die ganze Breite.
+ * In der Lücke jeder Klammer stehen Icon und Leistung.
  */
 .flow {
   display: grid;
@@ -13,12 +14,12 @@
 .flow-track {
   position: relative;
   min-width: 0;
-  padding-block: 2rem;
+  padding-block: 2.25rem;
 }
 
+/* Keine Lücken zwischen den Segmenten, damit die Klammern genau über ihren Segmenten enden. */
 .flow-bar {
   display: flex;
-  gap: 2px;
   height: 2.25rem;
   overflow: hidden;
   border-radius: var(--r-pill);
@@ -34,11 +35,15 @@
   min-width: 0;
   overflow: hidden;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   transition: flex-grow 400ms var(--ease-out);
+}
+
+.flow-seg:not([data-zero]) ~ .flow-seg:not([data-zero]) {
+  box-shadow: inset 2px 0 0 var(--surface);
 }
 
 .flow-seg[data-zero] {
@@ -76,97 +81,99 @@
   color: var(--on-accent);
 }
 
-.flow-seg-rest {
-  background: transparent;
-}
-
 .flow:not([data-ready]) .flow-seg {
   flex-grow: 1;
   background: var(--surface-2);
   color: transparent;
 }
 
-/* Klammern: 1 px in --border mit gerundeten Endhaken, Icon in der Lücke. */
+/* Klammern: 2 px mit gerundeten Haken, Icon und Wert in der Lücke. */
 .flow-brackets {
   position: absolute;
   inset-inline: 0;
-  height: 1.25rem;
+  height: 1.75rem;
   pointer-events: none;
 }
 
 .flow-brackets-top {
-  inset-block-start: 0.375rem;
+  inset-block-start: 0.25rem;
 }
 
 .flow-brackets-bottom {
-  inset-block-end: 0.375rem;
+  inset-block-end: 0.25rem;
 }
 
 .bracket {
   position: absolute;
   inset-block: 0;
+  display: flex;
+  gap: 0.25rem;
   min-width: 0.5rem;
-  color: var(--text-2);
+  color: var(--text);
 }
 
 .bracket::before,
 .bracket::after {
   content: "";
-  position: absolute;
-  inset-block: 0.5rem 0;
-  width: calc(50% - 0.875rem);
-  border: 1px solid var(--border-control);
+  flex: 1 1 0;
+  min-width: 0.25rem;
+  height: calc(50% + 1px);
+  align-self: flex-end;
+  border: 2px solid var(--text-2);
   border-block-end: 0;
 }
 
 .bracket::before {
-  inset-inline-start: 0;
   border-inline-end: 0;
-  border-start-start-radius: 6px;
+  border-start-start-radius: 8px;
 }
 
 .bracket::after {
-  inset-inline-end: 0;
   border-inline-start: 0;
-  border-start-end-radius: 6px;
+  border-start-end-radius: 8px;
 }
 
 .flow-brackets-bottom .bracket::before,
 .flow-brackets-bottom .bracket::after {
-  inset-block: 0 0.5rem;
+  align-self: flex-start;
   border-block-start: 0;
-  border-block-end: 1px solid var(--border-control);
+  border-block-end: 2px solid var(--text-2);
   border-radius: 0;
 }
 
 .flow-brackets-bottom .bracket::before {
-  border-end-start-radius: 6px;
+  border-end-start-radius: 8px;
 }
 
 .flow-brackets-bottom .bracket::after {
-  border-end-end-radius: 6px;
+  border-end-end-radius: 8px;
 }
 
-.bracket .icon {
-  position: absolute;
-  inset-block-start: 0;
-  inset-inline-start: 50%;
-  width: 1rem;
-  height: 1rem;
-  margin-inline-start: -0.5rem;
+.bracket-label {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.flow-brackets-bottom .bracket .icon {
-  inset-block: auto 0;
+.bracket-soc {
+  color: var(--text-2);
+  font-weight: 600;
 }
 
-.bracket[data-narrow] .icon {
+.bracket-soc::before {
+  content: "· ";
+}
+
+.bracket[data-size="icon"] .bracket-kw,
+.bracket[data-size="icon"] .bracket-soc,
+.bracket[data-size="line"] .bracket-label {
   display: none;
-}
-
-.bracket[data-narrow]::before,
-.bracket[data-narrow]::after {
-  width: 50%;
 }
 
 .bracket[data-gone] {
@@ -196,8 +203,8 @@
 .flow-legend {
   grid-column: 1 / -1;
   display: flex;
-  justify-content: space-between;
-  gap: var(--s-3);
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-4);
   color: var(--text-2);
 }
 

@@ -47,6 +47,12 @@ function ui_head_chip(string $icon, string $valueHtml, string $label, string $di
         . icon($icon, 'icon-16') . '<span class="num">' . $valueHtml . '</span></button>';
 }
 
+/** Mehrere Kopf-Chips; auf dem Handy in einer eigenen Zeile unter dem Titel. */
+function ui_head_chips(string ...$chips): string
+{
+    return '<div class="head-chips">' . implode('', $chips) . '</div>';
+}
+
 function ui_icon_button(string $icon, string $label, array $attrs = []): string
 {
     $class = trim('icon-btn ' . ($attrs['class'] ?? ''));
@@ -328,29 +334,46 @@ function ui_ring(array $parts, string $total, string $sub, string $label): strin
 }
 
 /**
- * 7.1 Energiefluss-Balken mit Klammern, Seitenmarken, Legende und Detail-Liste.
+ * 7.1 Energiefluss-Balken: oben spannen Klammern die Quellen, unten die Verbraucher, jede Seite über die ganze
+ * Breite. Jede Klammer trägt Icon und Leistung, beim Speicher auch den Ladestand. Darunter Legende und Detail-Liste.
  * @param array $flow Ergebnis von Energy::flowBar()
  * @param array{in: list<array>, out: list<array>, in_kw: ?float, out_kw: ?float} $rows
  */
 function ui_flow(array $flow, array $rows, string $id = 'flow'): string
 {
-    $labels = ['grid_in' => 'Netzbezug', 'battery' => 'Speicher', 'rest' => 'Nicht erfasst', 'solar' => 'Eigenverbrauch', 'grid_out' => 'Einspeisung'];
-    $classes = ['grid_in' => 'flow-seg-grid-in', 'battery' => 'flow-seg-battery', 'rest' => 'flow-seg-rest', 'solar' => 'flow-seg-solar', 'grid_out' => 'flow-seg-grid-out'];
-    $segments = $flow['segments'] ?: array_map(static fn (string $key): array => ['key' => $key, 'kw' => 0.0], array_keys($labels));
-    $bar = '';
-    foreach ($segments as $segment) {
-        $bar .= '<span class="flow-seg ' . $classes[$segment['key']] . '" data-seg="' . e($segment['key']) . '" data-kw="' . e((string) $segment['kw']) . '"'
-            . ($segment['kw'] <= 0 ? ' data-zero' : '') . '><span class="flow-val">' . e(kw((float) $segment['kw'])) . '</span></span>';
+    $labels = ['grid_in' => 'Netzbezug', 'battery' => 'Speicher', 'solar' => 'Eigenverbrauch', 'grid_out' => 'Einspeisung'];
+    $segmentKw = [];
+    foreach ($flow['segments'] ?? [] as $segment) {
+        $segmentKw[$segment['key']] = (float) $segment['kw'];
     }
-    $top = ['grid' => 'utility-pole', 'battery' => 'battery', 'pv' => 'sun'];
-    $bottom = ['house' => 'house', 'wallbox' => 'car', 'battery' => 'battery', 'grid' => 'utility-pole'];
-    $brackets = static function (array $keys, string $where): string {
+    $bar = '';
+    $legend = '';
+    foreach ($labels as $key => $label) {
+        $kw = $segmentKw[$key] ?? 0.0;
+        $class = str_replace('_', '-', $key);
+        $bar .= '<span class="flow-seg flow-seg-' . $class . '" data-seg="' . $key . '" data-kw="' . e((string) $kw) . '"' . ($kw <= 0 ? ' data-zero' : '')
+            . '><span class="flow-val">' . e(kw($kw)) . '</span></span>';
+        $legend .= '<span class="legend-item" data-legend="' . $key . '"' . ($kw <= 0 ? ' hidden' : '') . '><span class="swatch swatch-' . $class . '"></span>' . e($label) . '</span>';
+    }
+    $brackets = static function (array $keys, string $where, array $items) use ($flow): string {
         $html = '<div class="flow-brackets flow-brackets-' . $where . '" aria-hidden="true">';
-        foreach ($keys as $key => $glyph) {
-            $html .= '<span class="bracket" data-bracket="' . e($key) . '" data-gone>' . icon($glyph, 'icon-16') . '</span>';
+        foreach ($keys as $key => [$glyph, $tone]) {
+            $item = null;
+            foreach ($items as $entry) {
+                if ($entry['key'] === $key) {
+                    $item = $entry;
+                }
+            }
+            $html .= '<span class="bracket" data-bracket="' . e($key) . '"' . ($item ? '' : ' data-gone') . '><span class="bracket-label">'
+                . icon($glyph, 'icon-20' . ($tone !== '' ? ' tone-' . $tone : ''))
+                . '<span class="bracket-kw">' . e(kw((float) ($item['kw'] ?? 0))) . '</span>'
+                . ($key === 'battery' ? '<span class="bracket-soc">' . e(pct($flow['soc'] ?? null)) . '</span>' : '')
+                . '</span></span>';
         }
         return $html . '</div>';
     };
+    $top = ['grid' => ['utility-pole', 'grid-in'], 'battery' => ['battery', 'battery'], 'pv' => ['sun', 'solar']];
+    $bottom = ['house' => ['house', ''], 'wallbox' => ['car', ''], 'battery' => ['battery', 'battery'], 'grid' => ['utility-pole', 'grid-out']];
     $column = static function (string $title, string $side, ?float $sum, array $items): string {
         $html = '<div data-flow-side="' . $side . '"><div class="flow-col-head"><h3 class="label">' . e($title) . '</h3><span class="metric-sm" data-flow-sum>' . e(kw($sum)) . '</span></div><ul class="plain-list" role="list">';
         foreach ($items as $item) {
@@ -362,11 +385,11 @@ function ui_flow(array $flow, array $rows, string $id = 'flow'): string
         return $html . '</ul></div>';
     };
     return '<figure class="flow" id="' . e($id) . '" data-flow="' . e(ui_json($flow)) . '">'
-        . '<div class="flow-track">' . $brackets($top, 'top')
+        . '<div class="flow-track">' . $brackets($top, 'top', $flow['sources'] ?? [])
         . '<div class="flow-bar" role="img" aria-label="Energiefluss" data-flow-bar>' . $bar . '</div>'
-        . $brackets($bottom, 'bottom') . '</div>'
+        . $brackets($bottom, 'bottom', $flow['sinks'] ?? []) . '</div>'
         . '<div class="flow-sides" aria-hidden="true"><span>Rein</span><span>Raus</span></div>'
-        . '<figcaption class="flow-legend caption"><span class="legend-item"><span class="swatch swatch-solar"></span>Eigenverbrauch</span><span class="legend-item">Einspeisung<span class="swatch swatch-grid-out"></span></span></figcaption>'
+        . '<figcaption class="flow-legend caption">' . $legend . '</figcaption>'
         . '<button type="button" class="flow-toggle" aria-expanded="false" aria-controls="' . e($id) . '-details" data-flow-toggle>Rein und Raus im Detail' . icon('chevron-down', 'icon-16') . '</button>'
         . '<div class="flow-columns" id="' . e($id) . '-details" data-collapsed>' . $column('Rein', 'in', $rows['in_kw'] ?? null, $rows['in']) . $column('Raus', 'out', $rows['out_kw'] ?? null, $rows['out']) . '</div>'
         . '</figure>';
@@ -408,6 +431,12 @@ function ui_battery_column(array $b, bool $editable = true): string
 function ui_num(?float $value, string $unit, int $decimals = 1): string
 {
     return '<span class="num-unit">' . metric($value, $unit, $decimals) . '</span>';
+}
+
+/** Modell-Unsicherheit unter einem Prognosewert: „± 1,5 kWh“, leer ohne Streuung. */
+function ui_spread(?float $sd): string
+{
+    return $sd === null ? '' : '<span class="caption muted">± ' . e(num($sd, 1)) . NNBSP . 'kWh</span>';
 }
 
 /** Live-Zahl mit Einheit: der Server rendert den Startwert, live.js schreibt neue Werte gleich formatiert. */

@@ -14,9 +14,16 @@ $cp = $snap['chargepoint'] + ['vehicle' => $snap['vehicle']];
 $vehicle = $snap['vehicle'];
 $tariffs = $snap['cfg']['tariffs'];
 $f = $snap['forecast'];
-$co2 = (float) $overview['periods']['all']['co2_saved_kg'];
+$month = $overview['periods']['30'];
+$share = $month['solar_pct'] !== null ? (float) $month['solar_pct'] : null;
+$price = $month['ct'] !== null ? (float) $month['ct'] : null;
+$co2 = (float) $month['co2_saved_kg'];
 
-echo ui_page_head('Laden', ui_head_chip('leaf', e(num($co2, 0)) . NNBSP . 'kg', 'CO₂ gespart: ' . num($co2, 0) . ' kg. Energieübersicht öffnen'));
+echo ui_page_head('Laden', ui_head_chips(
+    ui_head_chip('sun', e(num($share, 0)) . NNBSP . '%', 'Solaranteil der letzten 30 Tage: ' . pct($share) . '. Energieübersicht öffnen'),
+    ui_head_chip('coins', e(num($price, 1)) . NNBSP . 'ct', 'Ø Preis der letzten 30 Tage: ' . ($price === null ? 'unbekannt' : ct($price)) . '. Energieübersicht öffnen'),
+    ui_head_chip('leaf', e(num($co2, 0)) . NNBSP . 'kg', 'CO₂ gespart in den letzten 30 Tagen: ' . num($co2, 0) . ' kg. Energieübersicht öffnen'),
+));
 
 $missing = Actions::missing($snap['cfg']['mapping']);
 if (!$snap['connected']) {
@@ -25,18 +32,19 @@ if (!$snap['connected']) {
     echo ui_notice('circle-alert', 'Noch nicht zugeordnet: ' . e(implode(', ', $missing)) . '. ' . ui_inline('Assistent öffnen', ['href' => url('/einrichten')]), 'warn');
 }
 
+$socLink = ui_inline('<span data-live="battery.soc_text">' . e(pct($v['battery_soc'] !== null ? (float) $v['battery_soc'] : null)) . '</span><span class="sr-only">, zum Speicher</span>', ['href' => url('/speicher')]);
 $rows = [
     'in_kw' => $b['in_kw'],
     'out_kw' => $b['out_kw'],
     'in' => [
-        ['key' => 'pv', 'icon' => 'sun', 'tone' => 'solar', 'label' => 'PV', 'kw' => $v['pv_kw'], 'context' => $f ? ui_inline(e(kwh($f['today_kwh'] ?? null)) . ' heute<span class="sr-only">, zur Prognose</span>', ['href' => url('/prognose')]) : null],
-        ['key' => 'battery', 'icon' => 'battery', 'tone' => 'battery', 'label' => 'Speicher', 'kw' => $v['battery_discharge_kw'], 'context' => ui_inline('<span data-live="battery.soc_text">' . e(pct($v['battery_soc'] !== null ? (float) $v['battery_soc'] : null)) . '</span><span class="sr-only">, zum Speicher</span>', ['href' => url('/speicher')])],
+        ['key' => 'pv', 'icon' => 'sun', 'tone' => 'solar', 'label' => 'PV', 'kw' => $v['pv_kw'], 'context' => ui_inline('<span data-live="flow_rows.pv_text">' . e(Snapshot::pvForecastText($f)) . '</span><span class="sr-only"> laut Prognose, zur Prognose</span>', ['href' => url('/prognose')])],
+        ['key' => 'battery', 'icon' => 'battery', 'tone' => 'battery', 'label' => 'Speicher', 'kw' => $v['battery_discharge_kw'], 'context' => $socLink],
         ['key' => 'grid', 'icon' => 'utility-pole', 'tone' => 'grid-in', 'label' => 'Netz', 'kw' => $v['grid_import_kw'], 'context' => e(ct((float) $tariffs['import_ct']))],
     ],
     'out' => [
         ['key' => 'house', 'icon' => 'house', 'tone' => 'muted', 'label' => 'Haus', 'kw' => $b['house_base_kw']],
         ['key' => 'wallbox', 'icon' => 'car', 'tone' => 'muted', 'label' => $cp['name'], 'kw' => $v['wallbox_kw'], 'context' => e($vehicle['name'])],
-        ['key' => 'battery', 'icon' => 'battery', 'tone' => 'battery', 'label' => 'Speicher', 'kw' => $v['battery_charge_kw']],
+        ['key' => 'battery', 'icon' => 'battery', 'tone' => 'battery', 'label' => 'Speicher', 'kw' => $v['battery_charge_kw'], 'context' => $socLink],
         ['key' => 'grid', 'icon' => 'utility-pole', 'tone' => 'grid-out', 'label' => 'Einspeisung', 'kw' => $v['grid_export_kw'], 'context' => e(ct((float) $tariffs['export_ct']))],
     ],
 ];

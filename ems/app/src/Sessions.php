@@ -22,12 +22,15 @@ final class Sessions
         $pdo = $this->store->pdo();
         $open = $this->open();
         $runtime = $this->store->get('session_runtime', ['idle_since' => null]);
+        $plug = $this->plugState($live['wallbox_car_raw'] ?? null, (float) $power, $now);
 
         if ($active) {
             if (!$open) {
-                $stmt = $pdo->prepare('INSERT INTO sessions (started_at, vehicle, loadpoint, source) VALUES (?, ?, ?, "recorder")');
-                $stmt->execute([date('c', $now), (string) ($live['vehicle_name'] ?? ''), (string) ($live['loadpoint_name'] ?? 'Wallbox')]);
+                $stmt = $pdo->prepare('INSERT INTO sessions (started_at, vehicle, loadpoint, source, plug_at) VALUES (?, ?, ?, "recorder", ?)');
+                $stmt->execute([date('c', $now), (string) ($live['vehicle_name'] ?? ''), (string) ($live['loadpoint_name'] ?? 'Wallbox'), $plug]);
                 $open = $this->open();
+            } elseif ($plug !== null && empty($open['plug_at'])) {
+                $pdo->prepare('UPDATE sessions SET plug_at = ? WHERE id = ?')->execute([$plug, $open['id']]);
             }
             $runtime['idle_since'] = null;
             $this->store->put('session_runtime', $runtime);
@@ -59,6 +62,180 @@ final class Sessions
             $stmt = $pdo->prepare('UPDATE sessions SET ended_at = ? WHERE id = ?');
             $stmt->execute([date('c', $now), $open['id']]);
         }
+    }
+
+    /**
+     * Steckt das Auto an der Wallbox? Ladeleistung zählt immer als angesteckt. null, wenn der Status
+     * nichts sagt (nicht zugeordnet, unknown, unavailable, Fehler).
+     */
+    public static function carConnected(?string $raw, ?float $powerKw = null): ?bool
+    {
+        if ($powerKw !== null && $powerKw > 0.2) {
+            return true;
+        }
+        return match (strtolower(str_replace([' ', '-'], '_', trim((string) $raw)))) {
+            'charging', 'wait_car', 'waitcar', 'complete', 'completed' => true,
+            'idle', 'standby', 'disconnected', 'not_connected' => false,
+            default => null,
+        };
+    }
+
+    /** Seit wann das Auto angesteckt ist (kv plug_state), null wenn nicht. */
+    private function plugState(?string $raw, float $power, int $now): ?string
+    {
+        $state = $this->store->get('plug_state', ['since' => null]);
+        $since = is_array($state) ? ($state['since'] ?? null) : null;
+        $connected = self::carConnected($raw, $power);
+        if ($connected === true && $since === null) {
+            $since = date('c', $now);
+            $this->store->put('plug_state', ['since' => $since]);
+        } elseif ($connected === false && $since !== null) {
+            $since = null;
+            $this->store->put('plug_state', ['since' => null]);
+        }
+        return $since;
+    }
+
+    /**
+     * Ordnet Vorgänge ohne plug_at nachträglich ihrem Anstecken zu, soweit Home Assistant den Fahrzeugstatus
+     * noch kennt (meist zehn Tage). Höchstens einmal pro Stunde, nur die letzten 30 Tage.
+     */
+    public function backfillPlugs(HaSource $ha, string $entity, int $now): int
+    {
+        if ($entity === '' || !$ha->configured() || (int) $this->store->get('plug_backfill', 0) > $now - 3600) {
+            return 0;
+        }
+        $this->store->put('plug_backfill', $now);
+        $stmt = $this->store->pdo()->prepare("SELECT id, started_at FROM sessions WHERE (plug_at IS NULL OR plug_at = '') AND started_at >= ? ORDER BY started_at ASC");
+        $stmt->execute([date('c', $now - 30 * 86400)]);
+        $rows = $stmt->fetchAll() ?: [];
+        if (!$rows) {
+            return 0;
+        }
+        try {
+            $states = $ha->stateHistory($entity, (int) strtotime((string) $rows[0]['started_at']) - 86400, $now);
+        } catch (Throwable) {
+            return 0;
+        }
+        $periods = self::plugPeriods($states);
+        $update = $this->store->pdo()->prepare('UPDATE sessions SET plug_at = ? WHERE id = ?');
+        $done = 0;
+        foreach ($rows as $row) {
+            $start = (int) strtotime((string) $row['started_at']);
+            foreach ($periods as [$from, $to]) {
+                if ($start >= $from - 60 && ($to === null || $start < $to)) {
+                    $update->execute([date('c', $from), $row['id']]);
+                    $done++;
+                    break;
+                }
+            }
+        }
+        return $done;
+    }
+
+    /** Zeiträume, in denen das Auto angesteckt war, aus dem Statusverlauf. @return list<array{0:int, 1:?int}> */
+    public static function plugPeriods(array $states): array
+    {
+        $periods = [];
+        $from = null;
+        foreach ($states as $state) {
+            $connected = self::carConnected($state['s'] ?? null);
+            if ($connected === true && $from === null) {
+                $from = (int) $state['t'];
+            } elseif ($connected === false && $from !== null) {
+                $periods[] = [$from, (int) $state['t']];
+                $from = null;
+            }
+        }
+        if ($from !== null) {
+            $periods[] = [$from, null];
+        }
+        return $periods;
+    }
+
+    /**
+     * Fasst die Ladezyklen eines Ansteckens zu einem Ladevorgang zusammen; ohne plug_at bleibt jeder Zyklus für sich.
+     * @return list<array> Ladevorgänge, neueste zuerst, mit 'cycles' (älteste zuerst)
+     */
+    public static function groups(array $rows): array
+    {
+        usort($rows, static fn (array $a, array $b): int => strcmp((string) $a['started_at'], (string) $b['started_at']));
+        $groups = [];
+        $index = [];
+        foreach ($rows as $row) {
+            $key = (string) ($row['plug_at'] ?? '');
+            if ($key !== '' && isset($index[$key])) {
+                $groups[$index[$key]][] = $row;
+                continue;
+            }
+            $groups[] = [$row];
+            if ($key !== '') {
+                $index[$key] = count($groups) - 1;
+            }
+        }
+        return array_reverse(array_map([self::class, 'merge'], $groups));
+    }
+
+    /** Ein Ladevorgang aus seinen Zyklen: Summen, erster Start, letztes Ende, offen solange ein Zyklus läuft. */
+    public static function merge(array $cycles): array
+    {
+        $first = $cycles[0];
+        $last = $cycles[count($cycles) - 1];
+        $sum = ['energy_kwh' => 0.0, 'solar_kwh' => 0.0, 'grid_kwh' => 0.0, 'duration_s' => 0];
+        $running = false;
+        $odometer = null;
+        $vehicle = '';
+        foreach ($cycles as $cycle) {
+            $sum['energy_kwh'] += (float) $cycle['energy_kwh'];
+            $sum['solar_kwh'] += (float) $cycle['solar_kwh'];
+            $sum['grid_kwh'] += (float) $cycle['grid_kwh'];
+            $sum['duration_s'] += (int) $cycle['duration_s'];
+            $running = $running || empty($cycle['ended_at']);
+            if ($odometer === null && ($cycle['odometer'] ?? null) !== null && $cycle['odometer'] !== '') {
+                $odometer = $cycle['odometer'];
+            }
+            if ($vehicle === '' && !empty($cycle['vehicle'])) {
+                $vehicle = (string) $cycle['vehicle'];
+            }
+        }
+        return array_merge($first, $sum, [
+            'id' => (int) $first['id'],
+            'ended_at' => $running ? null : $last['ended_at'],
+            'vehicle' => $vehicle,
+            'odometer' => $odometer,
+            'meter_start' => $first['meter_start'] ?? null,
+            'meter_end' => $last['meter_end'] ?? null,
+            'cycles' => $cycles,
+        ]);
+    }
+
+    /** Der Ladevorgang, zu dem ein Zyklus gehört. */
+    public function group(int $id): ?array
+    {
+        $row = $this->find($id);
+        if (!$row) {
+            return null;
+        }
+        if (empty($row['plug_at'])) {
+            return self::merge([$row]);
+        }
+        $stmt = $this->store->pdo()->prepare('SELECT * FROM sessions WHERE plug_at = ? ORDER BY started_at ASC');
+        $stmt->execute([$row['plug_at']]);
+        return self::merge($stmt->fetchAll() ?: [$row]);
+    }
+
+    /** Löscht einen abgeschlossenen Ladevorgang mit allen Zyklen. */
+    public function deleteGroup(int $id): bool
+    {
+        $group = $this->group($id);
+        if (!$group || $group['ended_at'] === null) {
+            return false;
+        }
+        $stmt = $this->store->pdo()->prepare('DELETE FROM sessions WHERE id = ? AND ended_at IS NOT NULL');
+        foreach ($group['cycles'] as $cycle) {
+            $stmt->execute([$cycle['id']]);
+        }
+        return true;
     }
 
     /**
@@ -209,6 +386,9 @@ final class Sessions
         }
         $out['solar_pct'] = $out['energy'] > 0 ? $out['solar'] / $out['energy'] * 100 : null;
         $out['ct'] = $out['energy'] > 0 ? $out['cost'] / $out['energy'] * 100 : null;
+        // Gezählt werden Ladevorgänge (Anstecken bis Abstecken), nicht einzelne Zyklen.
+        $out['cycles'] = $out['count'];
+        $out['count'] = count(self::groups($rows));
         return $out;
     }
 

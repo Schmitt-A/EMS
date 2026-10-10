@@ -88,6 +88,71 @@ export function drawAxis(target, scale, values, format, { right = false, unit = 
   }
 }
 
+/**
+ * Maus zeigt Werte beim Darüberfahren, Finger und Stift beim Tippen; Wischen scrollt weiter.
+ * Ein per Tippen gezeigter Wert verschwindet beim Scrollen und beim Tippen außerhalb (index.js).
+ */
+export function bindPointer(f, onPoint, onClear) {
+  const { plot, scroll, figure } = f;
+  const at = (event) => event.clientX - plot.getBoundingClientRect().left;
+  let down = null;
+  let tapped = false;
+  const clear = () => {
+    tapped = false;
+    onClear();
+  };
+  // Mit der Maus lässt sich ein breiter Plot auch ziehen.
+  let drag = null;
+  const pannable = () => scroll.scrollWidth > scroll.clientWidth + 1;
+  plot.toggleAttribute('data-pannable', pannable());
+  plot.addEventListener('pointermove', (event) => {
+    if (event.pointerType !== 'mouse') return;
+    if (drag) {
+      scroll.scrollLeft = drag.left - (event.clientX - drag.x);
+      return;
+    }
+    onPoint(at(event));
+  });
+  plot.addEventListener('pointerleave', (event) => {
+    if (event.pointerType === 'mouse' && !drag) clear();
+  });
+  plot.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'mouse') {
+      down = { x: event.clientX, y: event.clientY };
+      return;
+    }
+    if (event.button !== 0 || !pannable()) return;
+    drag = { x: event.clientX, left: scroll.scrollLeft };
+    plot.setPointerCapture(event.pointerId);
+    plot.setAttribute('data-dragging', '');
+    clear();
+  });
+  const endDrag = () => {
+    drag = null;
+    plot.removeAttribute('data-dragging');
+  };
+  plot.addEventListener('lostpointercapture', endDrag);
+  plot.addEventListener('pointerup', (event) => {
+    if (event.pointerType === 'mouse') {
+      endDrag();
+      return;
+    }
+    if (!down) return;
+    const moved = Math.hypot(event.clientX - down.x, event.clientY - down.y);
+    down = null;
+    if (moved > 10) return;
+    tapped = true;
+    onPoint(at(event));
+  });
+  plot.addEventListener('pointercancel', () => {
+    down = null;
+  });
+  scroll.addEventListener('scroll', () => {
+    if (tapped) clear();
+  }, { passive: true });
+  figure._clearTip = clear;
+}
+
 /** Pfeiltasten wandern über die Punkte; Pos1 und Ende springen an die Ränder. */
 export function bindKeys(f, count, onIndex) {
   let index = -1;

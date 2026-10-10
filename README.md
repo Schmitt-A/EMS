@@ -8,11 +8,13 @@ Im Add-on spricht sie über den Supervisor. Lokal liegen Adresse und Token in `.
 
 Fünf Bereiche, auf dem Handy als Tab-Leiste unten, ab 1024 px als Leiste links:
 
-- **Laden:** Energiefluss als Balken (rein und raus), die Ladepunkt-Karte mit Modus (Aus, Solar, Min+Solar, Schnell), Leistung, geladener Energie, Restzeit und Ladebalken mit ziehbarem Limit. Ladeparameter und Fahrzeug öffnen sich als Sheet.
-- **Speicher:** die Säule mit den Zonen Haus, Auto und batteriegestützt, Grenzen zum Ziehen, wann sie erreicht sind, und der Verlauf.
-- **Prognose:** Sonne der nächsten drei Tage, Ist gegen Prognose, Güte, Modelle, Rechnung und Wetter.
-- **Ladevorgänge:** Monat, Jahr oder Gesamt mit Energie, Kosten oder CO₂, Solaranteil und alle Vorgänge mit Kilometerstand und Löschen.
+- **Laden:** oben Solaranteil, Ø Preis und gespartes CO₂ der letzten 30 Tage, darunter der Energiefluss als Balken: Klammern oben für PV, Speicher und Netzbezug, unten für Haus, Ladepunkt, Speicher und Einspeisung, jeweils mit Leistung. Dann die Ladepunkt-Karte mit Modus (Aus, Solar, Min+Solar, Schnell), Leistung, geladener Energie seit dem Anstecken, Restzeit und Ladebalken mit ziehbarem Limit. Ladeparameter und Fahrzeug öffnen sich als Sheet.
+- **Speicher:** die Säule mit den Zonen Haus, Auto und batteriegestützt, Grenzen zum Ziehen, wann sie erreicht sind, und der Verlauf über 3 oder 7 Tage.
+- **Prognose:** Sonne der nächsten drei Tage mit Unsicherheit, gemessen und Prognose im selben Diagramm, Güte, Modelle, Rechnung und Wetter.
+- **Ladevorgänge:** Monat, Jahr oder Gesamt mit Energie, Kosten oder CO₂, Solaranteil und alle Vorgänge mit Kilometerstand und Löschen. Ein Ladevorgang reicht vom Anstecken bis zum Abstecken; seine einzelnen Ladezyklen klappen auf.
 - **Mehr:** Ladepunkt, Fahrzeug, Energie (Zuordnung), Prognose, Tarif & CO₂, Darstellung und System mit Verbindung und JSON-Export.
+
+Die Diagramme scrollen waagerecht in Vergangenheit und Zukunft; ein erneuter Tipp auf den Zeitraum springt zurück zu heute. Werte zeigt das Antippen (Handy) oder Darüberfahren (Maus).
 
 Hell und Dunkel folgen dem Gerät oder lassen sich unter Mehr → Darstellung festlegen. Die Seiten laden nichts von fremden Servern.
 

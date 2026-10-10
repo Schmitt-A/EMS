@@ -15,6 +15,9 @@ declare(strict_types=1);
  */
 $tz = new DateTimeZone('Europe/Berlin');
 $span = $params['span'];
+// Uhrzeit von–bis eines Ladevorgangs oder Zyklus
+$clock = static fn (string $iso): string => (new DateTimeImmutable($iso))->setTimezone($tz)->format('H:i');
+$range = static fn (array $row): string => $clock((string) $row['started_at']) . '–' . (empty($row['ended_at']) ? 'jetzt' : $clock((string) $row['ended_at']));
 $here = static fn (array $patch = []): string => url('/ladevorgaenge' . sessions_query($params, $patch));
 $ct = $summary['ct'];
 
@@ -118,12 +121,21 @@ $sortLink = static function (string $key, string $label, bool $numeric = false) 
     ], $params['sort'], ['id' => 'f-sort']), ['for' => 'f-sort']) ?>
   </form>
   <ul class="list-cards only-narrow" role="list">
-<?php foreach ($rows as $row): ?>
-    <li><a class="list-card" href="<?= e($here(['vorgang' => (int) $row['id']])) ?>">
+<?php foreach ($rows as $row): $n = count($row['cycles']); ?>
+    <li class="list-group"><a class="list-card" href="<?= e($here(['vorgang' => (int) $row['id']])) ?>">
       <span class="list-card-title"><?= e(($row['vehicle'] ?: 'Fahrzeug') . ' · ' . day_label(substr((string) $row['started_at'], 0, 10))) ?></span>
       <span class="list-card-side metric-sm"><?= e(euro((float) $row['costed']['cost'])) ?></span>
       <span class="list-card-meta"><span><?= e(kwh((float) $row['energy_kwh'])) ?></span><?= ui_pill(pct((float) $row['costed']['solar_pct']) . ' Solar', 'sun', (float) $row['costed']['solar_pct'] < 50) ?><?php if (empty($row['ended_at'])): ?><span>läuft</span><?php endif; ?></span>
-    </a></li>
+    </a>
+<?php if ($n > 1): ?>
+      <button type="button" class="cycles-toggle" data-expand aria-expanded="false" aria-controls="m-cycles-<?= (int) $row['id'] ?>"><?= icon('chevron-down', 'icon-16') ?><span><?= $n ?> Ladezyklen, <?= e($range($row)) ?></span></button>
+      <ul class="cycle-list" id="m-cycles-<?= (int) $row['id'] ?>" role="list" hidden>
+<?php foreach ($row['cycles'] as $cycle): ?>
+        <li><span><?= e($range($cycle)) ?></span><span><?= e(kwh((float) $cycle['energy_kwh'])) ?></span><span><?= e(pct((float) $cycle['costed']['solar_pct'])) ?> Sonne</span></li>
+<?php endforeach; ?>
+      </ul>
+<?php endif; ?>
+    </li>
 <?php endforeach; ?>
   </ul>
   <div class="card card-flush only-wide">
@@ -138,19 +150,35 @@ $sortLink = static function (string $key, string $label, bool $numeric = false) 
           <?= $sortLink('cost', 'Kosten', true) ?>
           <th scope="col" class="num-col">CO₂ gespart</th>
         </tr></thead>
-        <tbody>
-<?php foreach ($rows as $row): ?>
+<?php foreach ($rows as $row): $n = count($row['cycles']); $cid = 'cycles-' . (int) $row['id']; ?>
+        <tbody class="group">
           <tr>
-            <th scope="row"><a class="inline-action align-start" href="<?= e($here(['vorgang' => (int) $row['id']])) ?>"><?= e(long_when((string) $row['started_at'])) ?></a></th>
-            <td><?= e((string) ($row['vehicle'] ?: '—')) ?></td>
+            <th scope="row"><span class="group-cell"><?php if ($n > 1): ?><button type="button" class="icon-btn expand-btn" data-expand aria-expanded="false" aria-controls="<?= $cid ?>" aria-label="<?= $n ?> Ladezyklen zeigen"><?= icon('chevron-right', 'icon-16') ?></button><?php else: ?><span class="expand-space"></span><?php endif; ?>
+              <a class="inline-action align-start" href="<?= e($here(['vorgang' => (int) $row['id']])) ?>"><?= e(long_when((string) $row['started_at'])) ?><?= $n > 1 ? '–' . e(empty($row['ended_at']) ? 'jetzt' : $clock((string) $row['ended_at'])) : '' ?></a></span></th>
+            <td><?= e((string) ($row['vehicle'] ?: '—')) ?><?php if ($n > 1): ?><span class="sub"><?= $n ?> Ladezyklen</span><?php endif; ?></td>
             <td class="num-col"><?= e(kwh((float) $row['energy_kwh'])) ?></td>
             <td class="num-col"><?= empty($row['ended_at']) ? 'läuft' : e(duration_clock((int) $row['duration_s'])) ?></td>
             <td class="num-col"><?= e(pct((float) $row['costed']['solar_pct'])) ?></td>
             <td class="num-col"><?= e(euro((float) $row['costed']['cost'])) ?></td>
             <td class="num-col"><?= e(num((float) $row['co2']['saved_kg'], 1)) ?>&#8239;kg</td>
           </tr>
+        </tbody>
+<?php if ($n > 1): ?>
+        <tbody class="cycles" id="<?= $cid ?>" hidden>
+<?php foreach ($row['cycles'] as $i => $cycle): ?>
+          <tr>
+            <th scope="row"><span class="cycle-time"><?= e($range($cycle)) ?></span></th>
+            <td>Zyklus <?= $i + 1 ?></td>
+            <td class="num-col"><?= e(kwh((float) $cycle['energy_kwh'])) ?></td>
+            <td class="num-col"><?= empty($cycle['ended_at']) ? 'läuft' : e(duration_clock((int) $cycle['duration_s'])) ?></td>
+            <td class="num-col"><?= e(pct((float) $cycle['costed']['solar_pct'])) ?></td>
+            <td class="num-col"><?= e(euro((float) $cycle['costed']['cost'])) ?></td>
+            <td class="num-col"><?= e(num((float) $cycle['co2']['saved_kg'], 1)) ?>&#8239;kg</td>
+          </tr>
 <?php endforeach; ?>
         </tbody>
+<?php endif; ?>
+<?php endforeach; ?>
         <tfoot><tr>
           <td>Summe</td><td><?= (int) $summary['count'] ?> Vorgänge</td>
           <td class="num-col"><?= e(kwh((float) $summary['energy'])) ?></td>
@@ -189,6 +217,16 @@ if ($detail) {
   <div><dt>CO₂</dt><dd><?= e(num((float) $co2['saved_kg'], 1)) ?>&#8239;kg gespart<span class="sub"><?= e(num((float) $co2['caused_kg'], 1)) ?>&#8239;kg aus dem Netz</span></dd></div>
   <div><dt>Zählerstand</dt><dd><?php if ($detail['meter_start'] !== null && $detail['meter_end'] !== null): ?><?= e(num((float) $detail['meter_start'], 1)) ?>–<?= e(kwh((float) $detail['meter_end'])) ?><?php else: ?>—<?php endif; ?></dd></div>
 </dl>
+<?php if (count($detail['cycles']) > 1): ?>
+<div class="stack-tight">
+  <h3 class="label"><?= count($detail['cycles']) ?> Ladezyklen</h3>
+  <ol class="cycle-list" role="list">
+<?php foreach ($detail['cycles'] as $cycle): ?>
+    <li><span><?= e($range($cycle)) ?></span><span><?= e(kwh((float) $cycle['energy_kwh'])) ?></span><span><?= e(pct(Sessions::cost($cycle, $tariffs)['solar_pct'])) ?> Sonne</span></li>
+<?php endforeach; ?>
+  </ol>
+</div>
+<?php endif; ?>
 <form method="post" action="<?= e(url('/ladevorgaenge')) ?>" class="stack-tight">
   <?= csrf_field() ?><?= $hidden ?><input type="hidden" name="action" value="odometer"><input type="hidden" name="id" value="<?= (int) $detail['id'] ?>">
   <div class="form-rows"><?= ui_form_row('Kilometerstand', ui_input('odometer', $detail['odometer'] !== null && $detail['odometer'] !== '' ? (string) $detail['odometer'] : '', ['id' => 'f-odometer', 'class' => 'field-num', 'inputmode' => 'decimal', 'placeholder' => 'km']), ['for' => 'f-odometer']) ?></div>
@@ -200,7 +238,8 @@ if ($detail) {
         : '<button type="button" class="text-action text-danger" data-open-dialog="session-delete">' . icon('trash-2', 'icon-16') . 'Löschen</button><button type="button" class="btn btn-primary" data-close-dialog>Fertig</button>';
     echo ui_dialog('session-detail', 'Ladevorgang', ob_get_clean(), ['autoopen' => true, 'return' => $here(), 'foot' => $foot]);
     if (!$running) {
-        echo ui_dialog('session-delete', 'Ladevorgang löschen?', '<p class="body">' . e(long_when((string) $detail['started_at'])) . ', ' . e(kwh((float) $detail['energy_kwh'])) . '. Der Vorgang verschwindet aus Liste, Diagramm und Summen. Das lässt sich nicht rückgängig machen.</p>'
+        $cyclesText = count($detail['cycles']) > 1 ? ' in ' . count($detail['cycles']) . ' Ladezyklen' : '';
+        echo ui_dialog('session-delete', 'Ladevorgang löschen?', '<p class="body">' . e(long_when((string) $detail['started_at'])) . ', ' . e(kwh((float) $detail['energy_kwh'])) . e($cyclesText) . '. Der Vorgang verschwindet aus Liste, Diagramm und Summen. Das lässt sich nicht rückgängig machen.</p>'
             . '<form method="post" action="' . e(url('/ladevorgaenge')) . '" class="form-actions">' . csrf_field() . $hidden
             . '<input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="' . (int) $detail['id'] . '">'
             . '<button type="button" class="btn btn-secondary" data-close-dialog>Abbrechen</button><button class="btn btn-danger" type="submit">' . icon('trash-2', 'icon-16') . 'Löschen</button></form>');

@@ -32,7 +32,8 @@ final class ConfigStore
         foreach ($this->pdo->query('PRAGMA table_info(sessions)') ?: [] as $column) {
             $columns[] = (string) $column['name'];
         }
-        foreach (['odometer' => 'REAL', 'meter_start' => 'REAL', 'meter_end' => 'REAL'] as $name => $type) {
+        // plug_at: wann das Auto angesteckt wurde; Vorgänge mit demselben Wert bilden einen Ladevorgang.
+        foreach (['odometer' => 'REAL', 'meter_start' => 'REAL', 'meter_end' => 'REAL', 'plug_at' => 'TEXT'] as $name => $type) {
             if (!in_array($name, $columns, true)) {
                 $this->pdo->exec('ALTER TABLE sessions ADD COLUMN ' . $name . ' ' . $type);
             }

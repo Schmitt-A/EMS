@@ -33,9 +33,10 @@ async function load(figure) {
   const state = {
     hidden: new Set(),
     style: parse(figure.dataset.style),
-    window: figure.dataset.window || null,
+    // Wer vor dem Laden schon ein Fenster oder eine Einheit gewählt hat, bekommt genau das.
+    window: $('[data-chart-window] input:checked', figure)?.value || figure.dataset.window || null,
     anchor: figure.dataset.anchor || 'today',
-    unit: null,
+    unit: $('[data-chart-unit] input:checked', figure)?.value || null,
     first: true,
     jump: true,
   };
@@ -64,7 +65,15 @@ async function load(figure) {
       state.window = event.target.value;
       draw(true);
     });
+    // Ein erneuter Tipp auf das gewählte Fenster springt zurück zum heutigen Tag.
+    fieldset.addEventListener('click', (event) => {
+      if (event.target.matches('input') && event.target.value === state.window) draw(true);
+    });
   }
+  // Ein per Tippen gezeigter Wert verschwindet, sobald man außerhalb des Diagramms tippt.
+  document.addEventListener('pointerdown', (event) => {
+    if (!figure.contains(event.target)) figure._clearTip?.();
+  }, { passive: true });
   for (const fieldset of $$('[data-chart-unit]', figure)) {
     fieldset.addEventListener('change', (event) => {
       state.unit = event.target.value;

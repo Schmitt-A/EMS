@@ -137,7 +137,7 @@ if (($path === '/ladevorgaenge' || $path === '/statistik') && $method === 'POST'
         redirect('/ladevorgaenge' . sessions_query($params, ['vorgang' => $id]));
     }
     if ($action === 'delete') {
-        flash($sessions->delete($id) ? 'Ladevorgang gelöscht.' : 'Ein laufender Ladevorgang lässt sich nicht löschen.');
+        flash($sessions->deleteGroup($id) ? 'Ladevorgang gelöscht.' : 'Ein laufender Ladevorgang lässt sich nicht löschen.');
         redirect('/ladevorgaenge' . sessions_query($params));
     }
     $result = $sessions->import(ha());
@@ -175,10 +175,18 @@ if ($path === '/ladevorgaenge') {
     $tariffs = cfg()['tariffs'];
     $sessions = new Sessions(store());
     $sessions->repairVehicleNames((string) (cfg()['vehicle']['name'] ?? ''));
-    $rows = sessions_rows($params);
-    foreach ($rows as &$row) {
+    $sessions->backfillPlugs(ha(), (string) (cfg()['mapping']['wallbox_car'] ?? ''), time());
+    $cycles = sessions_rows($params);
+    // Ein Ladevorgang reicht vom Anstecken bis zum Abstecken; seine Zyklen klappen in der Liste auf.
+    $rows = Sessions::groups($cycles);
+    $priced = static function (array $row) use ($tariffs): array {
         $row['costed'] = Sessions::cost($row, $tariffs);
         $row['co2'] = Sessions::co2($row, (float) ($tariffs['co2_g_kwh'] ?? 380));
+        return $row;
+    };
+    foreach ($rows as &$row) {
+        $row = $priced($row);
+        $row['cycles'] = array_map($priced, $row['cycles']);
     }
     unset($row);
     $sort = $params['sort'];
@@ -192,11 +200,11 @@ if ($path === '/ladevorgaenge') {
         };
         return str_ends_with($sort, '_asc') ? $cmp : -$cmp;
     });
-    $summary = Sessions::summary($rows, $tariffs);
+    $summary = Sessions::summary($cycles, $tariffs);
     $years = [];
     if ($params['span'] === 'all') {
         $byYear = [];
-        foreach ($rows as $row) {
+        foreach ($cycles as $row) {
             $byYear[substr((string) $row['started_at'], 0, 4)][] = $row;
         }
         krsort($byYear);
@@ -204,7 +212,7 @@ if ($path === '/ladevorgaenge') {
             $years[] = ['year' => (int) $y, 'summary' => Sessions::summary($list, $tariffs)];
         }
     }
-    $detail = isset($_GET['vorgang']) ? $sessions->find((int) $_GET['vorgang']) : null;
+    $detail = isset($_GET['vorgang']) ? $sessions->group((int) $_GET['vorgang']) : null;
     $hasAny = $params['span'] === 'all' ? (bool) $rows : (bool) $sessions->latest();
     $overview = energy_overview();
     page('ladevorgaenge', compact('live', 'params', 'rows', 'summary', 'years', 'detail', 'tariffs', 'hasAny', 'overview') + ['title' => 'Ladevorgänge']);

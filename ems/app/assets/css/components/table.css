@@ -53,6 +53,13 @@
   text-align: end;
 }
 
+.table .sub {
+  display: block;
+  color: var(--text-2);
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
 .table tbody tr[data-href] {
   cursor: pointer;
 }
@@ -118,6 +125,97 @@
   box-shadow: var(--shadow-card);
   color: inherit;
   text-decoration: none;
+}
+
+/* Ladevorgang mit mehreren Zyklen: die Karte ist das li, darunter der Knopf zum Aufklappen. */
+.list-group {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--card-edge);
+  border-radius: 1.25rem;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.list-group > .list-card {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.cycles-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  padding: 0 var(--card-pad);
+  border-block-start: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: start;
+}
+
+.cycles-toggle .icon,
+.expand-btn .icon {
+  transition: transform var(--dur-fast);
+}
+
+.cycles-toggle[aria-expanded="true"] .icon {
+  transform: rotate(180deg);
+}
+
+.expand-btn[aria-expanded="true"] .icon {
+  transform: rotate(90deg);
+}
+
+.cycle-list {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  list-style: none;
+}
+
+/* Spezifischer als ul[role="list"] aus base.css, sonst fehlt der Innenabstand. */
+.list-group > .cycle-list {
+  padding: 0 var(--card-pad) var(--s-4);
+}
+
+.cycle-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--s-3);
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Tabelle: Pfeil vor dem Datum, Zyklen eingerückt und leiser */
+.group-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.expand-btn,
+.expand-space {
+  flex: none;
+  width: 2.75rem;
+  margin-inline-start: calc(var(--s-3) * -1);
+}
+
+.table .cycles th,
+.table .cycles td {
+  height: 2.5rem;
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--surface-2) 45%, var(--surface));
+}
+
+.cycle-time {
+  padding-inline-start: calc(2.75rem - var(--s-3) + var(--s-1) + 0.25rem);
 }
 
 .list-card-title {

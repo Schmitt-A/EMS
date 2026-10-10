@@ -142,6 +142,33 @@ check(Forecast::windowDays(['2026-10-05', '2026-09-30'], '2026-10-08', 'quarter'
 check(Forecast::captionText(10.47, 0.04) === '10,5 ± 0,0' . NNBSP . 'kWh', 'Beschriftung rundet wie die Tabelle');
 check(Forecast::captionText(10.7, null) === '10,7' . NNBSP . 'kWh', 'ohne Streuung nur der Prognosewert');
 check(kw(11.0) === '11,0' . NNBSP . 'kW' && pct(57.0) === '57' . NNBSP . '%' && euro(500.7) === '500,70' . NNBSP . '€', 'Einheit mit schmalem Leerzeichen, Leistung mit einer Stelle');
+// Energiefluss: jede Seite füllt die ganze Breite, auch wenn Rein und Raus nicht genau gleich sind.
+$flow = Energy::flowBar(
+    ['pv_kw' => 5.0, 'battery_discharge_kw' => 0.0, 'grid_import_kw' => 0.5, 'wallbox_kw' => 3.0, 'battery_charge_kw' => 1.0, 'grid_export_kw' => 0.8, 'battery_soc' => 62.4],
+    ['house_base_kw' => 0.5]
+);
+$lastTo = static fn (array $items): float => (float) end($items)['to'];
+check(abs($lastTo($flow['sources']) - 1) < 0.0001 && abs($lastTo($flow['sinks']) - 1) < 0.0001, 'Klammern oben und unten über die ganze Breite');
+check(abs($flow['in_kw'] - 5.5) < 0.001 && abs($flow['out_kw'] - 5.3) < 0.001 && $flow['soc'] === 62.4, 'Rein, Raus und Ladestand im Energiefluss');
+check(array_column($flow['sources'], 'key') === ['grid', 'pv'] && array_column($flow['sinks'], 'key') === ['house', 'wallbox', 'battery', 'grid'], 'Klammern nur für Flüsse über null');
+$segments = array_column($flow['segments'], 'kw', 'key');
+check(abs($segments['solar'] - 4.2) < 0.001 && abs($segments['grid_out'] - 0.8) < 0.001 && abs(array_sum($segments) - 5.5) < 0.001, 'Balken: Netzbezug, Eigenverbrauch und Einspeisung ergeben Rein');
+check(Snapshot::pvForecastText(['today_kwh' => 33.1, 'remaining_kwh' => 12.4]) === 'Rest 12,4 von 33,1' . NNBSP . 'kWh' && Snapshot::pvForecastText(null) === 'Noch keine Prognose', 'PV-Zeile mit Rest und Tagesprognose');
+check(Sessions::carConnected('WaitCar') === true && Sessions::carConnected('idle') === false && Sessions::carConnected('unknown') === null && Sessions::carConnected('idle', 3.0) === true, 'Angesteckt aus dem Wallbox-Status');
+$periods = Sessions::plugPeriods([['t' => 100, 's' => 'idle'], ['t' => 200, 's' => 'wait_car'], ['t' => 300, 's' => 'charging'], ['t' => 400, 's' => 'unknown'], ['t' => 500, 's' => 'idle'], ['t' => 900, 's' => 'complete']]);
+check($periods === [[200, 500], [900, null]], 'Ansteckzeiträume aus dem Statusverlauf');
+$cycle = static fn (int $id, string $start, ?string $end, float $kwh, ?string $plug): array => ['id' => $id, 'started_at' => $start, 'ended_at' => $end, 'energy_kwh' => $kwh, 'solar_kwh' => $kwh / 2, 'grid_kwh' => $kwh / 2, 'duration_s' => 600, 'plug_at' => $plug, 'vehicle' => 'ID.3', 'odometer' => null, 'meter_start' => null, 'meter_end' => null];
+$grouped = Sessions::groups([
+    $cycle(3, '2026-10-08T16:40:00+02:00', '2026-10-08T17:20:00+02:00', 2.0, '2026-10-08T14:00:00+02:00'),
+    $cycle(1, '2026-10-08T14:02:00+02:00', '2026-10-08T14:40:00+02:00', 3.0, '2026-10-08T14:00:00+02:00'),
+    $cycle(4, '2026-10-09T09:00:00+02:00', null, 1.5, '2026-10-09T08:55:00+02:00'),
+    $cycle(2, '2026-10-08T15:10:00+02:00', '2026-10-08T15:50:00+02:00', 4.0, '2026-10-08T14:00:00+02:00'),
+    $cycle(5, '2026-10-07T10:00:00+02:00', '2026-10-07T11:00:00+02:00', 5.0, null),
+]);
+check(count($grouped) === 3 && $grouped[0]['id'] === 4 && $grouped[0]['ended_at'] === null, 'Neuester Ladevorgang zuerst, offen solange ein Zyklus läuft');
+check($grouped[1]['id'] === 1 && count($grouped[1]['cycles']) === 3 && abs($grouped[1]['energy_kwh'] - 9.0) < 0.001 && $grouped[1]['ended_at'] === '2026-10-08T17:20:00+02:00', 'Drei Zyklen eines Ansteckens ergeben einen Ladevorgang');
+check(count($grouped[2]['cycles']) === 1, 'Ohne Ansteckzeit bleibt ein Zyklus für sich');
+check(Sessions::summary(array_merge(...array_column($grouped, 'cycles')), [])['count'] === 3, 'Gezählt werden Ladevorgänge, nicht Zyklen');
 check(ui_field_num(1500.0, 0) === '1500' && ui_field_num(10.03, 2) === '10,03' && ui_field_num(13.0, 1) === '13' && ui_field_num(-2.1, 2) === '-2,1', 'Zahlenfeld ohne Tausenderpunkt und ohne Nullen am Ende');
 $_POST['co2_g_kwh'] = ui_field_num(1500.0, 0);
 check(post_float('co2_g_kwh', 0, 1500, 380) === 1500.0, 'Zahlenfeld liest sich zurück');
@@ -343,6 +370,45 @@ if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
     $vehicles = $sessionStore->pdo()->query('SELECT vehicle FROM sessions ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
     check($vehicles === ['ID.3', 'Golf', 'ID.3'], 'ein neuer Fahrzeugname gilt für die Vorgänge des Recorders');
     check($sessions->delete(1) && !$sessions->delete(3) && count($sessions->all()) === 2, 'Löschen nur für abgeschlossene Vorgänge');
+    // Nachträglich zuordnen: zwei Zyklen innerhalb eines Ansteckens bekommen denselben Zeitpunkt.
+    $plugStart = strtotime('2026-10-08 14:00:00 Europe/Berlin');
+    $sessionStore->pdo()->exec('DELETE FROM sessions');
+    $insert->execute([date('c', $plugStart + 120), date('c', $plugStart + 2400), 'ID.3', 'recorder']);
+    $insert->execute([date('c', $plugStart + 4200), date('c', $plugStart + 6000), 'ID.3', 'recorder']);
+    $insert->execute([date('c', $plugStart + 30000), date('c', $plugStart + 32000), 'ID.3', 'recorder']);
+    $ha = new class ($plugStart) implements HaSource {
+        public function __construct(private int $plug) {}
+        public function configured(): bool { return true; }
+        public function ping(): array { return ['ok' => true]; }
+        public function states(): array { return []; }
+        public function state(string $entityId): ?array { return null; }
+        public function index(): array { return []; }
+        public function history(string $entityId, int $start, ?int $end = null): array { return []; }
+        public function stateHistory(string $entityId, int $start, ?int $end = null): array
+        {
+            return [['t' => $this->plug - 600, 's' => 'idle'], ['t' => $this->plug, 's' => 'wait_car'], ['t' => $this->plug + 7000, 's' => 'idle'], ['t' => $this->plug + 29000, 's' => 'wait_car']];
+        }
+        public function statistics(string $entityId, int $start, int $end, string $period = 'hour'): array { return []; }
+        public function search(string $query, int $limit = 20): array { return []; }
+    };
+    $assigned = $sessions->backfillPlugs($ha, 'sensor.wallbox_car', $plugStart + 40000);
+    $plugs = $sessionStore->pdo()->query('SELECT plug_at FROM sessions ORDER BY started_at')->fetchAll(PDO::FETCH_COLUMN);
+    check($assigned === 3 && $plugs[0] === $plugs[1] && $plugs[1] !== $plugs[2] && count(Sessions::groups($sessions->all())) === 2, 'Nachträglich zugeordnet: zwei Zyklen ein Ladevorgang, das nächste Anstecken ein neuer');
+    check($sessions->deleteGroup((int) $sessionStore->pdo()->query('SELECT MAX(id) FROM sessions WHERE plug_at = ' . $sessionStore->pdo()->quote((string) $plugs[0]))->fetchColumn()) && count($sessions->all()) === 1, 'Löschen nimmt den ganzen Ladevorgang');
+    // Recorder: Pausen beim Laden bleiben ein Ladevorgang, erst Abstecken und neues Anstecken beginnen einen neuen.
+    $sessionStore->pdo()->exec('DELETE FROM sessions');
+    $sessionStore->put('plug_state', ['since' => null]);
+    $sessionStore->put('session_runtime', ['idle_since' => null]);
+    $t = strtotime('2026-10-08 14:00:00 Europe/Berlin');
+    $step = static function (string $car, float $kw, int $at) use ($sessions): void {
+        $sessions->tick(['wallbox_kw' => $kw, 'wallbox_car_raw' => $car, 'grid_import_kw' => 0.0, 'vehicle_name' => 'ID.3', 'loadpoint_name' => 'Garage'], ['off_delay_s' => 60], $at);
+    };
+    $step('wait_car', 0.0, $t);
+    foreach ([[10, 'charging', 4.0], [20, 'charging', 4.0], [30, 'wait_car', 0.0], [100, 'wait_car', 0.0], [600, 'charging', 3.0], [610, 'charging', 3.0], [620, 'complete', 0.0], [700, 'complete', 0.0], [800, 'idle', 0.0], [5000, 'wait_car', 0.0], [5010, 'charging', 2.0], [5020, 'charging', 2.0]] as [$offset, $car, $kw]) {
+        $step($car, $kw, $t + $offset);
+    }
+    $groupsAfter = Sessions::groups($sessions->all());
+    check(count($sessions->all()) === 3 && count($groupsAfter) === 2 && count($groupsAfter[1]['cycles']) === 2 && $groupsAfter[0]['ended_at'] === null, 'Recorder: zwei Zyklen bis zum Abstecken, danach ein neuer Ladevorgang');
     foreach (['', '-wal', '-shm'] as $suffix) {
         @unlink($file . $suffix);
     }

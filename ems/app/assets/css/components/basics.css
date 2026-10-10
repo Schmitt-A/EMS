@@ -136,8 +136,10 @@
   gap: var(--s-2);
   min-height: 2.75rem;
   padding: 0 var(--s-3);
+  border: 1px solid var(--card-edge);
   border-radius: var(--r-pill);
-  color: var(--text-2);
+  background: var(--surface);
+  color: var(--text);
   font-size: 0.875rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -147,8 +149,7 @@
 
 @media (hover: hover) {
   .head-chip:hover {
-    background: var(--surface);
-    color: var(--text);
+    background: var(--surface-2);
   }
 }
 
