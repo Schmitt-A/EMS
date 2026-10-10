@@ -25,6 +25,9 @@ final class DemoHaClient implements HaSource
         'sensor.demo_car_soc' => ['car', '%', 'Auto Ladestand', 1],
         'sensor.demo_car_capacity' => [null, 'kWh', 'Auto Kapazität', 1],
         'sensor.demo_car_range' => [null, 'km', 'Auto Reichweite', 1],
+        'sensor.demo_car_odometer' => [null, 'km', 'Auto Kilometerstand', 1],
+        'sensor.demo_car_limit' => [null, '%', 'Auto Ladelimit', 1],
+        'number.demo_battery_reserve' => [null, '%', 'Speicher Backup-Puffer', 1],
     ];
 
     public function __construct(private DemoModel $model) {}
@@ -55,7 +58,21 @@ final class DemoHaClient implements HaSource
             'car_soc' => 'sensor.demo_car_soc',
             'car_capacity' => 'sensor.demo_car_capacity',
             'car_range' => 'sensor.demo_car_range',
+            'car_odometer' => 'sensor.demo_car_odometer',
+            'battery_reserve' => 'number.demo_battery_reserve',
         ];
+    }
+
+    /** Merkt sich den Wert, damit Anheben und Zurücksetzen des Puffers im Demo-Modus sichtbar werden. */
+    public function setNumber(string $entityId, float $value): void
+    {
+        if (!isset(self::ENTITIES[$entityId]) || !str_starts_with($entityId, 'number.')) {
+            throw new InvalidArgumentException('Entität ' . $entityId . ' gibt es im Demo-Modus nicht.');
+        }
+        $numbers = store()->get('demo_numbers', []);
+        $numbers = is_array($numbers) ? $numbers : [];
+        $numbers[$entityId] = $value;
+        store()->put('demo_numbers', $numbers);
     }
 
     public function configured(): bool
@@ -104,6 +121,10 @@ final class DemoHaClient implements HaSource
             'sensor.demo_car_soc' => round($s['car'], 0),
             'sensor.demo_car_capacity' => (float) $car['kapazitaet_kwh'],
             'sensor.demo_car_range' => round($s['car'] / 100 * (float) $car['reichweite_voll_km']),
+            // Etwa 38 km am Tag seit Jahresbeginn, auf ganze Kilometer.
+            'sensor.demo_car_odometer' => 18400 + round(max(0, $now - (int) strtotime(date('Y', $now) . '-01-01')) / 86400 * 38),
+            'sensor.demo_car_limit' => (float) $car['limit'],
+            'number.demo_battery_reserve' => (float) ((store()->get('demo_numbers', [])['number.demo_battery_reserve'] ?? null) ?? 10),
         ];
         $stamp = gmdate('Y-m-d\TH:i:s\Z', $now);
         $index = [];

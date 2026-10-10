@@ -225,3 +225,8 @@
   background: var(--accent);
   color: var(--on-accent);
 }
+
+.zone-icon-reserve {
+  border: 1.5px solid var(--border-control);
+  color: var(--text);
+}

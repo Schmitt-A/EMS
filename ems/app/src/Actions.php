@@ -33,6 +33,54 @@ final class Actions
         'wallbox_force' => 'select.go_echarger_506181_frc',
     ];
 
+    /** Alle Zuordnungen, die eine Entität aufnehmen; Formulare und Import nehmen nur diese an. */
+    private const ENTITY_KEYS = [
+        'pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'battery_reserve',
+        'car_soc', 'car_capacity', 'car_range', 'car_odometer', 'car_limit', 'grid_import', 'grid_export', 'grid_signed', 'house_power',
+        'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force',
+    ];
+
+    /**
+     * Muster für Entitäten, die nicht in SUGGEST stehen: der Backup-Puffer der sonnenBatterie und die Sensoren von
+     * ESPHome Tesla BLE (englisch und mit deutschem Sprachpaket). [Zuordnung => [Muster für die ID, Einheiten]]
+     */
+    private const PATTERNS = [
+        'battery_reserve' => ['/^number\.\w*(battery_reserve|backup_buffer|backup_reserve)$/', ['%']],
+        'car_soc' => ['/^sensor\.\w*tesla\w*_(charge_level|battery_level|ladezustand(_\d)?)$/', ['%']],
+        'car_range' => ['/^sensor\.\w*tesla\w*_(range|battery_range|reichweite)$/', ['km', 'mi']],
+        'car_odometer' => ['/^sensor\.\w*tesla\w*_(odometer|kilometerstand)$/', ['km', 'mi']],
+        'car_limit' => ['/^sensor\.\w*tesla\w*_(charge_limit|ladelimit)$/', ['%']],
+    ];
+
+    /**
+     * Vorschläge zum Übernehmen: erst die festen Kennungen aus SUGGEST, dann die Muster. Ein Muster zählt nur mit
+     * passender Einheit, so fällt beim deutschen Sprachpaket der Ladestatus „Ladezustand“ ohne % heraus.
+     *
+     * @param array<string, array> $index Zustände nach Entität
+     */
+    public static function suggestions(array $index): array
+    {
+        $suggest = [];
+        foreach (self::SUGGEST as $key => $id) {
+            if (isset($index[$id])) {
+                $suggest[$key] = $id;
+            }
+        }
+        foreach (self::PATTERNS as $key => [$pattern, $units]) {
+            if (isset($suggest[$key])) {
+                continue;
+            }
+            foreach ($index as $id => $row) {
+                $unit = strtolower((string) ($row['attributes']['unit_of_measurement'] ?? ''));
+                if (preg_match($pattern, (string) $id) && in_array($unit, $units, true)) {
+                    $suggest[$key] = (string) $id;
+                    break;
+                }
+            }
+        }
+        return $suggest;
+    }
+
     public static function nextStep(string $step): string
     {
         $keys = array_keys(self::STEPS);
@@ -181,9 +229,35 @@ final class Actions
             if (isset($patch['priority_soc']) || isset($patch['car_buffer_soc']) || isset($patch['car_auto_soc'])) {
                 $patch = array_merge($patch, self::zonesFrom($current, $patch));
             }
+            if (array_key_exists('discharge_kw', $_POST)) {
+                $patch['discharge_kw'] = self::optional('discharge_kw', 0.1, 50);
+            }
             if ($patch) {
                 store()->merge('battery_strategy', $patch);
             }
+        } elseif ($section === 'reserve') {
+            // Backup-Puffer: Entität, Standardwert und Schonen beim Netzladen. Der Standardwert geht gleich an den Speicher.
+            $mapping = store()->get('mapping', []);
+            $mapping = is_array($mapping) ? $mapping : [];
+            if (array_key_exists('battery_reserve', $_POST)) {
+                $mapping['battery_reserve'] = post_entity('battery_reserve');
+                store()->put('mapping', $mapping);
+            }
+            $patch = [];
+            if (array_key_exists('backup_soc', $_POST)) {
+                $value = self::optional('backup_soc', 0, 100);
+                $patch['backup_soc'] = $value === null ? null : (float) round($value);
+            }
+            if (array_key_exists('grid_protect', $_POST)) {
+                $patch['grid_protect'] = $_POST['grid_protect'] === '1';
+            }
+            store()->merge('battery_strategy', $patch);
+            $reserve = new Reserve(store(), ha());
+            // Ist das Schonen jetzt aus, aber der Puffer noch angehoben, erst zurücksetzen, dann den Standardwert setzen.
+            $snap = (new Snapshot(store(), ha()))->build(false);
+            $reserve->sync($snap['values'], $snap['cfg'], time(), (new Sessions(store()))->open() !== null);
+            flash($reserve->apply(cfg(), time()));
+            self::redirectBack();
         } elseif ($section === 'car') {
             $mapping = store()->get('mapping', []);
             if (!is_array($mapping)) {
@@ -211,7 +285,7 @@ final class Actions
         } elseif ($section === 'vehicle') {
             $mapping = store()->get('mapping', []);
             $mapping = is_array($mapping) ? $mapping : [];
-            foreach (['car_soc', 'car_capacity', 'car_range'] as $key) {
+            foreach (['car_soc', 'car_capacity', 'car_range', 'car_odometer', 'car_limit'] as $key) {
                 if (array_key_exists($key, $_POST)) {
                     $mapping[$key] = post_entity($key);
                 }
@@ -220,6 +294,9 @@ final class Actions
             $patch = [];
             if (array_key_exists('vehicle_name', $_POST)) {
                 $patch['name'] = self::name((string) $_POST['vehicle_name'], 'Auto');
+            }
+            if (array_key_exists('capacity_kwh', $_POST)) {
+                $patch['capacity_kwh'] = self::optional('capacity_kwh', 1, 250);
             }
             if (array_key_exists('limit_soc', $_POST)) {
                 $patch['limit_soc'] = max(20.0, snap_percent(post_float('limit_soc', 20, 100, 80)));
@@ -241,7 +318,7 @@ final class Actions
                 'grid_sign' => ['positive_import', 'positive_export'],
                 'weather_station' => ['soonwald', 'hahn', 'kreuznach'],
             ];
-            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'car_soc', 'car_capacity', 'car_range', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'];
+            $entities = self::ENTITY_KEYS;
             foreach ($enums as $key => $allowed) {
                 $value = (string) ($_POST[$key] ?? ($mapping[$key] ?? ''));
                 $mapping[$key] = in_array($value, $allowed, true) ? $value : (string) ($mapping[$key] ?? $allowed[0]);
@@ -347,7 +424,7 @@ final class Actions
                 'grid_sign' => ['positive_import', 'positive_export'],
                 'weather_station' => ['soonwald', 'hahn', 'kreuznach'],
             ];
-            $entities = ['pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'car_soc', 'car_capacity', 'car_range', 'grid_import', 'grid_export', 'grid_signed', 'house_power', 'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force'];
+            $entities = self::ENTITY_KEYS;
             foreach ($enums as $key => $allowed) {
                 if (!array_key_exists($key, $data['mapping'])) {
                     continue;
@@ -377,9 +454,11 @@ final class Actions
             ]);
         }
         if (isset($data['vehicle']) && is_array($data['vehicle'])) {
+            $capacity = $data['vehicle']['capacity_kwh'] ?? null;
             self::mergeVehicle([
                 'name' => self::name((string) ($data['vehicle']['name'] ?? ''), 'Auto'),
                 'limit_soc' => max(20.0, snap_percent(self::clamped($data['vehicle']['limit_soc'] ?? null, 20, 100, 80))),
+                'capacity_kwh' => is_numeric($capacity) ? clamp_float((float) $capacity, 1, 250) : null,
             ]);
         }
         if (isset($data['chargepoint']['name'])) {
@@ -427,6 +506,15 @@ final class Actions
             }
             if (array_key_exists('car_auto_soc', $incoming)) {
                 $strategy['car_auto_soc'] = self::clamped($incoming['car_auto_soc'], 0, 100, 100);
+            }
+            if (array_key_exists('backup_soc', $incoming)) {
+                $strategy['backup_soc'] = is_numeric($incoming['backup_soc']) ? (float) round(clamp_float((float) $incoming['backup_soc'], 0, 100)) : null;
+            }
+            if (array_key_exists('grid_protect', $incoming)) {
+                $strategy['grid_protect'] = (bool) $incoming['grid_protect'];
+            }
+            if (array_key_exists('discharge_kw', $incoming)) {
+                $strategy['discharge_kw'] = is_numeric($incoming['discharge_kw']) && (float) $incoming['discharge_kw'] > 0 ? clamp_float((float) $incoming['discharge_kw'], 0.1, 50) : null;
             }
             $current = store()->get('battery_strategy', []);
             if (!is_array($current)) {
@@ -554,6 +642,13 @@ final class Actions
             (float) ($merged['car_buffer_soc'] ?? 100),
             (float) ($merged['car_auto_soc'] ?? 100),
         );
+    }
+
+    /** Zahl aus dem Formular, leer oder ungültig wird null (etwa „unbekannt“). */
+    private static function optional(string $key, float $min, float $max): ?float
+    {
+        $raw = str_replace(',', '.', trim((string) ($_POST[$key] ?? '')));
+        return $raw === '' || !is_numeric($raw) ? null : clamp_float((float) $raw, $min, $max);
     }
 
     private static function clamped(mixed $value, float $min, float $max, float $fallback): float

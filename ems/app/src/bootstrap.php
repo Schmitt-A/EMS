@@ -20,6 +20,7 @@ require EMS_APP . '/src/Energy.php';
 require EMS_APP . '/src/Forecast.php';
 require EMS_APP . '/src/WeatherFeed.php';
 require EMS_APP . '/src/Sessions.php';
+require EMS_APP . '/src/Reserve.php';
 require EMS_APP . '/src/Snapshot.php';
 require EMS_APP . '/src/Series.php';
 require EMS_APP . '/src/Actions.php';

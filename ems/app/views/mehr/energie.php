@@ -36,6 +36,7 @@ if ($missing) {
   <?= $entity('battery_discharge', 'Speicher entladen', 'Leistung beim Entladen.') ?>
   <?= $entity('battery_signed', 'Speicher mit Vorzeichen', 'Nur bei einem gemeinsamen Sensor.') ?>
   <div class="form-rows"><?= ui_form_row('Positives Vorzeichen bedeutet', ui_select('battery_sign', ['positive_charge' => 'Laden', 'positive_discharge' => 'Entladen'], (string) $m['battery_sign']), ['for' => 'f-battery_sign', 'stack' => true]) ?></div>
+  <p class="body-sm muted">Backup-Puffer, Grenzen und Entladeleistung stehen unter <?= ui_inline('Mehr → Speicher', ['href' => url('/mehr/speicher')]) ?>.</p>
   <?= $close ?>
 </section>
 <section class="card stack" aria-labelledby="map-grid-title">

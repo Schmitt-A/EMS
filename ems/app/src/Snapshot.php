@@ -102,6 +102,16 @@ final class Snapshot
         if ($carCap[1]) {
             $base['warnings'][] = $carCap[1];
         }
+        // Reichweite und Kilometerstand kommen von Tesla BLE oft in Meilen.
+        $distance = function (?array $row) use (&$base): ?float {
+            [$km, $warn] = Energy::distanceKm(is_array($row) ? $row['num'] : null, is_array($row) ? ($row['unit'] ?? null) : null);
+            if ($warn) {
+                $base['warnings'][] = ($row['name'] ?? 'Sensor') . ': ' . $warn;
+            }
+            return $km;
+        };
+        $carLimitRow = $read('car_limit');
+        $reserveRow = $read('battery_reserve');
         $car = $read('wallbox_car');
         $amps = $read('wallbox_amps');
         $phases = $read('wallbox_phases');
@@ -115,7 +125,10 @@ final class Snapshot
             'battery_total_kwh' => $total[0],
             'car_soc' => is_array($carSocRow) ? ($carSocRow['num'] ?? null) : null,
             'car_capacity_kwh' => $carCap[0],
-            'car_range_km' => is_array($carRangeRow) ? ($carRangeRow['num'] ?? null) : null,
+            'car_range_km' => $distance($carRangeRow),
+            'car_odometer_km' => $distance($read('car_odometer')),
+            'car_limit_soc' => is_array($carLimitRow) && $carLimitRow['num'] !== null ? clamp_float((float) $carLimitRow['num'], 0, 100) : null,
+            'battery_reserve_soc' => is_array($reserveRow) ? ($reserveRow['num'] ?? null) : null,
             'grid_import_kw' => $import,
             'grid_export_kw' => $export,
             'house_kw' => $house,
@@ -159,6 +172,7 @@ final class Snapshot
         $values = array_merge([
             'pv_kw' => null, 'battery_soc' => null, 'battery_charge_kw' => null, 'battery_discharge_kw' => null,
             'battery_capacity_kwh' => null, 'battery_total_kwh' => null, 'car_soc' => null, 'car_capacity_kwh' => null, 'car_range_km' => null,
+            'car_odometer_km' => null, 'car_limit_soc' => null, 'battery_reserve_soc' => null,
             'grid_import_kw' => null, 'grid_export_kw' => null, 'house_kw' => null,
             'house_includes_wallbox' => true, 'wallbox_kw' => null, 'wallbox_amps' => null, 'wallbox_car_raw' => null,
             'wallbox_phases_raw' => null, 'priority_soc' => 80, 'radiation_rows' => [],
@@ -172,11 +186,13 @@ final class Snapshot
             (float) ($cfg['battery_strategy']['car_auto_soc'] ?? 100),
         );
         $reported = Energy::reportedPhases($values['wallbox_phases_raw'] ?? null);
-        $suggestion = Energy::suggest($live, $cfg['charge'], $reported, $strategy);
+        // Backup-Puffer, Schonen beim Netzladen und Entladeleistung: woher dem Auto fehlende Leistung käme.
+        $battery = Reserve::battery($cfg);
+        $suggestion = Energy::suggest($live, $cfg['charge'], $reported, $strategy, $battery);
         // Was die drei Modi jetzt täten, für die Regelung unter der Ladepunkt-Karte.
         $modes = [];
         foreach (['smart', 'smart_dauerhaft', 'schnell'] as $mode) {
-            $modes[$mode] = $mode === $suggestion['mode'] ? $suggestion : Energy::suggest($live, ['mode' => $mode] + $cfg['charge'], $reported, $strategy);
+            $modes[$mode] = $mode === $suggestion['mode'] ? $suggestion : Energy::suggest($live, ['mode' => $mode] + $cfg['charge'], $reported, $strategy, $battery);
         }
         $latchState = $this->store->get('suggestion_latch', []);
         $latched = Energy::latch($suggestion, is_array($latchState) ? $latchState : [], $now, $cfg['charge']);
@@ -278,7 +294,11 @@ final class Snapshot
         $base['activity'] = Energy::activity($values['battery_charge_kw'] ?? null, $values['battery_discharge_kw'] ?? null);
         $base['vehicle'] = $this->vehicleView($base, $cfg);
         $base['chargepoint'] = $this->chargepointView($base, $cfg);
-        $base['control'] = self::control($live, $cfg['charge'], $strategy, $latched, $modes);
+        $base['reserve'] = (new Reserve($this->store, $this->ha))->view($cfg, isset($values['battery_reserve_soc']) ? (float) $values['battery_reserve_soc'] : null);
+        if ($base['reserve']['error']) {
+            $base['warnings'][] = 'Backup-Puffer: ' . $base['reserve']['error'];
+        }
+        $base['control'] = self::control($live, $cfg['charge'], $strategy, $latched, $modes, $battery, $base['reserve']);
         $base['warnings'] = array_values(array_unique($base['warnings']));
         return $base;
     }
@@ -300,6 +320,8 @@ final class Snapshot
             'ts' => time(),
             // Regelung unter der Ladepunkt-Karte
             'control' => $snap['control'],
+            // Backup-Puffer: Satz für den Speicher, angehoben beim Netzladen
+            'reserve' => ['text' => $snap['reserve']['text'], 'raised' => $snap['reserve']['raised'], 'value' => $snap['reserve']['value']],
             // Erklärliste des Speichers
             'house_mean' => kw($snap['house_mean_kw'] ?? null),
             'battery_full' => $this->fullText($snap['storage'] ?? []),
@@ -326,22 +348,30 @@ final class Snapshot
         ];
     }
 
-    /** Fahrzeug unter der Ladepunkt-Karte: Name, Status, Ladestand, Reichweite und Limit. */
+    /**
+     * Fahrzeug unter der Ladepunkt-Karte: Name, Status, Ladestand, Reichweite, Kilometerstand und Limit. Meldet das
+     * Auto sein Ladelimit (Tesla BLE), gilt das statt des Reglers; die Kapazität kann von Hand kommen.
+     */
     private function vehicleView(array $base, array $cfg): array
     {
         $v = $base['values'];
         $raw = strtolower(str_replace([' ', '-'], '_', (string) ($v['wallbox_car_raw'] ?? '')));
         $soc = $v['car_soc'] !== null ? (float) $v['car_soc'] : null;
-        $limit = (float) ($cfg['vehicle']['limit_soc'] ?? 80);
-        $range = $v['car_range_km'] !== null ? (float) $v['car_range_km'] : null;
+        $fromCar = $v['car_limit_soc'] !== null;
+        $limit = $fromCar ? (float) $v['car_limit_soc'] : (float) ($cfg['vehicle']['limit_soc'] ?? 80);
+        $range = $v['car_range_km'] !== null ? round((float) $v['car_range_km']) : null;
+        $capacity = $v['car_capacity_kwh'] ?? (is_numeric($cfg['vehicle']['capacity_kwh'] ?? null) && (float) $cfg['vehicle']['capacity_kwh'] > 0 ? (float) $cfg['vehicle']['capacity_kwh'] : null);
         return [
             'name' => trim((string) ($cfg['vehicle']['name'] ?? '')) ?: 'Auto',
             'status' => self::vehicleStatus($raw, (bool) $base['car_charging']),
             'connected' => (bool) $base['car_charging'] || in_array($raw, ['charging', 'wait_car', 'waitcar', 'complete', 'completed'], true),
             'soc' => $soc === null ? null : round($soc, 1),
-            'capacity_kwh' => $v['car_capacity_kwh'] ?? null,
+            'capacity_kwh' => $capacity,
             'range_km' => $range,
+            'odometer_km' => $v['car_odometer_km'] !== null ? round((float) $v['car_odometer_km']) : null,
+            'has_odometer' => (string) ($cfg['mapping']['car_odometer'] ?? '') !== '',
             'limit' => $limit,
+            'limit_from_car' => $fromCar,
             'range_at_limit' => Energy::rangeAt($range, $soc, $limit),
         ];
     }
@@ -404,15 +434,17 @@ final class Snapshot
      * @param array $strategy geordnete Grenzen aus zone_thresholds()
      * @param array $setpoint Vorschlag des aktiven Modus nach Energy::latch()
      * @param array<string, array> $modes Vorschläge für smart, smart_dauerhaft und schnell
+     * @param array $battery Backup-Puffer, Schonen und Entladeleistung aus Reserve::battery()
+     * @param array $reserve Stand des Puffers aus Reserve::view()
      */
-    public static function control(array $live, array $charge, array $strategy, array $setpoint, array $modes): array
+    public static function control(array $live, array $charge, array $strategy, array $setpoint, array $modes, array $battery = [], array $reserve = []): array
     {
         $active = (string) ($setpoint['mode'] ?? ($charge['mode'] ?? 'smart'));
         $zone = (string) ($setpoint['zone'] ?? 'none');
         $amps = (int) ($setpoint['latched_amps'] ?? 0);
         $phases = (int) ($setpoint['latched_phases'] ?? 1);
         $kw = (float) ($setpoint['latched_kw'] ?? 0);
-        $flows = Energy::allot($kw, $active, $zone, $live);
+        $flows = Energy::allot($kw, $active, $live, Energy::batteryFor($active, $battery));
         $minA = min(16, max(6, (int) ($charge['min_a'] ?? 6)));
         $maxA = min(16, max($minA, (int) ($charge['max_a'] ?? 16)));
         $phaseMode = (string) ($charge['phase_mode'] ?? 'auto');
@@ -425,15 +457,17 @@ final class Snapshot
                 'active' => $key === $active,
                 'kw' => round((float) $mode['offered_kw'], 3),
                 'kw_text' => (int) $mode['amps'] === 0 ? 'aus' : kw((float) $mode['offered_kw']),
-                'level_text' => self::levelText((int) $mode['amps'], (int) $mode['phases']),
-                'text' => self::decisionText($key, $mode, $strategy),
+                // Ohne Strom keine Stufe, damit „aus“ nicht zweimal dasteht.
+                'level_text' => (int) $mode['amps'] === 0 ? '' : self::levelText((int) $mode['amps'], (int) $mode['phases']),
+                'text' => self::decisionText($key, $mode, $strategy, !empty(Energy::batteryFor($key, $battery)['protect'])),
                 'flows' => $mode['flows'],
             ];
         }
         $soc = isset($live['battery_soc']) ? (float) $live['battery_soc'] : null;
         $in = (float) ($live['battery_charge_kw'] ?? 0);
         $out = (float) ($live['battery_discharge_kw'] ?? 0);
-        $battery = $soc === null ? 'ohne Ladestand' : pct($soc) . ($in > 0.05 ? ', lädt ' . kw($in) : ($out > 0.05 ? ', entlädt ' . kw($out) : ', ruht'));
+        $batteryText = $soc === null ? 'ohne Ladestand' : pct($soc) . ($in > 0.05 ? ', lädt ' . kw($in) : ($out > 0.05 ? ', entlädt ' . kw($out) : ', ruht'));
+        $own = Energy::batteryFor($active, $battery);
         $target = $setpoint['target_kw'] ?? null;
         return [
             'mode' => $active,
@@ -442,14 +476,15 @@ final class Snapshot
             'amps' => $amps,
             'phases' => $amps === 0 ? 0 : $phases,
             'kw' => round($kw, 3),
-            'kw_text' => $amps === 0 ? 'aus' : kw($kw),
+            // Der Modus steht schon im Kopf; ohne Ladung zeigt die große Zahl 0 kW und keine Stufe.
+            'kw_text' => kw($amps === 0 ? 0.0 : $kw),
             'headline' => $amps === 0 ? 'Würde jetzt nicht laden' : 'Würde jetzt laden mit',
-            'level_text' => self::levelText($amps, $phases),
-            'reason' => self::zoneText($active, $zone, $strategy, $soc, $minA),
+            'level_text' => $amps === 0 ? '' : self::levelText($amps, $phases),
+            'reason' => self::zoneText($active, $zone, $strategy, $soc, $minA, $reserve),
             'pending' => self::pendingText($setpoint),
             'flows' => $flows,
             'car_text' => kw((float) $flows['car_kw']),
-            'split_text' => self::splitText($flows),
+            'split_text' => self::splitText($flows, 'Auto: ', !empty($own['protect']) ? 'Der Speicher bleibt geschont.' : 'Speicher lädt nicht.'),
             'scale_kw' => round($scale, 3),
             'modes' => $rows,
             'ladder' => [
@@ -462,13 +497,27 @@ final class Snapshot
                 'pv' => kw($live['pv_kw'] ?? null),
                 'house' => kw($live['house_base_kw'] ?? null),
                 'spare' => kw((float) $flows['spare_kw']),
-                'battery' => $battery,
+                'battery' => $batteryText,
                 'solar' => kw($modes['smart']['solar_kw'] ?? null, 2),
                 'meter' => kw($setpoint['p_soll_kw'] ?? null, 2),
                 'target' => $target === null ? '—' : kw((float) $target, 2) . ' → ' . ($amps === 0 ? 'aus' : self::levelText($amps, $phases) . ' = ' . kw($kw, 2)),
                 'delta' => kw($setpoint['delta_kw'] ?? null, 2),
+                'cover' => self::coverText($own, $soc),
             ],
         ];
+    }
+
+    /** Wer deckt, was dem Auto an Sonne fehlt: der Speicher bis zum Backup-Puffer, dann das Netz. */
+    public static function coverText(array $battery, ?float $soc): string
+    {
+        $floor = isset($battery['reserve_soc']) ? (float) $battery['reserve_soc'] : null;
+        $max = isset($battery['max_discharge_kw']) && (float) $battery['max_discharge_kw'] > 0 ? (float) $battery['max_discharge_kw'] : null;
+        return match (true) {
+            !empty($battery['protect']) => 'Das Netz, der Speicher bleibt geschont.',
+            $soc === null => 'Das Netz, ohne Ladestand des Speichers.',
+            $soc <= ($floor ?? 0) + 0.5 => 'Das Netz, der Speicher steht am Backup-Puffer von ' . pct($floor ?? 0) . '.',
+            default => 'Der Speicher' . ($floor !== null ? ' bis ' . pct($floor) : '') . ($max !== null ? ' mit höchstens ' . kw($max) : '') . ', dann das Netz.',
+        };
     }
 
     /** Stufe als „6 A · 3-phasig“, „aus“ ohne Strom. */
@@ -477,14 +526,18 @@ final class Snapshot
         return $amps === 0 ? 'aus' : $amps . NNBSP . 'A · ' . $phases . '-phasig';
     }
 
-    /** Warum der aktive Modus so entscheidet, aus Sicht der Speicherzone. */
-    public static function zoneText(string $mode, string $zone, array $strategy, ?float $soc, int $minA): string
+    /** Warum der aktive Modus so entscheidet, aus Sicht der Speicherzone; beim Netzladen, was der Puffer tut. */
+    public static function zoneText(string $mode, string $zone, array $strategy, ?float $soc, int $minA, array $reserve = []): string
     {
         if ($mode === 'aus') {
-            return 'Modus Aus: Die Wallbox bliebe aus, der Überschuss ginge in den Speicher und danach ins Netz.';
+            return 'Die Wallbox bliebe aus, der Überschuss ginge in den Speicher und danach ins Netz.';
         }
         if ($mode === 'schnell') {
-            return 'Schnell lädt mit voller Leistung. Die Grenzen des Speichers gelten dabei nicht.';
+            return match (true) {
+                !empty($reserve['raised']) => 'Volle Leistung aus Sonne und Netz. ' . (string) $reserve['text'],
+                !empty($reserve['active']) => 'Volle Leistung aus Sonne und Netz. Lädt das Auto, hebt die App den Backup-Puffer auf den Ladestand, damit der Speicher geschont bleibt.',
+                default => 'Volle Leistung. Was die Sonne nicht schafft, deckt zuerst der Speicher bis zu seinem Backup-Puffer, dann das Netz. Schonen lässt er sich unter Mehr → Speicher.',
+            };
         }
         $p = pct((float) $strategy['priority_soc']);
         $b = pct((float) $strategy['car_buffer_soc']);
@@ -516,8 +569,11 @@ final class Snapshot
         };
     }
 
-    /** Ein Satz zur Aufteilung: woher das Auto die Leistung bekäme und was der Speicher täte. */
-    public static function splitText(array $flows, string $lead = 'Auto: '): string
+    /**
+     * Ein Satz zur Aufteilung: woher das Auto die Leistung bekäme und was der Speicher täte. $idle steht da,
+     * wenn der Speicher weder lädt noch ans Auto abgibt.
+     */
+    public static function splitText(array $flows, string $lead = 'Auto: ', string $idle = 'Speicher lädt nicht.'): string
     {
         $from = [];
         foreach (['sun_kw' => 'aus der Sonne', 'battery_kw' => 'aus dem Speicher', 'grid_kw' => 'aus dem Netz', 'mixed_kw' => 'aus Speicher und Netz'] as $key => $where) {
@@ -529,7 +585,7 @@ final class Snapshot
         if ((float) $flows['charge_kw'] >= 0.05) {
             $text .= ' Speicher lädt ' . kw((float) $flows['charge_kw']) . '.';
         } elseif ((float) $flows['battery_kw'] + (float) $flows['mixed_kw'] < 0.05) {
-            $text .= ' Speicher lädt nicht.';
+            $text .= ' ' . $idle;
         }
         if ((float) $flows['export_kw'] >= 0.05) {
             $text .= ' ' . kw((float) $flows['export_kw']) . ' gehen ins Netz.';
@@ -537,8 +593,8 @@ final class Snapshot
         return $text;
     }
 
-    /** Entscheidung eines Modus in einem Satz. */
-    public static function decisionText(string $key, array $mode, array $strategy): string
+    /** Entscheidung eines Modus in einem Satz; $protect: Netzladen schont den Speicher. */
+    public static function decisionText(string $key, array $mode, array $strategy, bool $protect = false): string
     {
         if ((int) $mode['amps'] === 0) {
             $solar = (float) ($mode['solar_kw'] ?? 0);
@@ -548,7 +604,7 @@ final class Snapshot
                 default => 'Lädt nicht: ' . ($solar >= 0.05 ? kw($solar) . ' Überschuss reichen nicht für die kleinste Stufe.' : 'Kein Überschuss fürs Auto.'),
             };
         }
-        return self::splitText($mode['flows'], '');
+        return self::splitText($mode['flows'], '', $protect ? 'Der Speicher bleibt geschont.' : 'Speicher lädt nicht.');
     }
 
     /** Leistungen für die Detail-Liste „Rein“ und „Raus“ unter dem Energiefluss-Balken, dazu die Prognose für heute. */

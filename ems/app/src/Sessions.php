@@ -24,13 +24,20 @@ final class Sessions
         $runtime = $this->store->get('session_runtime', ['idle_since' => null]);
         $plug = $this->plugState($live['wallbox_car_raw'] ?? null, (float) $power, $now);
 
+        // Meldet das Auto seinen Kilometerstand (Tesla BLE), bekommt der Vorgang ihn beim Start.
+        $odometer = isset($live['car_odometer_km']) && is_numeric($live['car_odometer_km']) ? round((float) $live['car_odometer_km'], 1) : null;
         if ($active) {
             if (!$open) {
-                $stmt = $pdo->prepare('INSERT INTO sessions (started_at, vehicle, loadpoint, source, plug_at) VALUES (?, ?, ?, "recorder", ?)');
-                $stmt->execute([date('c', $now), (string) ($live['vehicle_name'] ?? ''), (string) ($live['loadpoint_name'] ?? 'Wallbox'), $plug]);
+                $stmt = $pdo->prepare('INSERT INTO sessions (started_at, vehicle, loadpoint, source, plug_at, odometer) VALUES (?, ?, ?, "recorder", ?, ?)');
+                $stmt->execute([date('c', $now), (string) ($live['vehicle_name'] ?? ''), (string) ($live['loadpoint_name'] ?? 'Wallbox'), $plug, $odometer]);
                 $open = $this->open();
-            } elseif ($plug !== null && empty($open['plug_at'])) {
-                $pdo->prepare('UPDATE sessions SET plug_at = ? WHERE id = ?')->execute([$plug, $open['id']]);
+            } else {
+                if ($plug !== null && empty($open['plug_at'])) {
+                    $pdo->prepare('UPDATE sessions SET plug_at = ? WHERE id = ?')->execute([$plug, $open['id']]);
+                }
+                if ($odometer !== null && ($open['odometer'] ?? null) === null) {
+                    $pdo->prepare('UPDATE sessions SET odometer = ? WHERE id = ?')->execute([$odometer, $open['id']]);
+                }
             }
             $runtime['idle_since'] = null;
             $this->store->put('session_runtime', $runtime);

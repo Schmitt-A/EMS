@@ -42,6 +42,20 @@ final class Energy
         };
     }
 
+    /** Strecke in km. Tesla BLE meldet Reichweite und Kilometerstand in Meilen, sofern das Sprachpaket nicht umrechnet. */
+    public static function distanceKm(?float $value, ?string $unit): array
+    {
+        if ($value === null) {
+            return [null, null];
+        }
+        return match (strtolower(str_replace([' ', '.'], '', (string) $unit))) {
+            'km', '' => [$value, null],
+            'mi', 'mile', 'miles' => [$value * 1.609344, null],
+            'm' => [$value / 1000, null],
+            default => [null, 'Einheit ' . $unit . ' ist keine Strecke.'],
+        };
+    }
+
     public static function splitSigned(?float $value, string $positive): array
     {
         if ($value === null) {
@@ -243,9 +257,11 @@ final class Energy
      * Hausspeichers ($strategy aus battery_strategy): unter der Hausgrenze lädt der Speicher zuerst, darüber hat
      * das Auto den Überschuss, ab der Stützung hält der Speicher eine laufende Ladung, ab dem Start beginnt
      * sie auch ohne Sonne. 'flows' sagt, woher die Leistung käme und wohin der übrige Überschuss ginge.
+     * $battery: Backup-Puffer, Schonen beim Netzladen und Entladeleistung, siehe allot().
      */
-    public static function suggest(array $live, array $charge, ?int $reportedPhases, array $strategy = []): array
+    public static function suggest(array $live, array $charge, ?int $reportedPhases, array $strategy = [], array $battery = []): array
     {
+        $battery = self::batteryFor((string) ($charge['mode'] ?? 'smart'), $battery);
         $mode = (string) ($charge['mode'] ?? 'smart');
         $phaseMode = (string) ($charge['phase_mode'] ?? 'auto');
         $minA = min(16, max(6, (int) ($charge['min_a'] ?? 6)));
@@ -274,7 +290,7 @@ final class Energy
                 'phases' => $reportedPhases ?: 1,
                 'offered_kw' => 0.0,
                 'reason' => 'Noch keine Zählerwerte.',
-                'flows' => self::allot(0.0, $mode, $zone, $live),
+                'flows' => self::allot(0.0, $mode, $live, $battery),
             ];
         }
         $wallbox = max(0, (float) ($wallboxRaw ?? 0));
@@ -293,7 +309,7 @@ final class Energy
         } elseif ($mode === 'schnell') {
             $phases = $phaseMode === '1p' ? 1 : 3;
             $target = self::KW_PER_AMP * $maxA * $phases;
-            $reason = 'Schnellladen ohne PV-Grenze.';
+            $reason = 'Netzladen mit voller Leistung.';
         } else {
             $target = $share >= 0.999 ? $solar : ($share > 0 ? $solar / $share : max(0.0, $pSoll));
             if ($mode === 'smart_dauerhaft') {
@@ -340,44 +356,70 @@ final class Energy
             'phases' => $phases,
             'offered_kw' => $offered,
             'reason' => $reason,
-            'flows' => self::allot($offered, $mode, $zone, $live),
+            'flows' => self::allot($offered, $mode, $live, $battery),
         ];
     }
 
     /**
-     * Aufteilung für eine Ladeleistung nach denselben Zonen wie suggest(): woher das Auto sie bekäme (Sonne,
-     * Speicher, Netz; beim Schnellladen erst Speicher, dann Netz) und wohin der übrige Überschuss ginge
-     * (Speicher, Einspeisung). spare ist der Überschuss über dem Haus, ohne Auto und Speicher.
+     * Speicher-Angaben für einen Modus: geschont wird nur beim Netzladen. Ein Wechsel in einen anderen Modus
+     * setzt den Puffer zurück, darum rechnen die anderen Modi mit dem Standardwert.
+     *
+     * @param array{reserve_soc?: ?float, protect?: bool, max_discharge_kw?: ?float} $battery
      */
-    public static function allot(float $carKw, string $mode, string $zone, array $live): array
+    public static function batteryFor(string $mode, array $battery): array
+    {
+        $battery['protect'] = $mode === 'schnell' && !empty($battery['protect']);
+        return $battery;
+    }
+
+    /**
+     * Aufteilung für eine Ladeleistung, wie sie im Eigenverbrauch käme: Die Sonne geht zuerst ans Auto, der Rest
+     * in den Speicher und ins Netz. Was dem Auto fehlt, deckt der Speicher, solange er über dem Backup-Puffer
+     * liegt und nicht geschont wird (Netzladen mit angehobenem Puffer), höchstens mit seiner Entladeleistung
+     * abzüglich dessen, was er schon fürs Haus liefert; den Rest das Netz. Ohne bekannte Entladeleistung bleibt
+     * beim Netzladen offen, wie viel der Speicher schafft (mixed: erst Speicher, dann Netz).
+     * spare ist der Überschuss über dem Haus, ohne Auto und Speicher.
+     *
+     * @param array{reserve_soc?: ?float, protect?: bool, max_discharge_kw?: ?float} $battery
+     */
+    public static function allot(float $carKw, string $mode, array $live, array $battery = []): array
     {
         $in = max(0.0, (float) ($live['battery_charge_kw'] ?? 0));
         $out = max(0.0, (float) ($live['battery_discharge_kw'] ?? 0));
         if (isset($live['pv_kw'], $live['house_base_kw'])) {
-            $spare = (float) $live['pv_kw'] - (float) $live['house_base_kw'];
+            $net = (float) $live['pv_kw'] - (float) $live['house_base_kw'];
         } else {
-            $spare = max(0.0, (float) ($live['wallbox_kw'] ?? 0)) + (float) ($live['grid_export_kw'] ?? 0) - (float) ($live['grid_import_kw'] ?? 0) + $in - $out;
+            $net = max(0.0, (float) ($live['wallbox_kw'] ?? 0)) + (float) ($live['grid_export_kw'] ?? 0) - (float) ($live['grid_import_kw'] ?? 0) + $in - $out;
         }
-        $spare = max(0.0, $spare);
+        $spare = max(0.0, $net);
+        // Was das Haus über der Sonne braucht, liefert der Speicher schon; das fehlt ihm fürs Auto.
+        $deficit = max(0.0, -$net);
+        $car = max(0.0, $carKw);
         $soc = isset($live['battery_soc']) ? (float) $live['battery_soc'] : null;
-        $first = ($zone === 'house' && $mode !== 'schnell') ? min($in, $spare) : 0.0;
-        $sun = min(max(0.0, $carKw), max(0.0, $spare - $first));
-        $charge = $first + ($soc !== null && $soc < 99.5 ? max(0.0, $spare - $first - $sun) : 0.0);
-        $short = max(0.0, $carKw - $sun);
+        $sun = min($car, $spare);
+        // Speist die Anlage gerade ein, nimmt der Speicher nicht mehr auf, als er schon lädt.
+        $cap = (float) ($live['grid_export_kw'] ?? 0) > 0.05 ? $in : INF;
+        $charge = $soc !== null && $soc < 99.5 ? min($spare - $sun, $cap) : 0.0;
+        $short = $car - $sun;
         $fromBattery = $fromGrid = $mixed = 0.0;
         if ($short > 0.0) {
-            if ($mode === 'schnell' && $soc !== null && $soc > 5) {
-                $mixed = $short;
-            } elseif ($soc !== null && ($zone === 'boost' || $zone === 'start')) {
-                $fromBattery = $short;
-            } else {
+            $floor = (float) ($battery['reserve_soc'] ?? 0);
+            $max = isset($battery['max_discharge_kw']) && (float) $battery['max_discharge_kw'] > 0 ? (float) $battery['max_discharge_kw'] : null;
+            if ($soc === null || !empty($battery['protect']) || $soc <= $floor + 0.5) {
                 $fromGrid = $short;
+            } elseif ($max !== null) {
+                $fromBattery = min($short, max(0.0, $max - $deficit));
+                $fromGrid = $short - $fromBattery;
+            } elseif ($mode === 'schnell') {
+                $mixed = $short;
+            } else {
+                $fromBattery = $short;
             }
         }
         $r = static fn (float $v): float => round($v, 3);
         return [
             'spare_kw' => $r($spare),
-            'car_kw' => $r(max(0.0, $carKw)),
+            'car_kw' => $r($car),
             'sun_kw' => $r($sun),
             'battery_kw' => $r($fromBattery),
             'grid_kw' => $r($fromGrid),
@@ -408,6 +450,11 @@ final class Energy
             : ($amps === 0 ? (int) ($charge['off_delay_s'] ?? 60) : ($latchedA === 0 ? (int) ($charge['on_delay_s'] ?? 60) : 0));
         $delay = $amps !== 0 && $latchedA !== 0 && !$phaseChange ? 0 : max(60, $delay);
         if ($amps !== 0 && $latchedA !== 0 && !$phaseChange) {
+            $delay = 0;
+        }
+        // Die Verzögerungen fangen Wolken ab. Aus und Netzladen sind gewählt und gelten sofort, nur ein
+        // Phasenwechsel wartet weiter die Schütz-Schutzzeit ab.
+        if (!$phaseChange && in_array((string) ($desired['mode'] ?? ''), ['aus', 'schnell'], true)) {
             $delay = 0;
         }
 
@@ -517,9 +564,9 @@ final class Energy
     {
         return match ($mode) {
             'aus' => 'Aus',
-            'schnell' => 'Schnell',
+            'schnell' => 'Netzladen',
             'smart_dauerhaft' => 'Min+Solar',
-            default => 'Solar',
+            default => 'Nur Solar',
         };
     }
 
@@ -527,8 +574,8 @@ final class Energy
     {
         return match ($mode) {
             'aus' => 'Ladestrom 0 A. Die Wallbox bliebe aus.',
-            'schnell' => 'Maximale Ladeleistung ohne Rücksicht auf den Solarüberschuss.',
-            'smart_dauerhaft' => 'Lädt immer mit dem Mindeststrom. Sonnenüberschuss hebt die Leistung an.',
+            'schnell' => 'Volle Ladeleistung, was die Sonne nicht schafft, kommt aus dem Netz. Mit „Speicher schonen“ hebt die App den Backup-Puffer, solange das Auto lädt; sonst deckt der Speicher zuerst mit.',
+            'smart_dauerhaft' => 'Lädt immer mit dem Mindeststrom. Sonnenüberschuss hebt die Leistung an, was fehlt, deckt der Speicher bis zum Backup-Puffer, danach das Netz.',
             default => 'Nur Sonnenüberschuss, Ziel nahe 0 W am Zähler. Unter 1,38 kW setzt der Vorschlag aus, außer der Speicher stützt die Ladung.',
         };
     }

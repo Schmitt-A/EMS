@@ -22,11 +22,13 @@ if ($path === '/api/live') {
     $snapshot = new Snapshot(store(), ha());
     $snap = $snapshot->build();
     if (demo_mode() && $snap['connected']) {
-        // Im Demo-Modus läuft kein Recorder; der laufende Ladevorgang wächst mit jeder Abfrage.
-        (new Sessions(store()))->tick(array_merge($snap['values'], [
+        // Im Demo-Modus läuft kein Recorder; der laufende Ladevorgang wächst mit jeder Abfrage, der Puffer folgt.
+        $sessions = new Sessions(store());
+        $sessions->tick(array_merge($snap['values'], [
             'vehicle_name' => (string) ($snap['cfg']['vehicle']['name'] ?? ''),
             'loadpoint_name' => (string) ($snap['cfg']['chargepoint']['name'] ?? 'Wallbox'),
         ]), $snap['cfg']['charge'], time());
+        (new Reserve(store(), ha()))->sync($snap['values'], $snap['cfg'], time(), $sessions->open() !== null);
     }
     json_out($snapshot->livePayload($snap));
 }
@@ -44,7 +46,15 @@ if (in_array($path, $writes, true)) {
     };
     if ($path === '/api/modus') {
         Actions::saveChargeMode();
-        json_out($fresh());
+        // Netzladen hebt den Backup-Puffer an, ein anderer Modus setzt ihn gleich zurück, nicht erst beim Recorder.
+        $snapshot = new Snapshot(store(), ha());
+        $snap = $snapshot->build();
+        $reserve = new Reserve(store(), ha());
+        $before = $reserve->state();
+        if ($reserve->sync($snap['values'], $snap['cfg'], time(), (new Sessions(store()))->open() !== null) !== $before) {
+            $snap = $snapshot->build();
+        }
+        json_out($snapshot->livePayload($snap));
     }
     if ($path === '/api/limit') {
         Actions::saveLimit();
@@ -267,7 +277,7 @@ if ($path === '/mehr' || str_starts_with($path, '/mehr/')) {
     if ($area !== '' && (!preg_match('/^[a-z]+$/', $area) || !is_file(EMS_APP . '/views/mehr/' . $area . '.php'))) {
         redirect('/mehr');
     }
-    page('mehr', ['area' => $area === '' ? null : $area, 'cfg' => cfg(), 'ping' => ha()->ping(), 'live' => $live, 'suggest' => known_suggestions(), 'title' => 'Mehr']);
+    page('mehr', ['area' => $area === '' ? null : $area, 'cfg' => cfg(), 'ping' => ha()->ping(), 'snap' => $snap, 'live' => $live, 'suggest' => known_suggestions(), 'title' => 'Mehr']);
 }
 if ($inWizard) {
     $step = trim(substr($path, strlen('/einrichten')), '/');
@@ -300,20 +310,11 @@ echo 'Nicht gefunden';
 
 function known_suggestions(): array
 {
-    $suggest = [];
     try {
-        if (ha()->configured()) {
-            $index = ha()->index();
-            foreach (Actions::SUGGEST as $key => $id) {
-                if (isset($index[$id])) {
-                    $suggest[$key] = $id;
-                }
-            }
-        }
+        return ha()->configured() ? Actions::suggestions(ha()->index()) : [];
     } catch (Throwable) {
         return [];
     }
-    return $suggest;
 }
 
 /** Summen der Ladevorgänge für die Energieübersicht und die Kopf-Chips. */

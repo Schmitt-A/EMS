@@ -100,6 +100,11 @@ a {
   border: 0;
 }
 
+/* Entitätskennungen in Hinweisen brechen nicht mitten im Namen um */
+.entity-id {
+  white-space: nowrap;
+}
+
 .skip-link {
   position: absolute;
   inset-inline-start: var(--s-4);

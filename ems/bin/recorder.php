@@ -5,6 +5,7 @@ require dirname(__DIR__) . '/app/src/bootstrap.php';
 
 $snapshot = new Snapshot(store(), ha());
 $sessions = new Sessions(store());
+$reserve = new Reserve(store(), ha());
 $sessions->repairVehicleNames((string) (cfg()['vehicle']['name'] ?? ''));
 $series = new Series(store(), ha());
 
@@ -23,6 +24,8 @@ while (true) {
                 $snap['cfg']['charge'],
                 time()
             );
+            // Backup-Puffer: beim Netzladen anheben, danach zurücksetzen (auch nach einem Neustart mittendrin).
+            $reserve->sync($snap['values'], $snap['cfg'], time(), $sessions->open() !== null);
             // Ältere Zyklen ohne Ansteckzeit aus dem Statusverlauf zuordnen, höchstens einmal pro Stunde.
             $sessions->backfillPlugs(ha(), (string) ($snap['cfg']['mapping']['wallbox_car'] ?? ''), time());
             if ((int) date('G') >= 1) {

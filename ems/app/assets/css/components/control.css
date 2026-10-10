@@ -1,6 +1,7 @@
 /*
  * Regelung unter der Ladepunkt-Karte: Stufe beim Einschalten, Aufteilung von Überschuss und Ladeleistung,
- * Phasen-Leiter und die drei Modi. Breiten setzt components/control.js per flex-grow (CSSOM).
+ * Phasen-Leiter, aufklappbar die drei Modi und der Rechenweg. Breiten setzt components/control.js per
+ * flex-grow (CSSOM).
  */
 .ctl {
   container: ctl / inline-size;
@@ -11,7 +12,7 @@
   gap: var(--s-5);
 }
 
-/* Breit: Aufteilung und Phasen nebeneinander, darunter die drei Modi nebeneinander */
+/* Breit: Aufteilung und Phasen nebeneinander, die Klappe darunter über die ganze Breite */
 @container ctl (min-width: 52rem) {
   .ctl-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -20,7 +21,6 @@
 
   .ctl-head,
   .ctl-now,
-  .ctl-block-modes,
   .ctl-details {
     grid-column: 1 / -1;
   }
@@ -284,7 +284,7 @@
   }
 }
 
-/* Rechenweg zum Aufklappen */
+/* Aufklappbar: die drei Modi, der Rechenweg und die Modi im Wortlaut. Zu beim Laden der Seite. */
 .ctl-details {
   border-block-start: 1px solid var(--border);
 }
@@ -292,29 +292,56 @@
 .ctl-details summary {
   display: flex;
   align-items: center;
-  gap: var(--s-1);
+  justify-content: space-between;
+  gap: var(--s-2);
   min-height: 2.75rem;
-  color: var(--text-2);
-  font-size: 0.8125rem;
+  margin-block-end: calc(-1 * var(--s-2));
+  color: var(--text);
+  font-size: 0.875rem;
   font-weight: 600;
   list-style: none;
   cursor: pointer;
+}
+
+.ctl-details summary > span {
+  order: -1;
 }
 
 .ctl-details summary::-webkit-details-marker {
   display: none;
 }
 
+.ctl-details summary .icon {
+  color: var(--text-2);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.ctl-details summary:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+  border-radius: var(--r-field);
+}
+
 .ctl-details[open] summary .icon {
   transform: rotate(180deg);
 }
 
-.ctl-details .kv + .kv {
-  margin-block-start: var(--s-4);
-  padding-block-start: var(--s-2);
-  border-block-start: 2px solid var(--border-control);
+.ctl-details-body {
+  display: grid;
+  gap: var(--s-5);
+  padding-block-start: var(--s-4);
 }
 
-.ctl-details > .caption {
+.ctl-details-body > .ctl-block:first-child {
+  padding-block-start: 0;
+  border-block-start: 0;
+}
+
+.ctl-details .caption {
   margin-block-start: var(--s-3);
+}
+
+/* Stufe und Satz eines Modus; ohne Stufe kein Trennpunkt */
+.ctl-mode-level:not(:empty)::after {
+  content: " · ";
 }

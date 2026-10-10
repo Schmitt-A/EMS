@@ -92,6 +92,13 @@ echo ui_dialog('cp-settings', 'Einstellungen: ' . $cp['name'], ob_get_clean());
 
 // Ebene 2: Fahrzeug
 ob_start();
-view('partials/vehicle-form', ['name' => (string) $vehicle['name'], 'limit' => (float) $vehicle['limit'], 'mapping' => $snap['cfg']['mapping'], 'back' => '/']);
+view('partials/vehicle-form', [
+    'name' => (string) $vehicle['name'],
+    'limit' => (float) $snap['cfg']['vehicle']['limit_soc'],
+    'carLimit' => !empty($vehicle['limit_from_car']) ? (float) $vehicle['limit'] : null,
+    'capacity' => is_numeric($snap['cfg']['vehicle']['capacity_kwh'] ?? null) ? (float) $snap['cfg']['vehicle']['capacity_kwh'] : null,
+    'mapping' => $snap['cfg']['mapping'],
+    'back' => '/',
+]);
 echo ui_dialog('cp-vehicle', 'Fahrzeug: ' . $vehicle['name'], ob_get_clean());
 view('partials/overview', ['overview' => $overview]);

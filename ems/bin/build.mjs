@@ -29,7 +29,7 @@ const lucide = [
   'car', 'chart-column', 'chart-line', 'check', 'chevron-down', 'chevron-left', 'chevron-right',
   'circle-alert', 'circle-check', 'cloud-sun', 'coins', 'compass', 'ellipsis', 'gauge', 'history',
   'house', 'info', 'leaf', 'list', 'monitor', 'moon', 'pencil', 'plug', 'plus', 'route', 'scale',
-  'search', 'settings', 'sliders-horizontal', 'sun', 'sun-medium', 'timer', 'trash-2',
+  'search', 'settings', 'shield', 'sliders-horizontal', 'sun', 'sun-medium', 'timer', 'trash-2',
   'triangle-alert', 'utility-pole', 'wifi-off', 'x', 'zap',
 ];
 const symbol = (id, file) => {

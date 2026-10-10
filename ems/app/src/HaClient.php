@@ -386,7 +386,19 @@ final class HaClient implements HaSource
         return $data;
     }
 
-    private function get(string $path): mixed
+    public function setNumber(string $entityId, float $value): void
+    {
+        $domain = explode('.', $entityId, 2)[0];
+        if (!is_entity_id($entityId) || !in_array($domain, ['number', 'input_number'], true)) {
+            throw new InvalidArgumentException('Setzen geht nur bei number- oder input_number-Entitäten.');
+        }
+        $this->get('/api/services/' . $domain . '/set_value', ['entity_id' => $entityId, 'value' => $value]);
+        // Der nächste Lesezugriff soll den neuen Wert sehen.
+        @unlink(data_dir() . '/states-cache.json');
+    }
+
+    /** GET, mit $body als POST mit JSON. */
+    private function get(string $path, ?array $body = null): mixed
     {
         if (!$this->configured()) {
             throw new RuntimeException('Home Assistant ist nicht verbunden.');
@@ -403,6 +415,9 @@ final class HaClient implements HaSource
                 'Content-Type: application/json',
             ],
         ]);
+        if ($body !== null) {
+            curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($body)]);
+        }
         $body = curl_exec($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $err = curl_error($ch);
@@ -414,7 +429,10 @@ final class HaClient implements HaSource
             throw new RuntimeException('Zugriff abgelehnt. Der Token passt nicht.');
         }
         if ($code >= 400) {
-            throw new RuntimeException('Home Assistant antwortet mit Status ' . $code . '.');
+            // Bei Diensten nennt HA den Grund, etwa eine fehlende Entität oder einen Wert außerhalb der Grenzen.
+            $reply = json_decode((string) $body, true);
+            $message = is_array($reply) && is_string($reply['message'] ?? null) ? rtrim($reply['message'], '.') : '';
+            throw new RuntimeException('Home Assistant antwortet mit Status ' . $code . ($message !== '' ? ': ' . $message : '') . '.');
         }
         $decoded = json_decode($body, true);
         return $decoded ?? $body;

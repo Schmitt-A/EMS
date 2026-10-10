@@ -1,9 +1,15 @@
 <?php
 declare(strict_types=1);
 
-/** Was die App von Home Assistant liest. HaClient spricht mit HA, DemoHaClient liefert Beispieldaten. */
+/**
+ * Was die App von Home Assistant liest, dazu ein einziger Schreibzugriff: der Backup-Puffer des Speichers
+ * (Reserve). HaClient spricht mit HA, DemoHaClient liefert Beispieldaten.
+ */
 interface HaSource
 {
+    /** Setzt eine number- oder input_number-Entität (Dienst set_value). Wirft bei Fehlern. */
+    public function setNumber(string $entityId, float $value): void;
+
     public function configured(): bool;
 
     public function ping(): array;

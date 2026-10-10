@@ -13,7 +13,7 @@ import { chromium } from 'playwright-core';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const port = Number(process.env.CHECK_PORT || 8198);
 const base = `http://127.0.0.1:${port}`;
-const routes = (process.env.CHECK_ROUTES || '/,/speicher,/prognose,/ladevorgaenge,/mehr,/mehr/energie,/mehr/system,/einrichten/speicher,/einrichten/pruefen,/komponenten').split(',').filter(Boolean);
+const routes = (process.env.CHECK_ROUTES || '/,/speicher,/prognose,/ladevorgaenge,/mehr,/mehr/speicher,/mehr/fahrzeug,/mehr/energie,/mehr/system,/einrichten/speicher,/einrichten/pruefen,/komponenten').split(',').filter(Boolean);
 const widths = [360, 390, 768, 1024, 1440, 1920];
 const themes = ['light', 'dark'];
 const axeWidths = [390, 1440];

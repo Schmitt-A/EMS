@@ -46,23 +46,29 @@ function ladder(box, data) {
   }
 }
 
+// Legende nur mit Farben, die im Block gerade vorkommen; Speicher steht für Laden und Entladen.
+function legend(list, seen) {
+  if (!list) return;
+  const keys = { sun: ['sun'], battery: ['charge', 'battery'], grid: ['grid'], export: ['export'], mixed: ['mixed'] };
+  for (const [key, parts] of Object.entries(keys)) {
+    const item = $(`.ctl-key-${key}`, list);
+    if (item) item.hidden = !parts.some((part) => seen.has(part));
+  }
+}
+
 function render(card, data) {
   const flows = data.flows || {};
   const split = Math.max(0.1, Number(flows.spare_kw) || 0, Number(flows.car_kw) || 0);
   fill($('[data-ctl-bar="spare"]', card), flows, split);
   fill($('[data-ctl-bar="car"]', card), flows, split);
-  const seen = new Set(PARTS.filter((part) => Number(flows[`${part}_kw`]) >= 0.01));
+  legend($('[data-legend="split"]', card), new Set(PARTS.filter((part) => Number(flows[`${part}_kw`]) >= 0.01)));
+  const seen = new Set();
   for (const [key, mode] of Object.entries(data.modes || {})) {
     fill($(`[data-ctl-bar="mode-${key}"]`, card), mode.flows, Math.max(0.1, Number(data.scale_kw) || 0));
     $(`[data-ctl-mode="${key}"]`, card)?.toggleAttribute('data-active', Boolean(mode.active));
     for (const part of CAR) if (Number(mode.flows?.[`${part}_kw`]) >= 0.01) seen.add(part);
   }
-  // Legende nur mit Farben, die gerade vorkommen; Speicher steht für Laden und Entladen.
-  const keys = { sun: ['sun'], battery: ['charge', 'battery'], grid: ['grid'], export: ['export'], mixed: ['mixed'] };
-  for (const [key, parts] of Object.entries(keys)) {
-    const item = $(`.ctl-key-${key}`, card);
-    if (item) item.hidden = !parts.some((part) => seen.has(part));
-  }
+  legend($('[data-legend="modes"]', card), seen);
   ladder($('[data-ladder]', card), data.ladder);
 }
 
