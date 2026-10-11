@@ -41,11 +41,12 @@ final class Actions
     ];
 
     /**
-     * Muster für Entitäten, die nicht in SUGGEST stehen: der Backup-Puffer der sonnenBatterie und die Sensoren von
-     * ESPHome Tesla BLE (englisch und mit deutschem Sprachpaket). [Zuordnung => [Muster für die ID, Einheiten]]
+     * Muster für Entitäten, die nicht in SUGGEST stehen: der Backup-Puffer der sonnenBatterie (aus der Integration oder
+     * als eigene Template-Number, etwa number.sonnenbatterie_backup_puffer) und die Sensoren von ESPHome Tesla BLE
+     * (englisch und mit deutschem Sprachpaket). [Zuordnung => [Muster für die ID, Einheiten]]
      */
     private const PATTERNS = [
-        'battery_reserve' => ['/^number\.\w*(battery_reserve|backup_buffer|backup_reserve)$/', ['%']],
+        'battery_reserve' => ['/^number\.\w*(battery_reserve|backup_buffer|backup_reserve|backup_puffer)$/', ['%']],
         'car_soc' => ['/^sensor\.\w*tesla\w*_(charge_level|battery_level|ladezustand(_\d)?)$/', ['%']],
         'car_range' => ['/^sensor\.\w*tesla\w*_(range|battery_range|reichweite)$/', ['km', 'mi']],
         'car_odometer' => ['/^sensor\.\w*tesla\w*_(odometer|kilometerstand)$/', ['km', 'mi']],

@@ -10,6 +10,8 @@ declare(strict_types=1);
 final class Reserve
 {
     private const KEY = 'reserve_guard';
+    /** Darunter warnt Einstellungen → Speicher: bei einem Stromausfall bliebe kaum Reserve. */
+    public const SAFE_SOC = 10;
     /** Nach einem Fehler schreibt der Recorder frühestens nach dieser Zeit wieder. */
     private const RETRY_S = 60;
 

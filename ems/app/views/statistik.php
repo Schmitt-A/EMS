@@ -20,6 +20,7 @@ $hours = Heatmap::hoursAllowed($p);
 
 echo ui_page_head('Statistik');
 ?>
+<div class="stack">
 <form method="get" action="<?= e(url('/statistik')) ?>" class="card stack hm-filters" data-autosubmit aria-label="Filter">
   <div class="form-rows">
     <div class="form-row">
@@ -97,3 +98,4 @@ echo ui_page_head('Statistik');
     <div class="hm-table-body" data-hm-table></div>
   </details>
 </section>
+</div>

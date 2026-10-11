@@ -33,10 +33,13 @@ $numberField = static fn (string $name, ?float $value, int $decimals, array $att
   <?= ui_notice('triangle-alert', e((string) $reserve['error']), 'warn') ?>
 <?php endif; ?>
   <?= $open('reserve') ?>
-  <?= ui_entity_field('battery_reserve', 'Entität des Puffers', (string) ($cfg['mapping']['battery_reserve'] ?? ''), 'Eine number-Entität in Prozent. Bei der sonnenBatterie heißt sie number.sonnenbatterie_…_battery_reserve und erscheint erst, wenn im Speicher der Schreibzugriff der JSON-API an ist.', $suggest['battery_reserve'] ?? '') ?>
+  <?= ui_entity_field('battery_reserve', 'Entität des Puffers', (string) ($cfg['mapping']['battery_reserve'] ?? ''), 'Eine number-Entität in Prozent. Bei der sonnenBatterie heißt sie number.sonnenbatterie_…_battery_reserve und erscheint erst, wenn im Speicher der Schreibzugriff der JSON-API an ist; eine eigene Template-Number mit rest_command, etwa number.sonnenbatterie_backup_puffer, geht genauso.', $suggest['battery_reserve'] ?? '') ?>
   <div class="form-rows">
-    <?= ui_form_row('Standardwert', $numberField('backup_soc', $settings['default'] === null ? null : (float) $settings['default'], 0, ['inputmode' => 'numeric']), ['for' => 'f-backup_soc', 'hint' => 'Prozent. Darauf setzt die App den Puffer nach dem Netzladen zurück.']) ?>
+    <?= ui_form_row('Standardwert', $numberField('backup_soc', $settings['default'] === null ? null : (float) $settings['default'], 0, ['inputmode' => 'numeric', 'data-warn-below' => Reserve::SAFE_SOC, 'data-warn-note' => 'backup-warn']), ['for' => 'f-backup_soc', 'hint' => 'Prozent. Darauf setzt die App den Puffer nach dem Netzladen zurück.']) ?>
     <?= ui_form_row('Speicher schonen', ui_toggle('grid_protect', $settings['protect'], 'Beim Netzladen den Backup-Puffer anheben'), ['hint' => 'Beim Netzladen kommt dann alles, was die Sonne nicht schafft, aus dem Netz.']) ?>
+  </div>
+  <div id="backup-warn"<?= $settings['default'] !== null && $settings['default'] < Reserve::SAFE_SOC ? '' : ' hidden' ?>>
+    <?= ui_notice('triangle-alert', 'Unter ' . e(pct(Reserve::SAFE_SOC)) . ' bleibt bei einem Stromausfall kaum Reserve im Speicher. Zur Sicherheit mindestens ' . e(pct(Reserve::SAFE_SOC)) . ' einstellen.', 'warn') ?>
   </div>
   <div class="form-actions"><button class="btn btn-primary" type="submit">Puffer speichern</button></div>
   </form>

@@ -168,6 +168,21 @@ function bindEntities(root) {
   }
 }
 
+// Warnung zu einem Zahlenfeld, solange der Wert unter data-warn-below liegt (etwa ein Backup-Puffer unter 10 %).
+function bindWarnings(root) {
+  for (const input of $$('[data-warn-below]', root)) {
+    const note = document.getElementById(input.dataset.warnNote || '');
+    if (!note) continue;
+    const limit = Number(input.dataset.warnBelow);
+    const update = () => {
+      const raw = input.value.trim().replace(',', '.');
+      const value = Number(raw);
+      note.hidden = !(raw !== '' && Number.isFinite(value) && value < limit);
+    };
+    input.addEventListener('input', update);
+  }
+}
+
 // Assistent: die quer scrollbare Schrittleiste zeigt den aktuellen Schritt, ohne die Seite zu bewegen.
 function bindSteps(root) {
   const current = $('.steps [aria-current="step"]', root);
@@ -214,6 +229,7 @@ export function initForms(root = document) {
   bindTheme(root);
   bindEntities(root);
   bindSteps(root);
+  bindWarnings(root);
 }
 
 export function initGlobal() {

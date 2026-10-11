@@ -175,6 +175,7 @@ $found = Actions::suggestions([
     'sensor.tesla_ble_charge_limit' => ['attributes' => ['unit_of_measurement' => '%']],
 ]);
 check(($found['battery_reserve'] ?? '') === 'number.sonnenbatterie_382994_battery_reserve' && ($found['car_soc'] ?? '') === 'sensor.tesla_ble_ladezustand_2' && ($found['car_range'] ?? '') === 'sensor.tesla_ble_reichweite' && ($found['car_odometer'] ?? '') === 'sensor.tesla_ble_odometer' && ($found['car_limit'] ?? '') === 'sensor.tesla_ble_charge_limit', 'Vorschläge für Backup-Puffer und Tesla BLE');
+check((Actions::suggestions(['number.sonnenbatterie_backup_puffer' => ['attributes' => ['unit_of_measurement' => '%']]])['battery_reserve'] ?? '') === 'number.sonnenbatterie_backup_puffer', 'Eine eigene Template-Number für den Backup-Puffer wird vorgeschlagen');
 
 $fit = Forecast::regression([10, 20, 30], [12, 22, 32]);
 check(abs($fit['a'] - 2) < 0.01 && abs($fit['b'] - 1) < 0.01, 'Regression');
