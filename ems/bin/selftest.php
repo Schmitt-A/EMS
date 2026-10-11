@@ -275,6 +275,12 @@ check($deaf['conflicts'] === [] && count($deaf['ignored']) === 3 && str_contains
 $seen = Controller::observe(['written' => ['frc' => ['v' => 'on', 't' => 4000, 'before' => 'off', 'seen' => false]]] + Controller::initial(), ['frc' => 'on', 'amp' => 6, 'psm' => '1p']);
 $back = $wall->apply(['enabled' => true, 'amps' => 6, 'phases' => 1] + $seen, $wallCfg, ['frc' => 'off', 'amp' => 6, 'psm' => '1p'], 4070);
 check($seen['written']['frc']['seen'] === true && count($back['conflicts']) === 1 && $back['ignored'] === [], 'Hat die Wallbox den Wert gemeldet und springt dann zurück, war es ein anderer Regler');
+// Gilt inzwischen etwas anderes und die Wallbox steht schon dort (Wechsel auf Aus), zählt der alte Befehl nicht mehr.
+$wallHa->calls = [];
+$stale = $wall->apply(['enabled' => true, 'amps' => 6, 'phases' => 1] + Controller::initial(), $wallCfg, ['frc' => 'off', 'amp' => 6, 'psm' => '1p'], 5000);
+$stale = $wall->apply(['enabled' => false] + $stale, $wallCfg, ['frc' => 'off', 'amp' => 6, 'psm' => '1p'], 5030);
+$stale = $wall->apply(['enabled' => false] + $stale, $wallCfg, ['frc' => 'off', 'amp' => 6, 'psm' => '1p'], 5100);
+check($wallHa->calls === [['select.frc', '2']] && $stale['conflicts'] === [] && $stale['ignored'] === [] && !isset($stale['written']['frc']), 'Ein überholter Befehl zählt nach dem Wechsel auf Aus weder als fremd noch als nicht übernommen');
 $wallHa->calls = [];
 $wall->apply(['enabled' => false] + Controller::initial(), $wallCfg, ['frc' => 'on', 'amp' => 8, 'psm' => '3p'], 2000);
 check($wallHa->calls === [['select.frc', '1']], 'Sperren schreibt nur frc 1');

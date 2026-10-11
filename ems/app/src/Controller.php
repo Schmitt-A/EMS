@@ -446,6 +446,11 @@ final class Controller
         $ignored = [];
         foreach ($want as $key => $value) {
             $written = $s['written'][$key] ?? null;
+            if (is_array($written) && !self::same($key, $value, $written['v'])) {
+                // Inzwischen gilt etwas anderes, etwa nach dem Wechsel auf Aus: der alte Befehl zählt nicht mehr.
+                unset($s['written'][$key]);
+                continue;
+            }
             if (!is_array($written) || $reported[$key] === null || $now - (int) $written['t'] < self::GRACE_S) {
                 continue;
             }
