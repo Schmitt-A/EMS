@@ -175,6 +175,8 @@ $found = Actions::suggestions([
     'sensor.tesla_ble_charge_limit' => ['attributes' => ['unit_of_measurement' => '%']],
 ]);
 check(($found['battery_reserve'] ?? '') === 'number.sonnenbatterie_382994_battery_reserve' && ($found['car_soc'] ?? '') === 'sensor.tesla_ble_ladezustand_2' && ($found['car_range'] ?? '') === 'sensor.tesla_ble_reichweite' && ($found['car_odometer'] ?? '') === 'sensor.tesla_ble_odometer' && ($found['car_limit'] ?? '') === 'sensor.tesla_ble_charge_limit', 'Vorschläge für Backup-Puffer und Tesla BLE');
+check(Sessions::carConnected('wait_for_car') === true && Sessions::carConnected('WaitCar') === true && Sessions::carConnected('idle') === false && Sessions::carConnected('unknown_error') === null && Sessions::carState('Wait for car') === 'waiting'
+    && Snapshot::vehicleStatus('wait_for_car', false) === 'Verbunden' && Energy::carLabel('wait_for_car') === 'Wartet auf Auto' && Controller::input(['wallbox_car_raw' => 'complete'], ['charge' => []], [])['complete'], 'Fahrzeugstatus beider go-e-Integrationen, auch wait_for_car der MQTT-Integration, heißt angesteckt');
 check((Actions::suggestions(['number.sonnenbatterie_backup_puffer' => ['attributes' => ['unit_of_measurement' => '%']]])['battery_reserve'] ?? '') === 'number.sonnenbatterie_backup_puffer', 'Eine eigene Template-Number für den Backup-Puffer wird vorgeschlagen');
 
 $fit = Forecast::regression([10, 20, 30], [12, 22, 32]);
@@ -263,6 +265,16 @@ check(count($taken['conflicts']) === 1 && $wallHa->calls === [['number.amp', 8]]
 $taken = $wall->apply($taken, $wallCfg, ['frc' => 'on', 'amp' => 10, 'psm' => '3p'], 1140);
 $taken = $wall->apply($taken, $wallCfg, ['frc' => 'on', 'amp' => 10, 'psm' => '3p'], 1210);
 check($taken['paused'] !== null, 'Drei Fremdzugriffe in zehn Minuten pausieren die Regelung');
+// Übernimmt die Wallbox den Befehl nie (go-e mit MQTT nur lesend), heißt es „nicht übernommen“, nicht evcc.
+$deaf = Controller::initial();
+foreach ([3000, 3070, 3140] as $at) {
+    $deaf = $wall->apply(['enabled' => true, 'amps' => 6, 'phases' => 1] + $deaf, $wallCfg, ['frc' => 'off', 'amp' => 6, 'psm' => '1p'], $at);
+}
+$deaf = $wall->apply($deaf, $wallCfg, ['frc' => 'off', 'amp' => 6, 'psm' => '1p'], 3210);
+check($deaf['conflicts'] === [] && count($deaf['ignored']) === 3 && str_contains((string) $deaf['paused'], 'mcr') && str_contains($deaf['log'][1]['text'] ?? '', 'nicht übernommen'), 'Eine Wallbox, die Befehle nicht übernimmt, pausiert mit dem Hinweis auf MQTT nur lesen');
+$seen = Controller::observe(['written' => ['frc' => ['v' => 'on', 't' => 4000, 'before' => 'off', 'seen' => false]]] + Controller::initial(), ['frc' => 'on', 'amp' => 6, 'psm' => '1p']);
+$back = $wall->apply(['enabled' => true, 'amps' => 6, 'phases' => 1] + $seen, $wallCfg, ['frc' => 'off', 'amp' => 6, 'psm' => '1p'], 4070);
+check($seen['written']['frc']['seen'] === true && count($back['conflicts']) === 1 && $back['ignored'] === [], 'Hat die Wallbox den Wert gemeldet und springt dann zurück, war es ein anderer Regler');
 $wallHa->calls = [];
 $wall->apply(['enabled' => false] + Controller::initial(), $wallCfg, ['frc' => 'on', 'amp' => 8, 'psm' => '3p'], 2000);
 check($wallHa->calls === [['select.frc', '1']], 'Sperren schreibt nur frc 1');

@@ -43,7 +43,7 @@ final class Controller
             'enabled' => false, 'amps' => 6, 'phases' => 3,
             'pv_timer' => null, 'pv_action' => null, 'phase_timer' => null, 'phase_action' => null,
             'switched_at' => null, 'connected' => null, 'mode' => null, 'step_at' => null, 'note' => null,
-            'written' => [], 'conflicts' => [], 'paused' => null, 'woken_at' => null, 'log' => [],
+            'written' => [], 'conflicts' => [], 'ignored' => [], 'paused' => null, 'woken_at' => null, 'log' => [],
         ];
     }
 
@@ -66,7 +66,7 @@ final class Controller
             // Ohne Fahrzeugstatus gilt das Auto als angesteckt, sonst könnte nie geladen werden.
             'connected' => Sessions::carConnected($raw, $power) !== false,
             'charging' => ($power ?? 0.0) > 0.2 || strtolower((string) $raw) === 'charging',
-            'complete' => in_array(strtolower(str_replace([' ', '-'], '_', (string) $raw)), ['complete', 'completed'], true),
+            'complete' => Sessions::carState($raw) === 'complete',
             'available_kw' => $available === null ? null : (float) $available,
             'zone' => (string) ($suggestion['zone'] ?? 'none'),
             'min_a' => $minA,
@@ -426,8 +426,10 @@ final class Controller
 
     /**
      * Schreibt an die Wallbox, was vom gemeldeten Stand abweicht: beim Freigeben erst Phasen und Strom, dann frc 2,
-     * beim Sperren nur frc 1. Ein gemeldeter Wert, der nach der Karenzzeit nicht mehr dem Geschriebenen entspricht,
-     * zählt als Fremdzugriff; nach drei in zehn Minuten pausiert die Regelung, statt gegen evcc zu schalten.
+     * beim Sperren nur frc 1. Weicht der gemeldete Wert nach der Karenzzeit vom Geschriebenen ab, unterscheidet EMS:
+     * Hat die Wallbox den Wert nie gemeldet und steht sie noch beim alten, hat sie den Befehl nicht übernommen (etwa
+     * eine go-e, die über MQTT nur lesen lässt); sonst hat ein anderer Regler geschrieben. Nach drei solchen Fällen in
+     * zehn Minuten pausiert die Regelung mit dem passenden Hinweis, statt gegen evcc oder ins Leere zu schalten.
      */
     public function apply(array $s, array $cfg, array $reported, int $now, array $options = []): array
     {
@@ -439,14 +441,21 @@ final class Controller
         $m = $cfg['mapping'];
         $ids = ['frc' => (string) ($m['wallbox_force'] ?? ''), 'amp' => (string) ($m['wallbox_amps'] ?? ''), 'psm' => (string) ($m['wallbox_phases'] ?? '')];
         $want = ['frc' => $s['enabled'] ? 'on' : 'off', 'amp' => (int) $s['amps'], 'psm' => (int) $s['phases'] === 3 ? '3p' : '1p'];
+        $s = self::observe($s, $reported);
         $foreign = [];
+        $ignored = [];
         foreach ($want as $key => $value) {
             $written = $s['written'][$key] ?? null;
             if (!is_array($written) || $reported[$key] === null || $now - (int) $written['t'] < self::GRACE_S) {
                 continue;
             }
             if (!self::same($key, $reported[$key], $written['v'])) {
-                $foreign[] = $key;
+                $unchanged = array_key_exists('before', $written) && self::same($key, $reported[$key], $written['before']);
+                if (empty($written['seen']) && $unchanged) {
+                    $ignored[] = $key;
+                } else {
+                    $foreign[] = $key;
+                }
                 unset($s['written'][$key]);
             }
         }
@@ -454,10 +463,21 @@ final class Controller
             $s['conflicts'][] = $now;
             $s['log'] = self::log($s['log'], $now, 'Fremder Wert an der Wallbox (' . implode(', ', $foreign) . '), ein anderer Regler?');
         }
+        if ($ignored) {
+            $s['ignored'][] = $now;
+            $s['log'] = self::log($s['log'], $now, 'Die Wallbox hat den Befehl nicht übernommen (' . implode(', ', $ignored) . ').');
+        }
         $s['conflicts'] = array_values(array_filter($s['conflicts'], static fn (int $t): bool => $now - $t < self::CONFLICT_WINDOW_S));
-        if (count($s['conflicts']) >= self::CONFLICTS) {
-            $s['paused'] = 'Ein anderer Regler schreibt ebenfalls an die Wallbox, etwa evcc. EMS hat die Regelung pausiert. evcc vom Ladepunkt lösen und EMS neu einschalten.';
-            $s['log'] = self::log($s['log'], $now, 'Regelung pausiert, Fremdzugriffe an der Wallbox.');
+        $s['ignored'] = array_values(array_filter((array) ($s['ignored'] ?? []), static fn (int $t): bool => $now - $t < self::CONFLICT_WINDOW_S));
+        // Drei Fälle in zehn Minuten, gleich welcher Art, pausieren; der Hinweis folgt dem häufigeren.
+        if (count($s['conflicts']) + count($s['ignored']) >= self::CONFLICTS) {
+            if (count($s['ignored']) > count($s['conflicts'])) {
+                $s['paused'] = 'Die Wallbox übernimmt die Befehle von EMS nicht: Home Assistant nimmt sie an, die Wallbox bleibt aber beim alten Wert. Bei der go-e über MQTT muss Schreiben erlaubt sein (in der go-e-App bei MQTT „nur lesen“ ausschalten, API-Schlüssel mcr). Stellt ein anderer Regler wie evcc sofort zurück, sieht es genauso aus. Danach EMS aus- und wieder einschalten.';
+                $s['log'] = self::log($s['log'], $now, 'Regelung pausiert, die Wallbox übernimmt keine Befehle.');
+            } else {
+                $s['paused'] = 'Ein anderer Regler schreibt ebenfalls an die Wallbox, etwa evcc. EMS hat die Regelung pausiert. evcc vom Ladepunkt lösen und EMS neu einschalten.';
+                $s['log'] = self::log($s['log'], $now, 'Regelung pausiert, Fremdzugriffe an der Wallbox.');
+            }
             return $s;
         }
 
@@ -482,7 +502,7 @@ final class Controller
                 $s['log'] = self::log($s['log'], $now, 'Schreiben fehlgeschlagen (' . $key . '): ' . $e->getMessage());
                 break;
             }
-            $s['written'][$key] = ['v' => $want[$key], 't' => $now];
+            $s['written'][$key] = ['v' => $want[$key], 't' => $now, 'before' => $reported[$key], 'seen' => false];
             $s['log'] = self::log($s['log'], $now, self::writeText($key, $want[$key]));
         }
         return $s;
@@ -496,6 +516,7 @@ final class Controller
         $state['written'] = [];
         $state['paused'] = null;
         $state['conflicts'] = [];
+        $state['ignored'] = [];
         $state['step_at'] = null;
         $message = 'EMS regelt nicht mehr.';
         if ($id !== '') {
@@ -520,6 +541,7 @@ final class Controller
         $state = $this->state();
         $state['paused'] = null;
         $state['conflicts'] = [];
+        $state['ignored'] = [];
         $state['written'] = [];
         $state['step_at'] = null;
         $state['log'] = self::log($state['log'], $now, 'EMS regelt die Wallbox.');
@@ -543,6 +565,12 @@ final class Controller
         $state = $this->state();
         if (empty($snap['connected'])) {
             return $state;
+        }
+        // Auch zwischen den Schritten merken, ob die Wallbox einen geschriebenen Wert schon gemeldet hat.
+        $observed = self::observe($state, self::reported($snap['values']));
+        if ($observed !== $state) {
+            $state = $observed;
+            $this->store->put(self::KEY, $state);
         }
         $cfg = $snap['cfg'];
         $kick = (int) $this->store->get('control_kick', 0);
@@ -579,6 +607,17 @@ final class Controller
         }
         $this->store->put(self::KEY, $state);
         return $state;
+    }
+
+    /** Merkt sich, ob die Wallbox einen geschriebenen Wert gemeldet hat; eine spätere Abweichung ist dann fremd. */
+    public static function observe(array $s, array $reported): array
+    {
+        foreach ((array) ($s['written'] ?? []) as $key => $written) {
+            if (is_array($written) && empty($written['seen']) && self::same((string) $key, $reported[$key] ?? null, $written['v'] ?? null)) {
+                $s['written'][$key]['seen'] = true;
+            }
+        }
+        return $s;
     }
 
     /** Tesla schläft: 60 s nach dem Freigeben ohne Ladung einmal den Weck-Button drücken (evcc: Wake-up). */

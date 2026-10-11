@@ -604,15 +604,17 @@ final class Energy
     public static function carLabel(?string $raw): string
     {
         $key = strtolower(str_replace([' ', '-'], '_', (string) $raw));
-        return match ($key) {
+        return match (Sessions::carState($raw)) {
             'charging' => 'Laden',
             'idle' => 'Standby',
-            'wait_car', 'waitcar' => 'Wartet auf Auto',
-            'complete', 'completed' => 'Abgeschlossen',
+            'waiting' => 'Wartet auf Auto',
+            'complete' => 'Abgeschlossen',
             'error' => 'Fehler',
-            'initializing' => 'Initialisierung',
-            'unknown', '' => 'Nicht verbunden',
-            default => $raw ?: 'Nicht verbunden',
+            default => match ($key) {
+                'initializing' => 'Initialisierung',
+                'unknown', '' => 'Nicht verbunden',
+                default => $raw ?: 'Nicht verbunden',
+            },
         };
     }
 

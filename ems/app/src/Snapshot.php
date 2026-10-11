@@ -415,7 +415,7 @@ final class Snapshot
         return [
             'name' => trim((string) ($cfg['vehicle']['name'] ?? '')) ?: 'Auto',
             'status' => self::vehicleStatus($raw, (bool) $base['car_charging']),
-            'connected' => (bool) $base['car_charging'] || in_array($raw, ['charging', 'wait_car', 'waitcar', 'complete', 'completed'], true),
+            'connected' => (bool) $base['car_charging'] || Sessions::carConnected($raw) === true,
             'soc' => $soc === null ? null : round($soc, 1),
             'capacity_kwh' => $capacity,
             'range_km' => $range,
@@ -434,14 +434,16 @@ final class Snapshot
         if ($charging || $raw === 'charging') {
             return 'Lädt …';
         }
-        return match ($raw) {
-            'wait_car', 'waitcar' => 'Verbunden',
-            'complete', 'completed' => 'Bereit, Ladung beendet',
+        return match (Sessions::carState($raw)) {
+            'waiting' => 'Verbunden',
+            'complete' => 'Bereit, Ladung beendet',
             'error' => 'Fehler an der Wallbox',
-            'initializing' => 'Wallbox startet …',
             'idle' => 'Nicht verbunden',
-            '', 'unknown' => 'Kein Fahrzeugstatus',
-            default => $raw,
+            default => match ($raw) {
+                'initializing' => 'Wallbox startet …',
+                '', 'unknown' => 'Kein Fahrzeugstatus',
+                default => $raw,
+            },
         };
     }
 

@@ -72,6 +72,24 @@ final class Sessions
     }
 
     /**
+     * Fahrzeugstatus der Wallbox vereinheitlicht: charging, waiting (angesteckt, lädt nicht), complete, idle (kein
+     * Auto) oder error; null, wenn der Status nichts sagt. Versteht die go-e-API (Integration von marq24: Charging,
+     * WaitCar, Complete, Idle) und die MQTT-Integration von syssi (charging, wait_for_car, complete, idle, error,
+     * unknown_error).
+     */
+    public static function carState(?string $raw): ?string
+    {
+        return match (strtolower(str_replace([' ', '-'], '_', trim((string) $raw)))) {
+            'charging' => 'charging',
+            'wait_car', 'waitcar', 'wait_for_car', 'waiting' => 'waiting',
+            'complete', 'completed' => 'complete',
+            'idle', 'standby', 'disconnected', 'not_connected' => 'idle',
+            'error', 'unknown_error' => 'error',
+            default => null,
+        };
+    }
+
+    /**
      * Steckt das Auto an der Wallbox? Ladeleistung zählt immer als angesteckt. null, wenn der Status
      * nichts sagt (nicht zugeordnet, unknown, unavailable, Fehler).
      */
@@ -80,9 +98,9 @@ final class Sessions
         if ($powerKw !== null && $powerKw > 0.2) {
             return true;
         }
-        return match (strtolower(str_replace([' ', '-'], '_', trim((string) $raw)))) {
-            'charging', 'wait_car', 'waitcar', 'complete', 'completed' => true,
-            'idle', 'standby', 'disconnected', 'not_connected' => false,
+        return match (self::carState($raw)) {
+            'charging', 'waiting', 'complete' => true,
+            'idle' => false,
             default => null,
         };
     }

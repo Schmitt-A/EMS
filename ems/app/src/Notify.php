@@ -729,7 +729,7 @@ final class Notify
             'export_kw' => isset($v['grid_export_kw']) ? (float) $v['grid_export_kw'] : null,
             'missing' => array_keys($missing),
             'faults' => $faults,
-            'stuck' => $active && !empty($control['enabled']) && empty($control['paused']) && $connected === true && !$charging && !$full && !in_array($raw, ['complete', 'completed'], true),
+            'stuck' => $active && !empty($control['enabled']) && empty($control['paused']) && $connected === true && !$charging && !$full && Sessions::carState($raw) !== 'complete',
             'target_done' => is_array($done) && isset($done['t']) ? $done : null,
             'tomorrow_kwh' => isset($snap['forecast']['tomorrow_kwh']) ? (float) $snap['forecast']['tomorrow_kwh'] : null,
             'mode' => (string) ($cfg['charge']['mode'] ?? 'smart'),
