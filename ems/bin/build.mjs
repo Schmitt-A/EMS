@@ -27,7 +27,7 @@ manifest['InterVariable.woff2'] = hash(font);
 const lucide = [
   'activity', 'arrow-down', 'arrow-left', 'arrow-right', 'arrow-up', 'battery-charging', 'battery-full', 'battery-low', 'battery-medium', 'battery-plus',
   'bell', 'calendar', 'car', 'chart-column', 'chart-line', 'check', 'chevron-down', 'chevron-left', 'chevron-right',
-  'circle-alert', 'circle-check', 'cloud-sun', 'coins', 'compass', 'ellipsis', 'gauge', 'hand-coins', 'history',
+  'circle-alert', 'circle-check', 'cloud-sun', 'coins', 'compass', 'ellipsis', 'gauge', 'grid-3x3', 'hand-coins', 'history',
   'house', 'info', 'leaf', 'list', 'monitor', 'moon', 'pencil', 'plug', 'plus', 'rotate-ccw', 'route', 'scale',
   'power', 'search', 'send', 'server', 'settings', 'shield', 'sliders-horizontal', 'smartphone', 'sun', 'sun-medium', 'target',
   'timer', 'trash-2', 'triangle-alert', 'unplug', 'utility-pole', 'wifi-off', 'x', 'zap',

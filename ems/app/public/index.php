@@ -109,6 +109,9 @@ if ($path === '/api/series') {
         if ($chart === 'weather') {
             json_out($series->weather($config['mapping']));
         }
+        if ($chart === 'heatmap') {
+            json_out((new Heatmap(store(), ha()))->payload($_GET, time()));
+        }
         if ($chart === 'sessions') {
             $params = sessions_params($_GET);
             json_out(Sessions::chart(sessions_chart_rows($params), $params['span'], $params['metric'], cfg()['tariffs'], $params['month'], $params['year']));
@@ -187,7 +190,9 @@ if ($path === '/speicher') {
     page('speicher', compact('snap', 'live', 'overview') + ['title' => 'Speicher']);
 }
 if ($path === '/statistik') {
-    redirect('/ladevorgaenge' . sessions_query(sessions_params($_GET)));
+    // Heatmap: die Filter stehen in der Adresse, die Werte holt components/heatmap.js über /api/series?chart=heatmap.
+    $filters = Heatmap::params($_GET, time());
+    page('statistik', ['filters' => $filters, 'range' => Heatmap::range($filters, time()), 'title' => 'Statistik']);
 }
 if ($path === '/ladevorgaenge') {
     $params = sessions_params($_GET);

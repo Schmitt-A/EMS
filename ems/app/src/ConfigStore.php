@@ -52,6 +52,8 @@ final class ConfigStore
         if (!in_array('model_mode', $daily, true)) {
             $this->pdo->exec('ALTER TABLE daily ADD COLUMN model_mode TEXT');
         }
+        // Statistik aus Home Assistant für abgeschlossene Zeiträume der Heatmap, eine Woche lang.
+        $this->pdo->exec('CREATE TABLE IF NOT EXISTS stat_cache (k TEXT PRIMARY KEY, at INTEGER NOT NULL, v TEXT NOT NULL)');
         // Gesendete Mitteilungen (Notify), die neuesten 200.
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS notifications (

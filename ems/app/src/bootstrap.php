@@ -26,6 +26,7 @@ require EMS_APP . '/src/Controller.php';
 require EMS_APP . '/src/Notify.php';
 require EMS_APP . '/src/Snapshot.php';
 require EMS_APP . '/src/Series.php';
+require EMS_APP . '/src/Heatmap.php';
 require EMS_APP . '/src/Actions.php';
 require EMS_APP . '/views/kit.php';
 require EMS_APP . '/views/forecast_method.php';

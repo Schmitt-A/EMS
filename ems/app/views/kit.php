@@ -410,8 +410,9 @@ function ui_flow_table(array $rows, string $id = 'flow-table', bool $static = fa
  * Energie-Flow Rein → Raus: links die Quellen Sonne, Speicher und Netz, rechts die Ziele Haus, Auto, Speicher und
  * Einspeisung, wie die Tabelle Rein und Raus. Die Linien zeichnet components/energy-flow.js zwischen den Kreisen,
  * je Quelle zu jedem Ziel, das sie gerade versorgt, breiter bei mehr Leistung; Punkte laufen in der Farbe der Quelle
- * von links nach rechts. Der Ring der Sonne zeigt, wie viel der Tagesprognose schon erzeugt ist, die Ringe von Haus
- * und Auto die Mischung aus Sonne, Speicher und Netz. Unter jedem Namen steht eine Zeile mit Kennzahlen und Icons:
+ * von links nach rechts, mehr und schneller, je größer ihr Anteil an allem, was hereinkommt. Der Ring der Sonne zeigt,
+ * wie viel der Tagesprognose schon erzeugt ist; die Ringe rechts (Haus, Auto, Speicher, Einspeisung) zeigen als ganzer
+ * Kreis = 100 %, woher ihre Energie kommt. Unter jedem Namen steht eine Zeile mit Kennzahlen und Icons:
  * Sonne gemessen und Prognose, Speicher Ladestand und bis voll, Netz und Einspeisung der Preis, Haus das Mittel der
  * letzten 30 Tage, Auto Ladestand und Reichweite. Daten aus Snapshot::flowGraph().
  * opts: id, static, car (Name des Autos), links (bool: Kreise führen zu Prognose, Speicher, Ladepunkt)
@@ -425,15 +426,16 @@ function ui_energy_flow(array $graph, array $opts = []): string
     $car = (string) ($opts['car'] ?? 'Auto');
     $soc = static fn (?float $value): string => $value === null ? '' : pct($value);
     $arc = static fn (string $part, float $len, float $from, string $color): string => '<circle class="ef-arc c-' . $color . '" cx="50" cy="50" r="46" pathLength="100" stroke-dasharray="' . round($len, 2) . ' ' . round(100 - $len, 2) . '" stroke-dashoffset="' . round(-$from, 2) . '" data-arc="' . $part . '"></circle>';
-    // Ring: Fortschritt der Prognose (Sonne), Mischung (Haus, Auto) oder ganz in der Farbe des Kreises.
-    $ring = static function (string $kind) use ($n, $mix, $arc): string {
+    // Ring: Fortschritt der Prognose (Sonne), Herkunft (alle Ziele rechts) oder ganz in der Farbe des Kreises.
+    $ring = static function (string $kind, string $key) use ($n, $mix, $arc): string {
         $html = '<svg class="ef-ring" viewBox="0 0 100 100" aria-hidden="true"><circle class="ef-ring-base" cx="50" cy="50" r="46" pathLength="100"></circle>';
         if ($kind === 'progress') {
             $html .= $arc('progress', max(0.0, (float) ($n['sun']['progress'] ?? 1)) * 100, 0, 'solar');
         } elseif ($kind === 'mix') {
             $from = 0.0;
+            $own = is_array($n[$key]['mix'] ?? null) ? $n[$key]['mix'] : $mix;
             foreach (['sun' => 'solar', 'battery' => 'battery', 'grid' => 'grid-in'] as $part => $color) {
-                $len = max(0.0, (float) ($mix[$part] ?? 0)) * 100;
+                $len = max(0.0, (float) ($own[$part] ?? 0)) * 100;
                 $html .= $arc($part, $len, $from, $color);
                 $from += $len;
             }
@@ -444,7 +446,7 @@ function ui_energy_flow(array $graph, array $opts = []): string
         $tag = $links && $href !== null ? 'a' : 'div';
         $attrs = $tag === 'a' ? ' href="' . e($href) . '"' : ' role="img"';
         return '<div class="ef-node ef-' . str_replace('_', '-', $key) . '" data-ef-node="' . $key . '"' . ((float) $n[$key]['kw'] < 0.01 ? ' data-idle' : '') . '>'
-            . '<' . $tag . ' class="ef-circle"' . $attrs . ' aria-label="' . e($aria) . '" data-ef-aria="' . $key . '">' . $ring($kind)
+            . '<' . $tag . ' class="ef-circle"' . $attrs . ' aria-label="' . e($aria) . '" data-ef-aria="' . $key . '">' . $ring($kind, $key)
             . '<span class="ef-inner">' . icon($glyph, 'icon-20') . '<span class="ef-value" data-ef="' . $key . '">' . e(kw((float) $n[$key]['kw'])) . '</span></span></' . $tag . '>'
             . '<span class="ef-label"><span class="ef-name">' . e($label) . '</span><span class="ef-facts">' . $facts . '</span></span>'
             . '</div>';
@@ -464,8 +466,8 @@ function ui_energy_flow(array $graph, array $opts = []): string
         . $node('grid_in', 'Netz', $fact('grid_in_price', 'coins', 'Preis Netzbezug', $value($n['grid_in']['price_ct'] ?? null, 'ct')), 'utility-pole', 'Netzbezug ' . kw((float) $n['grid_in']['kw']), null, 'full');
     $out = $node('home', 'Haus', $fact('home_mean', 'history', 'Mittel der letzten 30 Tage', $value($n['home']['mean_kw'] ?? null, static fn (float $x): string => 'Ø ' . kw($x))), 'house', 'Haus ' . kw((float) $n['home']['kw']), null, 'mix')
         . $node('car', $car, $fact('car_soc', 'battery-medium', 'Ladestand', $value($n['car']['soc'] ?? null, $soc)) . $fact('car_range', 'route', 'Reichweite', $value($n['car']['range_km'] ?? null, static fn (float $x): string => with_unit($x, 0, 'km'))), 'car', $car . ' lädt mit ' . kw((float) $n['car']['kw']), '#cp', 'mix')
-        . $node('battery_in', 'Speicher', $battery('battery_in'), 'battery', 'Speicher lädt ' . kw((float) $n['battery_in']['kw']), url('/speicher'), 'full')
-        . $node('grid_out', 'Einspeisung', $fact('grid_out_price', 'hand-coins', 'Vergütung Einspeisung', $value($n['grid_out']['price_ct'] ?? null, 'ct')), 'utility-pole', 'Einspeisung ' . kw((float) $n['grid_out']['kw']), null, 'full');
+        . $node('battery_in', 'Speicher', $battery('battery_in'), 'battery', 'Speicher lädt ' . kw((float) $n['battery_in']['kw']), url('/speicher'), 'mix')
+        . $node('grid_out', 'Einspeisung', $fact('grid_out_price', 'hand-coins', 'Vergütung Einspeisung', $value($n['grid_out']['price_ct'] ?? null, 'ct')), 'utility-pole', 'Einspeisung ' . kw((float) $n['grid_out']['kw']), null, 'mix');
     return '<figure class="ef" id="' . e($id) . '" data-energy-flow="' . e(ui_json($graph)) . '"' . (!empty($opts['static']) ? ' data-static' : '') . ' aria-labelledby="' . e($id) . '-sum">'
         . '<figcaption class="sr-only" id="' . e($id) . '-sum" data-ef-summary>Energie-Flow</figcaption>'
         . '<svg class="ef-links" aria-hidden="true"></svg>'

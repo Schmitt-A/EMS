@@ -101,6 +101,7 @@ check(abs($exporting['sun_kw'] - 1.38) < 0.001 && abs($exporting['charge_kw'] - 
 $graph = Energy::flowGraph(['pv_kw' => 7.8, 'battery_charge_kw' => 1.6, 'battery_discharge_kw' => 0.0, 'grid_import_kw' => 0.0, 'grid_export_kw' => 1.3, 'wallbox_kw' => 4.1, 'battery_soc' => 64.0, 'car_soc' => 57.0], ['house_base_kw' => 0.8], ['today_kwh' => 29.4, 'remaining_kwh' => 6.2, 'done_kwh' => 23.1]);
 check($graph['links']['sun_home'] === 0.8 && $graph['links']['sun_car'] === 4.1 && $graph['links']['sun_battery'] === 1.6 && abs($graph['links']['sun_grid'] - 1.3) < 0.001 && $graph['links']['grid_car'] === 0.0 && $graph['mix']['sun'] === 1.0, 'Energie-Flow mittags: Sonne direkt zu Haus und Auto, in den Speicher, der Rest ins Netz');
 check($graph['nodes']['sun']['progress'] === 0.786 && $graph['nodes']['sun']['forecast_kwh'] === 29.4, 'Die Sonne trägt den Fortschritt der Tagesprognose');
+check($graph['nodes']['battery_in']['mix'] === ['sun' => 1.0, 'battery' => 0.0, 'grid' => 0.0] && $graph['nodes']['grid_out']['mix']['sun'] === 1.0 && $graph['nodes']['car']['mix']['sun'] === 1.0, 'Ringe rechts: Herkunft je Ziel');
 $facts = Energy::flowGraph(['battery_soc' => 64.0, 'battery_capacity_kwh' => 8.6, 'battery_total_kwh' => 13.4, 'car_soc' => 57.0], [], null, ['house_mean_kw' => 0.624, 'import_ct' => 34.7, 'export_ct' => 8.1, 'car_range_km' => 296.4])['nodes'];
 check($facts['battery_out']['to_full_kwh'] === 4.8 && $facts['battery_in']['to_full_kwh'] === 4.8 && $facts['home']['mean_kw'] === 0.62 && $facts['grid_in']['price_ct'] === 34.7 && $facts['grid_out']['price_ct'] === 8.1 && $facts['car']['range_km'] === 296.0 && $graph['nodes']['grid_in']['price_ct'] === null, 'Zweite Zeile im Energie-Flow: bis voll, Ø Haus, Preise, Reichweite');
 $evening = Energy::flowGraph(['pv_kw' => 0.0, 'battery_charge_kw' => 0.0, 'battery_discharge_kw' => 3.0, 'grid_import_kw' => 1.9, 'grid_export_kw' => 0.0, 'wallbox_kw' => 4.1, 'battery_soc' => 60.0], ['house_base_kw' => 0.8]);
@@ -706,6 +707,50 @@ $notifyHa->fail = false;
 $lastSent = end($notifyHa->sent);
 check($lastSent[1]['data']['clickAction'] === '/app/a0d7b954_ems' && $lastSent[1]['data']['url'] === '/app/a0d7b954_ems', 'Ein Tippen auf die Mitteilung öffnet EMS in der App');
 check(array_column($devices['list'], 'name') === ['Alt', 'Pixel von Kim'] && $devices['list'][0]['missing'] && !$devices['list'][1]['missing'] && Notify::deviceName('notify') === 'notify.notify' && Notify::deviceName('mobile_app_iphone_15') === 'iPhone 15', 'Gerätenamen aus der App, vergessene Geräte markiert');
+
+// Statistik (Heatmap): Filter, Zeiträume, Werte aus der Langzeitstatistik und aus den Ladevorgängen.
+$hmNow = (int) strtotime('2026-10-11 12:00:00 Europe/Berlin');
+check(Heatmap::params(['span' => 'year', 'date' => '2025-10'], $hmNow)['date'] === '2025' && Heatmap::params(['span' => 'day', 'date' => '2026-10'], $hmNow)['date'] === '2026-10-11' && Heatmap::params(['span' => 'quarter', 'date' => '2026-10-08'], $hmNow)['date'] === '2026-4' && Heatmap::params(['span' => 'year', 'date' => '1990'], $hmNow)['date'] === '2026', 'Statistik: der Anker eines anderen Zeitraums bleibt, Unsinn wird heute');
+$hmCustom = Heatmap::params(['span' => 'custom', 'from' => '2026-10-10', 'to' => '2026-09-01', 'raster' => 'hours'], $hmNow);
+check($hmCustom['from'] === '2026-09-01' && $hmCustom['raster'] === 'hours' && Heatmap::params(['span' => 'custom', 'from' => '2026-01-01', 'to' => '2026-10-01', 'raster' => 'hours'], $hmNow)['raster'] === 'days' && Heatmap::params(['span' => 'custom', 'date' => '2026-09'], $hmNow)['to'] === '2026-09-30', 'Eigener Zeitraum: geordnet, Stunden bis 62 Tage, ohne Daten der Zeitraum des Ankers');
+$hmQuarter = Heatmap::range(Heatmap::params(['span' => 'quarter', 'date' => '2026-4'], $hmNow), $hmNow);
+check($hmQuarter['layout'] === 'calendar' && $hmQuarter['title'] === 'Q4 2026 · Okt. bis Dez.' && $hmQuarter['prev'] === '2026-3' && $hmQuarter['next'] === '2027-1' && Heatmap::range(Heatmap::params(['span' => 'all'], $hmNow), $hmNow)['layout'] === 'years', 'Quartal und Gesamt: Aufbau, Titel, Blättern');
+check(Heatmap::text('energy', 1.234, 'hour') === '1,23' . NNBSP . 'kWh' && Heatmap::text('duration', 5400, 'day') === '1,5' . NNBSP . 'h' && Heatmap::text('duration', 1800, 'hour') === '30' . NNBSP . 'min' && Heatmap::text('ratio', 87.6, 'day') === '88' . NNBSP . '%', 'Werte der Statistik mit Einheit');
+$hmHa = new class implements HaSource {
+    public function setNumber(string $entityId, float $value): void {}
+    public function service(string $domain, string $service, array $data): void {}
+    public function notifyServices(): array { return []; }
+    public function notify(string $service, array $payload): void {}
+    public function configured(): bool { return true; }
+    public function ping(): array { return ['ok' => true]; }
+    public function states(): array { return []; }
+    public function state(string $entityId): ?array { return null; }
+    public function index(): array { return ['sensor.pv' => ['attributes' => ['unit_of_measurement' => 'W']]]; }
+    public function history(string $entityId, int $start, ?int $end = null): array { return []; }
+    public function stateHistory(string $entityId, int $start, ?int $end = null): array { return []; }
+    public function statistics(string $entityId, int $start, int $end, string $period = 'hour'): array
+    {
+        $rows = [];
+        $tz = new DateTimeZone('Europe/Berlin');
+        for ($d = (new DateTimeImmutable('@' . $start))->setTimezone($tz); $d->getTimestamp() < $end; $d = $d->modify('+1 day')) {
+            $rows[] = ['start' => $d->getTimestamp(), 'mean' => 1000.0, 'min' => null, 'max' => null, 'change' => null];
+        }
+        return $entityId === 'sensor.pv' && $period === 'day' ? $rows : [];
+    }
+    public function search(string $query, int $limit = 20): array { return []; }
+};
+$hmStore = new ConfigStore(':memory:');
+$hmStore->put('mapping', ['pv_power' => 'sensor.pv'] + $hmStore->defaults()['mapping']);
+$hmMonth = (new Heatmap($hmStore, $hmHa))->payload(['metric' => 'pv', 'span' => 'month', 'date' => '2026-09'], $hmNow);
+$hmCells = array_merge(...array_map(static fn (array $g): array => $g['cells'], $hmMonth['groups']));
+check(count($hmMonth['groups']) === 1 && count($hmCells) === 30 && $hmCells[0]['t'] === '24,0' . NNBSP . 'kWh' && $hmMonth['summary'][0]['text'] === '720,0' . NNBSP . 'kWh' && $hmMonth['groups'][0]['offset'] === 1 && $hmCells[0]['v'] === 1.0, 'Statistik: kWh je Tag aus der mittleren Leistung, Summe, Kalender ab Dienstag');
+$hmStore->pdo()->prepare('INSERT INTO sessions (started_at, ended_at, vehicle, energy_kwh, solar_kwh, grid_kwh, duration_s, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    ->execute(['2026-09-15T13:30:00+02:00', '2026-09-15T14:33:00+02:00', 'ID.3', 10.0, 6.0, 4.0, 3600, 'recorder']);
+$hmDay = (new Heatmap($hmStore, $hmHa))->payload(['metric' => 'charge', 'span' => 'day', 'date' => '2026-09-15'], $hmNow);
+check(count($hmDay['cells']) === 24 && $hmDay['cells'][13]['t'] === '5,00' . NNBSP . 'kWh' && $hmDay['cells'][14]['t'] === '5,00' . NNBSP . 'kWh' && $hmDay['cells'][12]['v'] === null, 'Ladevorgänge über ihre Ladezeit auf die Stunden verteilt');
+$hmShare = (new Heatmap($hmStore, $hmHa))->payload(['metric' => 'charge_solar', 'span' => 'month', 'date' => '2026-09'], $hmNow);
+$hmCount = (new Heatmap($hmStore, $hmHa))->payload(['metric' => 'charge_count', 'span' => 'all'], $hmNow);
+check($hmShare['summary'][0]['text'] === '60' . NNBSP . '%' && $hmCount['summary'][0]['text'] === '1' && $hmCount['rows'][0]['label'] === '2026', 'Sonnenanteil aus den Summen; Gesamt beginnt beim ersten Jahr mit Daten');
 
 if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
     $file = tempnam(sys_get_temp_dir(), 'ems-selftest');

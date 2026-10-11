@@ -71,7 +71,8 @@ final class WeatherFeed
             foreach ($parsed['hours'] as $hour) {
                 $stmt->execute([$hour['t'], $hour['radiation'], $hour['cloud'], $hour['sunshine_s'], $hour['temp_c']]);
             }
-            $pdo->prepare('DELETE FROM weather_hours WHERE t < ?')->execute([time() - 14 * 86400]);
+            // Gut zwei Jahre Stunden für die Statistik (Strahlung, Sonnenschein, Bewölkung, Temperatur je Stunde).
+            $pdo->prepare('DELETE FROM weather_hours WHERE t < ?')->execute([time() - 800 * 86400]);
             $pdo->commit();
             $this->rememberForecast($parsed['hours'], isset($parsed['issue']) ? (int) $parsed['issue'] : 0);
             $meta = [

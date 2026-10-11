@@ -244,6 +244,7 @@ final class DemoHaClient implements HaSource
         $buckets = [];
         foreach ($this->samples($entityId, $start, $end) as $t => $value) {
             $key = match ($period) {
+                'month' => strtotime(date('Y-m-01', $t) . ' 00:00:00'),
                 'day' => strtotime(date('Y-m-d', $t) . ' 00:00:00'),
                 '5minute' => intdiv($t, 300) * 300,
                 default => intdiv($t, 3600) * 3600,

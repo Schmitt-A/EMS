@@ -136,7 +136,8 @@
 
 .nav-list {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
   height: 100%;
   margin: 0;
   padding: 0;
@@ -183,6 +184,12 @@
 
   .nav-link .tab-label-short {
     display: inline;
+  }
+
+  /* Sechs Einträge auf 360 px: etwas kleinere Schrift, damit jede Beschriftung in ihrer Kachel bleibt. */
+  .tab-label {
+    font-size: 0.6875rem;
+    letter-spacing: 0;
   }
 }
 

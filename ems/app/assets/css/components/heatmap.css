@@ -1,0 +1,351 @@
+/*
+ * Statistik-Heatmap: Felder in der Farbe der Kennzahl, kräftiger bei höheren Werten (--v 0…1 von heatmap.js).
+ * Tag: 24 Stunden in 6, 12 oder 24 Spalten; Kalender: Monatsblöcke mit Wochentagen (Monat, Quartal, Jahr);
+ * Matrix: Tage × Stunden; Gesamt: Jahre × Monate. Ohne Wert bleibt ein Feld leer mit Rand, die Zukunft gestrichelt.
+ * Die Schrift im Feld ist schwarz oder weiß, je nach Helligkeit des Felds (data-ink).
+ */
+.hm {
+  --hm: var(--data-solar);
+  container: hm / inline-size;
+  display: grid;
+  gap: var(--s-3);
+  min-width: 0;
+  margin: 0;
+}
+
+.hm[data-color="grid-in"] { --hm: var(--data-grid-in); }
+.hm[data-color="grid-out"] { --hm: var(--data-grid-out); }
+.hm[data-color="battery"] { --hm: var(--data-battery); }
+.hm[data-color="price"] { --hm: var(--data-price); }
+.hm[data-color="vehicle-1"] { --hm: var(--data-vehicle-1); }
+.hm[data-color="vehicle-2"] { --hm: var(--data-vehicle-2); }
+.hm[data-color="success"] { --hm: var(--success); }
+.hm[data-color="info"] { --hm: var(--info); }
+
+.hm-frame {
+  display: grid;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.hm-frame[data-loading] {
+  min-height: 14rem;
+  border-radius: var(--r-field);
+  background: var(--surface-2);
+}
+
+.hm-cell {
+  position: relative;
+  display: grid;
+  align-content: space-between;
+  min-width: 0;
+  aspect-ratio: 1;
+  padding: 0.1875rem 0.25rem;
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--hm) calc(var(--v, 0) * 88% + 12%), var(--surface-2));
+  color: var(--text);
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  cursor: pointer;
+  container-type: inline-size;
+}
+
+.hm-cell[data-ink="dark"] { color: var(--hm-ink-dark); }
+.hm-cell[data-ink="light"] { color: var(--hm-ink-light); }
+
+.hm-cell[data-empty] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--text-2);
+}
+
+.hm-cell[data-empty][data-future] {
+  box-shadow: none;
+  outline: 1px dashed var(--border);
+  outline-offset: -1px;
+}
+
+.hm-cell[data-out] {
+  visibility: hidden;
+}
+
+.hm-cell[data-active] {
+  z-index: 1;
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text);
+}
+
+.hm-d {
+  font-weight: 600;
+}
+
+.hm-n {
+  justify-self: end;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Kleine Felder (Maß ist die Breite innerhalb des Rands): erst ohne Wert, dann ohne Tag. */
+@container (max-width: 1.6rem) {
+  .hm-n {
+    display: none;
+  }
+}
+
+@container (max-width: 0.6rem) {
+  .hm-d {
+    display: none;
+  }
+}
+
+/* Tag: 24 Stunden */
+.hm-hours {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.25rem;
+}
+
+@container hm (min-width: 36rem) {
+  .hm-hours {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+}
+
+@container hm (min-width: 64rem) {
+  .hm-hours {
+    grid-template-columns: repeat(24, minmax(0, 1fr));
+  }
+}
+
+/* Kalender: Monatsblöcke, ein Monat allein höchstens 32rem breit */
+.hm-months {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: var(--s-5) var(--s-4);
+}
+
+.hm-months[data-single] {
+  grid-template-columns: minmax(0, 32rem);
+  justify-content: center;
+}
+
+.hm-month {
+  display: grid;
+  align-content: start;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.hm-month-title {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 700;
+}
+
+.hm-week,
+.hm-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.1875rem;
+}
+
+.hm-weekday {
+  color: var(--text-2);
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  text-align: center;
+}
+
+/* Tage × Stunden */
+.hm-matrix {
+  display: grid;
+  grid-template-columns: 2.75rem repeat(24, minmax(0, 1fr));
+  align-items: center;
+  gap: 1px;
+}
+
+.hm-matrix .hm-cell {
+  height: 0.875rem;
+  padding: 0;
+  border-radius: 2px;
+  aspect-ratio: auto;
+}
+
+@container hm (min-width: 40rem) {
+  .hm-matrix {
+    gap: 2px;
+  }
+
+  .hm-matrix .hm-cell {
+    height: 1.25rem;
+    border-radius: 3px;
+  }
+}
+
+/* Jahre × Monate */
+.hm-years {
+  display: grid;
+  grid-template-columns: 2.75rem repeat(12, minmax(0, 1fr));
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.hm-years .hm-cell {
+  padding: 0.125rem;
+  align-content: center;
+}
+
+.hm-years .hm-n {
+  justify-self: center;
+}
+
+.hm-col,
+.hm-row {
+  color: var(--text-2);
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hm-years .hm-col {
+  text-align: center;
+}
+
+.hm-empty {
+  margin: 0;
+  color: var(--text-2);
+}
+
+/* Legende, Wert des gewählten Felds, Zusammenfassung, Tabelle */
+.hm-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  color: var(--text-2);
+}
+
+.hm-legend[hidden] {
+  display: none;
+}
+
+.hm-ramp {
+  width: 7rem;
+  height: 0.625rem;
+  border-radius: var(--r-pill);
+  background: linear-gradient(to right, color-mix(in srgb, var(--hm) 12%, var(--surface-2)), var(--hm));
+}
+
+.hm-nodata {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.hm-swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 0.1875rem;
+  box-shadow: inset 0 0 0 1px var(--border-control);
+}
+
+.hm-nav .period-label {
+  display: grid;
+  margin: 0;
+}
+
+.hm-metric {
+  color: var(--text-2);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hm-today {
+  justify-self: center;
+}
+
+.hm-detail {
+  margin: 0;
+  min-height: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.hm-notes {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.hm-notes:empty {
+  display: none;
+}
+
+.hm-notes p {
+  margin: 0;
+}
+
+.hm-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: var(--s-3) var(--s-4);
+  margin: 0;
+}
+
+.hm-summary:empty {
+  display: none;
+}
+
+.hm-summary div {
+  display: grid;
+  gap: 0.125rem;
+}
+
+.hm-summary dt {
+  color: var(--text-2);
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.hm-summary dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hm-summary .sub {
+  display: block;
+  color: var(--text-2);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+}
+
+.hm-table summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  color: var(--text-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.hm-table summary::-webkit-details-marker {
+  display: none;
+}
+
+.hm-table[open] summary .icon {
+  transform: rotate(180deg);
+}
+
+.hm-table-body {
+  max-height: 24rem;
+  overflow-y: auto;
+}

@@ -1,6 +1,8 @@
-// Energie-Flow Rein → Raus: Linien zwischen den Kreisen nach ihrer Lage im Layout, breiter bei mehr Leistung,
-// Punkte in der Farbe der Quelle von links nach rechts. Werte, Ringe und Takt kommen aus /api/live (flow_graph).
-// Breiten und Wege stehen als SVG-Attribute, der Takt als data-speed (CSS); keine Inline-Styles.
+// Energie-Flow Rein → Raus: Linien zwischen den Kreisen nach ihrer Lage im Layout, Punkte in der Farbe der Quelle
+// von links nach rechts. Wie breit eine Linie ist, wie dicht und wie schnell ihre Punkte laufen, richtet sich nach
+// ihrem Anteil an allem, was hereinkommt: kommen 3/4 aus dem Netz, laufen dort mehr und schnellere Punkte als auf der
+// Linie der Sonne mit 1/4. Werte und Ringe kommen aus /api/live (flow_graph). Wege und Breiten stehen als
+// SVG-Attribute, Abstand und Takt der Punkte als CSS-Variablen über CSSOM; keine Inline-Styles im HTML.
 import { $, $$, svg } from '../core/dom.js';
 import { withUnit } from '../core/format.js';
 import { onLive } from '../core/live.js';
@@ -10,10 +12,10 @@ const TO = { home: 'home', car: 'car', battery: 'battery_in', grid: 'grid_out' }
 const COLOR = { sun: 'c-solar', battery: 'c-battery', grid: 'c-grid-in' };
 const LINKS = ['sun_home', 'sun_car', 'sun_battery', 'sun_grid', 'battery_home', 'battery_car', 'battery_grid', 'grid_home', 'grid_car', 'grid_battery'];
 const NAMES = { sun: 'Sonne', battery_out: 'Speicher', grid_in: 'Netz', home: 'Haus', battery_in: 'Speicher', grid_out: 'Einspeisung' };
-const STEPS = [[0.3, 1], [1, 2], [2.5, 3], [5, 4], [8, 5]];
-
-const speed = (kw) => (STEPS.find(([limit]) => kw < limit) || [0, 6])[1];
-const width = (kw) => Math.min(10, Math.max(2.5, 2 + kw * 1.1));
+// Anteil 0…1 an allem, was hereinkommt: Linienbreite 2,5…10, Abstand der Punkte 26…10 px, Tempo 18…90 px/s.
+const width = (share) => 2.5 + 7.5 * share;
+const gap = (share) => 26 - 16 * share;
+const pace = (share) => 18 + 72 * share;
 const kwText = (value) => withUnit(Number(value) || 0, 'kW');
 const socText = (value) => (value === null || value === undefined ? '' : withUnit(value, '%', 0));
 
@@ -55,11 +57,18 @@ function layout(figure) {
 
 function links(figure, graph) {
   const values = graph.links || {};
+  const total = LINKS.reduce((sum, key) => sum + Math.max(0, Number(values[key]) || 0), 0);
   for (const path of $$('[data-link]', figure)) {
     const kw = Number(values[path.dataset.link]) || 0;
+    const share = total > 0 ? Math.min(1, Math.max(0, kw / total)) : 0;
     path.toggleAttribute('data-idle', !(kw >= 0.01));
-    if (path.classList.contains('ef-track')) path.setAttribute('stroke-width', width(kw).toFixed(1));
-    else path.dataset.speed = String(speed(kw));
+    if (path.classList.contains('ef-track')) {
+      path.setAttribute('stroke-width', width(share).toFixed(1));
+    } else {
+      const spacing = gap(share);
+      path.style.setProperty('--ef-gap', `${spacing.toFixed(1)}px`);
+      path.style.setProperty('--ef-dur', `${(spacing / pace(share)).toFixed(3)}s`);
+    }
   }
 }
 
@@ -70,12 +79,14 @@ function rings(figure, graph) {
     const len = progress === null || progress === undefined ? 100 : Math.max(0, Math.min(1, progress)) * 100;
     sun.setAttribute('stroke-dasharray', `${len.toFixed(2)} ${(100 - len).toFixed(2)}`);
   }
-  for (const node of ['home', 'car']) {
+  // Ringe rechts: ganzer Kreis = 100 % dessen, was dort ankommt, aufgeteilt nach Sonne, Speicher und Netz.
+  for (const node of ['home', 'car', 'battery_in', 'grid_out']) {
+    const mix = graph.nodes[node]?.mix || graph.mix || {};
     let from = 0;
     for (const part of ['sun', 'battery', 'grid']) {
       const arc = $(`[data-ef-node="${node}"] [data-arc="${part}"]`, figure);
       if (!arc) continue;
-      const len = Math.max(0, Math.min(100, (Number(graph.mix?.[part]) || 0) * 100));
+      const len = Math.max(0, Math.min(100, (Number(mix[part]) || 0) * 100));
       arc.setAttribute('stroke-dasharray', `${len.toFixed(2)} ${(100 - len).toFixed(2)}`);
       arc.setAttribute('stroke-dashoffset', (-from).toFixed(2));
       from += len;

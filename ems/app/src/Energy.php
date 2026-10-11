@@ -193,6 +193,12 @@ final class Energy
             : ($today !== null && isset($forecast['remaining_kwh']) ? max(0.0, $today - (float) $forecast['remaining_kwh']) : null);
         $toFull = self::toFull($values['battery_capacity_kwh'] ?? null, $values['battery_total_kwh'] ?? null, $soc);
         $fact = static fn (string $key, int $decimals): ?float => isset($facts[$key]) && is_numeric($facts[$key]) ? round((float) $facts[$key], $decimals) : null;
+        // Herkunft je Ziel für den Ring: Anteile von Sonne, Speicher und Netz an dem, was dort ankommt.
+        $mixOf = static function (float $sun, float $battery, float $grid): array {
+            $sum = $sun + $battery + $grid;
+            return $sum < 0.01 ? ['sun' => 0.0, 'battery' => 0.0, 'grid' => 0.0]
+                : ['sun' => round($sun / $sum, 4), 'battery' => round($battery / $sum, 4), 'grid' => round($grid / $sum, 4)];
+        };
         return [
             'nodes' => [
                 'sun' => [
@@ -203,10 +209,10 @@ final class Energy
                 ],
                 'battery_out' => ['kw' => $r($discharge), 'soc' => $soc, 'to_full_kwh' => $toFull],
                 'grid_in' => ['kw' => $r($import), 'price_ct' => $fact('import_ct', 1)],
-                'home' => ['kw' => $r($house), 'mean_kw' => $fact('house_mean_kw', 2)],
-                'car' => ['kw' => $r($car), 'soc' => isset($values['car_soc']) ? round((float) $values['car_soc']) : null, 'range_km' => $fact('car_range_km', 0)],
-                'battery_in' => ['kw' => $r($charge), 'soc' => $soc, 'to_full_kwh' => $toFull],
-                'grid_out' => ['kw' => $r($export), 'price_ct' => $fact('export_ct', 1)],
+                'home' => ['kw' => $r($house), 'mean_kw' => $fact('house_mean_kw', 2), 'mix' => $mixOf($pvUse * $houseShare, $batteryUse * $houseShare, $gridUse * $houseShare)],
+                'car' => ['kw' => $r($car), 'soc' => isset($values['car_soc']) ? round((float) $values['car_soc']) : null, 'range_km' => $fact('car_range_km', 0), 'mix' => $mixOf($pvUse * $carShare, $batteryUse * $carShare, $gridUse * $carShare)],
+                'battery_in' => ['kw' => $r($charge), 'soc' => $soc, 'to_full_kwh' => $toFull, 'mix' => $mixOf($pvBattery, 0.0, $gridBattery)],
+                'grid_out' => ['kw' => $r($export), 'price_ct' => $fact('export_ct', 1), 'mix' => $mixOf($pvGrid, $batteryGrid, 0.0)],
             ],
             'links' => [
                 'sun_home' => $r($pvUse * $houseShare),

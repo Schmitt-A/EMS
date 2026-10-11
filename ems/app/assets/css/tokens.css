@@ -35,6 +35,9 @@
    * --border-control mit mindestens 3:1.
    */
   --accent-on-soft: light-dark(#92400E, #FBBF24);
+  /* Schrift auf farbigen Feldern der Heatmap, je nach Helligkeit des Felds. */
+  --hm-ink-dark: #000000;
+  --hm-ink-light: #FFFFFF;
   --border-control: light-dark(#948B83, #7A736C);
   --danger-soft: light-dark(rgb(220 38 38 / 0.1), rgb(248 113 113 / 0.14));
 

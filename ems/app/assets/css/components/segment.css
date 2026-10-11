@@ -123,10 +123,14 @@
 .seg:has(> input:nth-of-type(3)) { --seg-count: 3; }
 .seg:has(> input:nth-of-type(4)) { --seg-count: 4; }
 .seg:has(> input:nth-of-type(5)) { --seg-count: 5; }
+.seg:has(> input:nth-of-type(6)) { --seg-count: 6; }
+.seg:has(> input:nth-of-type(7)) { --seg-count: 7; }
 .seg:has(> input:nth-of-type(2):checked) { --seg-index: 1; }
 .seg:has(> input:nth-of-type(3):checked) { --seg-index: 2; }
 .seg:has(> input:nth-of-type(4):checked) { --seg-index: 3; }
 .seg:has(> input:nth-of-type(5):checked) { --seg-index: 4; }
+.seg:has(> input:nth-of-type(6):checked) { --seg-index: 5; }
+.seg:has(> input:nth-of-type(7):checked) { --seg-index: 6; }
 
 /* Varianten */
 .seg-compact {
