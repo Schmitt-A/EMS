@@ -75,6 +75,48 @@ final class ConfigStore
         // Netzbezug und Einspeisung je Viertelstunde, von EMS selbst gemessen (GridMeter).
         $this->pdo->exec('CREATE TABLE IF NOT EXISTS grid_quarters (start INTEGER PRIMARY KEY, import_kwh REAL NOT NULL, export_kwh REAL NOT NULL, seconds INTEGER NOT NULL)');
         $this->migrateModes();
+        $this->migrateGrid();
+    }
+
+    /**
+     * Seit 1.13 ist Netzladen kein Modus mehr, sondern ein eigener Schalter (charge.grid: off, now, windows); die Modi
+     * für Sonne und Speicher heißen Intelligent, Min+Sonne und Schnell. Einmal umstellen: Wer Netzladen eingestellt hat,
+     * lädt weiter mit Intelligent und Netzladen „Jetzt“, also genauso. „Nach dem Abstecken: Netzladen“ wird zu
+     * „Modus behalten“. Auch die Mitteilungen merken sich den Modus, sonst sähen sie einen Wechsel, den es nicht gab.
+     */
+    private function migrateGrid(): void
+    {
+        if ($this->get('modes_v3') !== null) {
+            return;
+        }
+        $this->pdo->exec('BEGIN IMMEDIATE');
+        try {
+            if ($this->get('modes_v3') === null) {
+                $charge = $this->get('charge', []);
+                if (is_array($charge) && $charge) {
+                    if (($charge['mode'] ?? null) === 'netz') {
+                        $charge['mode'] = 'smart';
+                        $charge['grid'] = 'now';
+                    }
+                    if (($charge['after_unplug'] ?? null) === 'netz') {
+                        $charge['after_unplug'] = '';
+                    }
+                    $charge['last_mode'] = in_array($charge['mode'] ?? null, Energy::SUN_MODES, true) ? $charge['mode'] : 'smart';
+                    unset($charge['price_limit_ct']);
+                    $this->put('charge', $charge);
+                }
+                $state = $this->get('notify_state', []);
+                if (is_array($state) && ($state['mode'] ?? null) === 'netz') {
+                    $state['mode'] = 'smart';
+                    $this->put('notify_state', $state);
+                }
+                $this->put('modes_v3', 1);
+            }
+            $this->pdo->exec('COMMIT');
+        } catch (\Throwable $e) {
+            $this->pdo->exec('ROLLBACK');
+            throw $e;
+        }
     }
 
     /**
@@ -139,6 +181,9 @@ final class ConfigStore
                 'battery_capacity' => '',
                 'battery_total' => '',
                 'battery_reserve' => '',
+                // Laden aus dem Netz (BatteryPlan): Betriebsmodus (select, manual/automatic) und „Laden erzwingen“ (number, W).
+                'battery_operating_mode' => '',
+                'battery_force_charge' => '',
                 'car_soc' => '',
                 'car_capacity' => '',
                 'car_range' => '',
@@ -196,7 +241,11 @@ final class ConfigStore
                 'regress_days' => 0,
             ],
             'charge' => [
+                // Aus oder ein Modus für Sonne und Speicher (Energy::SUN_MODES); last_mode gilt beim Einschalten.
                 'mode' => 'smart',
+                'last_mode' => 'smart',
+                // Netzladen: off, now (bis Ziel oder Abstecken) oder windows (in den Ladefenstern, PriceWindows).
+                'grid' => 'off',
                 'phase_mode' => 'auto',
                 'solar_share' => 100.0,
                 'reserve_w' => 200.0,
@@ -209,13 +258,14 @@ final class ConfigStore
                 // Nach einem erreichten Ladeziel und nach dem Abstecken ('' = Modus behalten).
                 'then_mode' => 'smart',
                 'after_unplug' => '',
-                // Preisgrenze brutto in ct/kWh (null: aus): darunter lädt das Auto in Solar und Min+Solar voll aus dem Netz.
-                'price_limit_ct' => null,
             ],
             // Hauptschalter: Nur wenn aktiv, schreibt EMS an Wallbox und Speicher.
             'control' => ['active' => false],
             // backup_soc: Standardwert des Backup-Puffers (null: nicht gesetzt; Netzladen hebt den Puffer an),
             // discharge_kw: höchste Entladeleistung des Speichers (null: unbekannt).
+            // grid_charge: in Ladefenstern aus dem Netz laden, wenn die Sonne nicht reicht (BatteryPlan), mit
+            // grid_kw (Ladeleistung, null: Entladeleistung oder 2,5 kW), grid_max_soc, Wirkungsgrad hin und zurück
+            // und Verschleiß je gespeicherter kWh.
             'battery_strategy' => [
                 'priority_soc' => 80.0,
                 'reserve_soc' => 100.0,
@@ -223,6 +273,11 @@ final class ConfigStore
                 'car_auto_soc' => 100.0,
                 'backup_soc' => null,
                 'discharge_kw' => null,
+                'grid_charge' => false,
+                'grid_kw' => null,
+                'grid_max_soc' => 100.0,
+                'grid_efficiency_pct' => 90.0,
+                'grid_wear_ct' => 2.0,
             ],
             'chargepoint' => ['name' => 'Wallbox'],
             // capacity_kwh: Akku des Autos, wenn keine Entität ihn meldet (Tesla BLE meldet keinen). consumption_kwh:

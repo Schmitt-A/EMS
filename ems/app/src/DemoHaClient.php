@@ -28,6 +28,8 @@ final class DemoHaClient implements HaSource
         'sensor.demo_car_odometer' => [null, 'km', 'Auto Kilometerstand', 1],
         'sensor.demo_car_limit' => [null, '%', 'Auto Ladelimit', 1],
         'number.demo_battery_reserve' => [null, '%', 'Speicher Backup-Puffer', 1],
+        'select.demo_battery_mode' => [null, '', 'Speicher Betriebsmodus', 1],
+        'number.demo_battery_charge' => [null, 'W', 'Speicher Laden erzwingen', 1],
     ];
 
     public function __construct(private DemoModel $model) {}
@@ -60,6 +62,8 @@ final class DemoHaClient implements HaSource
             'car_range' => 'sensor.demo_car_range',
             'car_odometer' => 'sensor.demo_car_odometer',
             'battery_reserve' => 'number.demo_battery_reserve',
+            'battery_operating_mode' => 'select.demo_battery_mode',
+            'battery_force_charge' => 'number.demo_battery_charge',
         ];
     }
 
@@ -99,31 +103,46 @@ final class DemoHaClient implements HaSource
 
     /**
      * Regelt EMS im Demo-Modus (frc 1 oder 2 geschrieben), folgt die Wallbox: Strom mal Phasen, solange ein Auto
-     * steckt; Speicher und Netz gleichen den Rest aus wie im Modell, der Speicher bis zum Backup-Puffer.
+     * steckt; Speicher und Netz gleichen den Rest aus wie im Modell, der Speicher bis zum Backup-Puffer. Steht der
+     * Speicher auf „manual“, lädt er mit „Laden erzwingen“ (Sonne zuerst, dann Netz) und gibt nichts ab.
      */
     private function follow(array $s, array $writes, array $data): array
     {
         $frc = (string) ($writes['select.demo_wallbox_frc'] ?? '0');
-        if ($frc === '0') {
+        $manual = ($writes['select.demo_battery_mode'] ?? 'automatic') === 'manual';
+        if ($frc === '0' && !$manual) {
             return $s;
         }
         $connected = $s['status'] !== 'idle';
-        $phases = ($writes['select.demo_wallbox_psm'] ?? '2') === '1' ? 1 : 3;
-        $amps = (int) round((float) ($writes['number.demo_wallbox_amp'] ?? 6));
         $full = $s['car'] >= (float) $data['fahrzeug']['limit'];
-        $wall = $frc === '2' && $connected && !$full ? $amps * $phases * 0.23 : 0.0;
+        if ($frc === '0') {
+            $wall = (float) $s['wall'];
+            $phases = (int) $s['phases'];
+            $status = (string) $s['status'];
+        } else {
+            $phases = ($writes['select.demo_wallbox_psm'] ?? '2') === '1' ? 1 : 3;
+            $amps = (int) round((float) ($writes['number.demo_wallbox_amp'] ?? 6));
+            $wall = $frc === '2' && $connected && !$full ? $amps * $phases * 0.23 : 0.0;
+            $status = !$connected ? 'idle' : ($wall > 0 ? 'charging' : ($full ? 'complete' : 'wait_car'));
+        }
         $maxKw = (float) ($data['anlage']['speicher_max_kw'] ?? 5);
         $reserve = (float) ($writes['number.demo_battery_reserve'] ?? 10);
-        $net = $s['pv'] - $s['house'] - $wall;
         $charge = $discharge = $import = $export = 0.0;
-        if ($net >= 0) {
-            $charge = $s['soc'] < 99.5 ? min($net, $maxKw) : 0.0;
-            $export = $net - $charge;
+        if ($manual) {
+            $charge = $s['soc'] < 99.5 ? min(max(0.0, (float) ($writes['number.demo_battery_charge'] ?? 0)) / 1000, $maxKw) : 0.0;
+            $net = $s['pv'] - $s['house'] - $wall - $charge;
+            $import = max(0.0, -$net);
+            $export = max(0.0, $net);
         } else {
-            $discharge = $s['soc'] > $reserve + 0.5 ? min(-$net, $maxKw) : 0.0;
-            $import = -$net - $discharge;
+            $net = $s['pv'] - $s['house'] - $wall;
+            if ($net >= 0) {
+                $charge = $s['soc'] < 99.5 ? min($net, $maxKw) : 0.0;
+                $export = $net - $charge;
+            } else {
+                $discharge = $s['soc'] > $reserve + 0.5 ? min(-$net, $maxKw) : 0.0;
+                $import = -$net - $discharge;
+            }
         }
-        $status = !$connected ? 'idle' : ($wall > 0 ? 'charging' : ($full ? 'complete' : 'wait_car'));
         return ['wall' => $wall, 'phases' => $phases, 'charge' => $charge, 'discharge' => $discharge, 'import' => $import, 'export' => $export, 'status' => $status] + $s;
     }
 
@@ -180,6 +199,9 @@ final class DemoHaClient implements HaSource
             'sensor.demo_car_odometer' => 18400 + round(max(0, $now - (int) strtotime(date('Y', $now) . '-01-01')) / 86400 * 38),
             'sensor.demo_car_limit' => (float) $car['limit'],
             'number.demo_battery_reserve' => (float) ($writes['number.demo_battery_reserve'] ?? 10),
+            // Wie die sonnenBatterie: manual, automatic oder timeofuse; „Laden erzwingen“ in W.
+            'select.demo_battery_mode' => (string) ($writes['select.demo_battery_mode'] ?? 'automatic'),
+            'number.demo_battery_charge' => (float) ($writes['number.demo_battery_charge'] ?? 0),
         ];
         $stamp = gmdate('Y-m-d\TH:i:s\Z', $now);
         $index = [];
@@ -192,7 +214,7 @@ final class DemoHaClient implements HaSource
                 $attributes['device_class'] = 'energy';
             }
             if (str_starts_with($id, 'select.')) {
-                $attributes['options'] = ['0', '1', '2'];
+                $attributes['options'] = $id === 'select.demo_battery_mode' ? ['manual', 'automatic', 'timeofuse'] : ['0', '1', '2'];
             }
             $index[$id] = [
                 'entity_id' => $id,

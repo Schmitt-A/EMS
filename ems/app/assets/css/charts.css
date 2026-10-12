@@ -149,10 +149,18 @@
   fill-opacity: 0.55;
 }
 
-/* Ladeplan beim Strompreis: die geplanten Viertelstunden, kräftiger als der heutige Tag. */
+/* Beim Strompreis: aktive Ladefenster hinterlegt, die zusätzlich geplanten Viertelstunden kräftiger. */
 .chart .plan-band {
   fill: var(--accent);
   fill-opacity: 0.3;
+}
+
+.chart .band-window {
+  fill-opacity: 0.2;
+}
+
+.chart .band-extra {
+  fill-opacity: 0.45;
 }
 
 /* Heute im Säulendiagramm: die ganze Spalte in weichem Amber */

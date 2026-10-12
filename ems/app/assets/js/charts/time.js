@@ -124,11 +124,11 @@ export function renderTime(figure, payload, state) {
     const from = x(Math.max(today[0], bounds[0]));
     svg('rect', { class: 'today-zone', x: from, y: top - 8, width: x(Math.min(today[1], bounds[1])) - from, height: height - bottom - top + 8 }, plot);
   }
-  // Hinterlegte Zeitfenster aus der Antwort (Ladeplan beim Strompreis).
+  // Hinterlegte Zeitfenster aus der Antwort (Ladefenster und Ladeplan beim Strompreis).
   for (const band of payload.bands || []) {
     if (band.to <= bounds[0] || band.from >= bounds[1]) continue;
     const bx = x(Math.max(band.from, bounds[0]));
-    svg('rect', { class: 'plan-band', x: bx, y: top - 8, width: Math.max(1, x(Math.min(band.to, bounds[1])) - bx), height: height - bottom - top + 8 }, plot);
+    svg('rect', { class: `plan-band${band.kind ? ` band-${band.kind}` : ''}`, x: bx, y: top - 8, width: Math.max(1, x(Math.min(band.to, bounds[1])) - bx), height: height - bottom - top + 8 }, plot);
   }
   svg('line', { class: 'base-line', x1: 0, x2: plotWidth, y1: y(0), y2: y(0) }, plot);
 

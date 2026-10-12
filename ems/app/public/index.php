@@ -30,6 +30,7 @@ if ($path === '/api/live') {
         ]), $snap['cfg']['charge'], time());
         (new Controller(store(), ha()))->tick($snap, time());
         (new Reserve(store(), ha()))->sync($snap['values'], $snap['cfg'], time(), $sessions->open() !== null);
+        (new BatteryPlan(store(), ha()))->sync($snap, time());
         (new Notify(store(), ha()))->tick($snap, time());
         (new GridMeter(store()))->record($snap['values'], time());
         (new MarketPrices(store()))->refresh(time());
@@ -249,10 +250,16 @@ if ($path === '/ladevorgaenge') {
     page('ladevorgaenge', compact('live', 'params', 'rows', 'summary', 'years', 'detail', 'tariffs', 'hasAny', 'overview') + ['title' => 'Ladevorgänge']);
 }
 if ($path === '/prognose/strompreis') {
-    // Strompreis: Preis jetzt, Diagramm (über /api/series?chart=price), günstige Zeiten und Vergleich statisch ↔ dynamisch.
+    // Strompreis: Preis jetzt, Diagramm (über /api/series?chart=price), Ladefenster, Entscheidungshilfe und Vergleich.
     $price = (new PriceView(store(), ha()))->build((string) ($_GET['vergleich'] ?? 'jahr'), time());
+    // Annahmen der Entscheidungshilfe aus der Adresse: kWh im Ladefenster und übriger Netzbezug je Jahr.
+    $kwh = static function (string $key, float $fallback): float {
+        $raw = str_replace(',', '.', trim((string) ($_GET[$key] ?? '')));
+        return $raw !== '' && is_numeric($raw) ? clamp_float((float) $raw, 0, 100000) : $fallback;
+    };
+    $inputs = ['fenster' => $kwh('fenster', 2000.0), 'rest' => $kwh('rest', 2500.0)];
     $overview = energy_overview();
-    page('strompreis', ['price' => $price, 'overview' => $overview, 'title' => 'Strompreis']);
+    page('strompreis', ['price' => $price, 'inputs' => $inputs, 'overview' => $overview, 'title' => 'Strompreis']);
 }
 if ($path === '/prognose') {
     $yield = safe_yield();

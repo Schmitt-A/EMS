@@ -311,7 +311,7 @@ final class Controller
                 if (self::guardLeft($s, $in, $now) === 0) {
                     $s['enabled'] = true;
                     $s['switched_at'] = $now;
-                    $events[] = ($always ? 'Min+Solar' : 'Der Speicher stützt') . ': frei mit ' . Snapshot::levelText($minA, $phases) . '.';
+                    $events[] = ($always ? 'Min+Sonne' : 'Der Speicher stützt') . ': frei mit ' . Snapshot::levelText($minA, $phases) . '.';
                 } else {
                     $s['note'] = 'guard';
                 }
@@ -587,7 +587,8 @@ final class Controller
             return $state;
         }
         $values = $snap['values'];
-        // Ladeplan und Preisgrenze machen aus Solar und Min+Solar zeitweise Netzladen (ChargePlan::effective()).
+        // Netzladen „Jetzt“, ein Ladefenster oder eine dazu geplante Viertelstunde machen aus dem Modus Netzladen
+        // (ChargePlan::effective()).
         $mode = (string) ($cfg['charge']['effective_mode'] ?? $cfg['charge']['mode']);
         // Ziel erreicht oder Auto abgesteckt: Folgemodus, Ziel löschen.
         $switch = Target::check($this->store, $snap, $now, $state['connected']);

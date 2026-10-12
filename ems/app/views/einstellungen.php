@@ -18,7 +18,7 @@ $missing = Actions::missing($m);
 $b = $cfg['battery_strategy'];
 $reserve = Reserve::settings($cfg);
 $areas = [
-    'ladepunkt' => ['Ladepunkt', 'plug', $cfg['chargepoint']['name'] . ' · ' . Energy::modeLabel((string) $cfg['charge']['mode'])],
+    'ladepunkt' => ['Ladepunkt', 'plug', $cfg['chargepoint']['name'] . ' · ' . (($cfg['charge']['mode'] ?? 'smart') === 'aus' ? 'Laden aus' : Energy::modeLabel((string) $cfg['charge']['mode'])) . (Energy::grid($cfg['charge']['grid'] ?? 'off') === 'off' ? '' : ' · Netzladen ' . Energy::gridLabel(Energy::grid($cfg['charge']['grid'])))],
     'fahrzeug' => ['Fahrzeug', 'car', $cfg['vehicle']['name'] . ' · Limit ' . pct((float) $cfg['vehicle']['limit_soc'])],
     'speicher' => ['Speicher', 'battery', 'Haus bis ' . pct((float) $b['priority_soc']) . ' · ' . ($reserve['default'] !== null ? 'Puffer ' . pct((float) $reserve['default']) : 'Puffer offen')],
     'energie' => ['Energie', 'zap', $missing ? 'Fehlt: ' . implode(', ', $missing) : 'PV, Speicher, Netz und Haus zugeordnet'],

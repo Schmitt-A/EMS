@@ -47,11 +47,11 @@ function bindFill() {
   });
 }
 
-// Segmente und Selects in GET-Formularen schicken das Formular beim Wechsel ab.
+// Segmente, Selects und Schalter in Formularen mit data-autosubmit schicken das Formular beim Wechsel ab.
 function bindAutosubmit(root) {
   for (const form of $$('form[data-autosubmit]', root)) {
     form.addEventListener('change', (event) => {
-      if (event.target.matches('input[type="radio"], select')) form.requestSubmit();
+      if (event.target.matches('input[type="radio"], input[type="checkbox"], select')) form.requestSubmit();
     });
   }
 }

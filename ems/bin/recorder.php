@@ -6,6 +6,7 @@ require dirname(__DIR__) . '/app/src/bootstrap.php';
 $snapshot = new Snapshot(store(), ha());
 $sessions = new Sessions(store());
 $reserve = new Reserve(store(), ha());
+$batteryGrid = new BatteryPlan(store(), ha());
 $controller = new Controller(store(), ha());
 $notify = new Notify(store(), ha());
 $sessions->repairVehicleNames((string) (cfg()['vehicle']['name'] ?? ''));
@@ -38,12 +39,14 @@ while (true) {
             );
             // Netzbezug und Einspeisung je Viertelstunde, wie ein Smart Meter abrechnet.
             $meter->record($snap['values'], time());
-            // Ladeplan für ein Ziel mit „fertig bis“: alle 15 min, nach neuen Preisen oder einem neuen Ziel.
+            // Ladeplan für ein Ziel mit „fertig bis“ in Ladefenstern: alle 15 min, nach neuen Preisen, Fenstern oder Zielen.
             ChargePlan::refresh(store(), $snap, time());
             // Regelung der Wallbox wie evcc: Timer alle 10 s, Schritt alle 30 s, schreibt nur bei aktivem EMS.
             $controller->tick($snap, time());
             // Backup-Puffer: beim Netzladen anheben, danach zurücksetzen (auch nach einem Neustart mittendrin).
             $reserve->sync($snap['values'], $snap['cfg'], time(), $sessions->open() !== null);
+            // Speicher im Ladefenster aus dem Netz laden, wenn die Sonne nicht reicht; danach zurück auf den Betriebsmodus.
+            $batteryGrid->sync($snap, time());
             // Mitteilungen an die Home-Assistant-App; ein Fehler dort hält den Rest der Runde nicht auf.
             try {
                 $notify->tick($snap, time());

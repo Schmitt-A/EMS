@@ -51,6 +51,16 @@
   color: var(--text-2);
 }
 
+/* Ein Segment misst seine Breite am Container; ohne feste Breite fiele es hier auf seinen Innenabstand zusammen. */
+.gallery-state:has(> .seg:not(.seg-fit)) {
+  flex: 1 1 18rem;
+  max-width: 28rem;
+}
+
+.gallery-state > .seg:not(.seg-fit) {
+  width: 100%;
+}
+
 .gallery-narrow {
   width: 17.5rem;
   max-width: 100%;

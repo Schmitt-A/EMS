@@ -94,7 +94,7 @@ final class Reserve
         $raw = isset($values['wallbox_car_raw']) ? (string) $values['wallbox_car_raw'] : null;
         $charging = ($power ?? 0.0) > 0.2 || Sessions::carState($raw) === 'charging';
         $soc = isset($values['battery_soc']) ? (float) $values['battery_soc'] : null;
-        // Auch in einer Viertelstunde des Ladeplans und unter der Preisgrenze gilt Netzladen (ChargePlan::effective()).
+        // Netzladen gilt mit „Jetzt“, im Ladefenster und in einer dazu geplanten Viertelstunde (ChargePlan::effective()).
         $mode = (string) ($cfg['charge']['effective_mode'] ?? $cfg['charge']['mode'] ?? 'smart');
         $plan = self::decide($settings, $state, $mode, $soc, $charging, $open, Sessions::carConnected($raw, $power));
         if ($plan['action'] === 'none') {
@@ -165,7 +165,7 @@ final class Reserve
             $raised => 'Netzladen: Puffer seit ' . date('H:i', (int) $state['since']) . ' auf ' . pct((float) $state['value']) . ' angehoben, der Speicher gibt nichts ab. Danach zurück auf ' . ($default ?: pct((float) $state['restore'])) . '.',
             $s['default'] === null => 'Der Standardwert fehlt. Ohne ihn hebt die App den Puffer beim Netzladen nicht an.',
             !Controller::active($cfg) => 'Backup-Puffer ' . $default . '. Netzladen hebt ihn erst an, wenn EMS die Wallbox regelt.',
-            default => 'Backup-Puffer ' . $default . '. Lädt das Auto im Modus Netzladen, hebt die App ihn auf den Ladestand.',
+            default => 'Backup-Puffer ' . $default . '. Lädt das Auto mit Netzladen, jetzt oder im Ladefenster, hebt die App ihn auf den Ladestand.',
         };
         return [
             'mapped' => $s['entity'] !== '',

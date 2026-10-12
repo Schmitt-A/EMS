@@ -2,7 +2,8 @@
 declare(strict_types=1);
 /**
  * Einstellungen → Speicher: Grenzen fürs Auto (wie auf der Seite Speicher), der Backup-Puffer mit Standardwert (beim
- * Netzladen angehoben) und die Entladeleistung für die Aufteilung. Jede Karte speichert nur ihre Felder.
+ * Netzladen angehoben), Laden aus dem Netz in Ladefenstern (BatteryPlan) und die Entladeleistung für die Aufteilung.
+ * Jede Karte speichert nur ihre Felder.
  * @var array $cfg
  * @var array $snap
  * @var array $suggest
@@ -28,7 +29,7 @@ $numberField = static fn (string $name, ?float $value, int $decimals, array $att
 </section>
 <section class="card stack" aria-labelledby="reserve-title">
   <h3 class="card-title" id="reserve-title">Backup-Puffer</h3>
-  <p class="body-sm muted">Unter dem Backup-Puffer gibt der Speicher nichts ab, die Energie bleibt für einen Stromausfall. Den Standardwert setzt die App beim Speichern. Im Modus Netzladen hebt sie den Puffer auf den Ladestand, solange das Auto lädt, und setzt ihn danach zurück; in der Zeit versorgt der Speicher auch das Haus nicht. Im Modus Schnell gibt der Speicher bis zum Standardwert mit ab.</p>
+  <p class="body-sm muted">Unter dem Backup-Puffer gibt der Speicher nichts ab, die Energie bleibt für einen Stromausfall. Den Standardwert setzt die App beim Speichern. Mit Netzladen (jetzt oder im Ladefenster) hebt sie den Puffer auf den Ladestand, solange das Auto lädt, und setzt ihn danach zurück; in der Zeit versorgt der Speicher auch das Haus nicht. Im Modus Schnell gibt der Speicher bis zum Standardwert mit ab.</p>
 <?php if ($reserve['error']): ?>
   <?= ui_notice('triangle-alert', e((string) $reserve['error']), 'warn') ?>
 <?php endif; ?>
@@ -56,6 +57,22 @@ $numberField = static fn (string $name, ?float $value, int $decimals, array $att
 <?php endforeach; ?>
   </ul>
 <?php endif; ?>
+</section>
+<?php $grid = BatteryPlan::settings($cfg); ?>
+<section class="card stack" aria-labelledby="grid-charge-title">
+  <h3 class="card-title" id="grid-charge-title">Laden aus dem Netz</h3>
+  <p class="body-sm muted">In aktiven Ladefenstern lädt EMS den Speicher aus dem Netz, wenn die Sonne bis einen Tag danach nicht reicht und der Preisunterschied Verluste und Verschleiß übersteigt. Eingeschaltet wird das unter <?= ui_inline('Speicher → Ausblick', ['href' => url('/speicher')]) ?>, geschaltet nur bei aktivem EMS. Dafür stellt EMS den Betriebsmodus auf manuell und „Laden erzwingen“ auf die Ladeleistung, danach zurück auf den Betriebsmodus von vorher.</p>
+  <?= $open('battery_grid') ?>
+  <?= ui_entity_field('battery_operating_mode', 'Betriebsmodus', (string) ($cfg['mapping']['battery_operating_mode'] ?? ''), 'select mit manual und automatic, bei der sonnenBatterie select.sonnenbatterie_…_select_operating_mode. Sie erscheint erst, wenn die Integration schreiben darf (Token der JSON-API).', $suggest['battery_operating_mode'] ?? '') ?>
+  <?= ui_entity_field('battery_force_charge', 'Laden erzwingen', (string) ($cfg['mapping']['battery_force_charge'] ?? ''), 'number in Watt, bei der sonnenBatterie number.sonnenbatterie_…_number_charge.', $suggest['battery_force_charge'] ?? '') ?>
+  <div class="form-rows">
+    <?= ui_form_row('Ladeleistung', $numberField('grid_kw', $grid['power_set'] ? $grid['power_kw'] : null, 2), ['for' => 'f-grid_kw', 'hint' => 'kW. Leer heißt die Entladeleistung, sonst 2,5 kW.']) ?>
+    <?= ui_form_row('Höchstens bis', $numberField('grid_max_soc', $grid['max_soc'], 0, ['inputmode' => 'numeric']), ['for' => 'f-grid_max_soc', 'hint' => 'Prozent. Darüber lädt der Speicher nur noch mit Sonne.']) ?>
+    <?= ui_form_row('Wirkungsgrad', $numberField('grid_efficiency_pct', $grid['efficiency'] * 100, 0, ['inputmode' => 'numeric']), ['for' => 'f-grid_efficiency_pct', 'hint' => 'Prozent, Laden und Entladen zusammen. Standard 90 %.']) ?>
+    <?= ui_form_row('Verschleiß', $numberField('grid_wear_ct', $grid['wear_ct'], 1), ['for' => 'f-grid_wear_ct', 'hint' => 'ct je kWh, die durch den Speicher geht. Standard 2 ct.']) ?>
+  </div>
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Speichern</button></div>
+  </form>
 </section>
 <section class="card stack" aria-labelledby="discharge-title">
   <h3 class="card-title" id="discharge-title">Entladeleistung</h3>

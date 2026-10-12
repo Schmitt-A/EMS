@@ -36,6 +36,7 @@ final class Actions
     /** Alle Zuordnungen, die eine Entität aufnehmen; Formulare und Import nehmen nur diese an. */
     private const ENTITY_KEYS = [
         'pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'battery_reserve',
+        'battery_operating_mode', 'battery_force_charge',
         'car_soc', 'car_capacity', 'car_range', 'car_odometer', 'car_limit', 'car_wakeup', 'grid_import', 'grid_export', 'grid_signed', 'house_power',
         'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force', 'wallbox_energy',
         'price_import',
@@ -55,6 +56,8 @@ final class Actions
         'wallbox_phases' => ['/^select\.goe_\w+_psm$/', ['']],
         'wallbox_force' => ['/^select\.goe_\w+_frc$/', ['']],
         'battery_reserve' => ['/^number\.\w*(battery_reserve|backup_buffer|backup_reserve|backup_puffer)$/', ['%']],
+        'battery_operating_mode' => ['/^select\.sonnenbatterie_\w+_operating_mode$/', ['']],
+        'battery_force_charge' => ['/^number\.sonnenbatterie_\w+_number_charge$/', ['w', 'kw']],
         'car_soc' => ['/^sensor\.\w*tesla\w*_(charge_level|battery_level|ladezustand(_\d)?)$/', ['%']],
         'car_range' => ['/^sensor\.\w*tesla\w*_(range|battery_range|reichweite)$/', ['km', 'mi']],
         'car_odometer' => ['/^sensor\.\w*tesla\w*_(odometer|kilometerstand)$/', ['km', 'mi']],
@@ -381,9 +384,114 @@ final class Actions
             }
             flash($message);
             self::redirectBack();
+        } elseif (in_array($section, ['windows', 'window_toggle', 'window_add', 'window_delete'], true)) {
+            flash(self::saveWindows($section));
+            (new Controller(store(), ha()))->kick(time());
+            self::redirectBack();
+        } elseif ($section === 'battery_grid') {
+            flash(self::saveBatteryGrid());
+            self::redirectBack();
         }
         flash('Gespeichert.');
         self::redirectBack();
+    }
+
+    /**
+     * Speicher aus dem Netz laden: an oder aus (Speicher → Ausblick), unter Einstellungen → Speicher die Entitäten,
+     * Ladeleistung, Höchststand, Wirkungsgrad und Verschleiß. Nur gesendete Felder. Danach gleich ein Schritt, damit
+     * Ausschalten ein laufendes Laden sofort beendet.
+     */
+    private static function saveBatteryGrid(): string
+    {
+        $patch = [];
+        if (array_key_exists('grid_charge', $_POST)) {
+            $patch['grid_charge'] = ($_POST['grid_charge'] ?? '0') === '1';
+        }
+        if (array_key_exists('grid_kw', $_POST)) {
+            $patch['grid_kw'] = self::optional('grid_kw', 0.1, 50);
+        }
+        foreach (['grid_max_soc' => [10, 100, 100], 'grid_efficiency_pct' => [50, 100, 90], 'grid_wear_ct' => [0, 50, 2]] as $key => [$min, $max, $fallback]) {
+            if (array_key_exists($key, $_POST)) {
+                $patch[$key] = post_float($key, $min, $max, $fallback);
+            }
+        }
+        if ($patch) {
+            store()->merge('battery_strategy', $patch);
+        }
+        $mapping = store()->get('mapping', []);
+        $mapping = is_array($mapping) ? $mapping : [];
+        $mapped = false;
+        foreach (['battery_operating_mode', 'battery_force_charge'] as $key) {
+            if (array_key_exists($key, $_POST)) {
+                $mapping[$key] = post_entity($key);
+                $mapped = true;
+            }
+        }
+        if ($mapped) {
+            store()->put('mapping', $mapping);
+        }
+        $snap = (new Snapshot(store(), ha()))->build();
+        (new BatteryPlan(store(), ha()))->sync($snap, time());
+        if (!array_key_exists('grid_charge', $patch)) {
+            return 'Gespeichert.';
+        }
+        if (!$patch['grid_charge']) {
+            return 'Der Speicher lädt nicht mehr aus dem Netz.';
+        }
+        try {
+            $blocker = BatteryPlan::blocker(cfg(), ha()->index());
+        } catch (Throwable) {
+            $blocker = 'Home Assistant ist nicht erreichbar.';
+        }
+        return 'Der Speicher lädt in aktiven Ladefenstern aus dem Netz, wenn die Sonne nicht reicht und es sich lohnt.' . ($blocker !== '' && $blocker !== 'aus' ? ' Noch schaltet EMS nicht: ' . $blocker : '');
+    }
+
+    /**
+     * Ladefenster unter Prognose → Strompreis: Länge des Vorschlags (windows), einen Tag an- oder abschalten
+     * (window_toggle), ein eigenes Fenster anlegen (window_add) oder löschen (window_delete). Gibt die Rückmeldung zurück.
+     */
+    private static function saveWindows(string $section): string
+    {
+        $windows = new PriceWindows(store());
+        $s = $windows->config();
+        $now = time();
+        if ($section === 'windows') {
+            $length = (int) ($_POST['length_h'] ?? 0);
+            $s['length_h'] = in_array($length, PriceWindows::LENGTHS, true) ? $length : $s['length_h'];
+            $windows->save($s, $now);
+            return 'Ladefenster: je Tag die günstigsten ' . $s['length_h'] . ($s['length_h'] === 1 ? ' Stunde.' : ' Stunden.');
+        }
+        if ($section === 'window_toggle') {
+            $day = (string) ($_POST['day'] ?? '');
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+                return 'Unbekanntes Ladefenster.';
+            }
+            $on = ($_POST['on'] ?? '0') === '1';
+            $s['off'] = array_values(array_diff($s['off'], [$day]));
+            if (!$on) {
+                $s['off'][] = $day;
+            }
+            $windows->save($s, $now);
+            $label = (string) date('d.m.', (int) strtotime($day . ' 12:00:00'));
+            return 'Ladefenster am ' . $label . ($on ? ' ist an.' : ' ist aus.');
+        }
+        if ($section === 'window_add') {
+            if (count($s['custom']) >= 12) {
+                return 'Es gibt schon 12 eigene Ladefenster. Bitte erst eines löschen.';
+            }
+            $built = PriceWindows::customFrom((string) ($_POST['day'] ?? ''), (string) ($_POST['from'] ?? ''), (string) ($_POST['to'] ?? ''), $now);
+            if ($built['error'] !== null) {
+                return $built['error'];
+            }
+            $s['custom'][] = $built['window'];
+            $windows->save($s, $now);
+            return 'Eigenes Ladefenster ' . PriceWindows::label($built['window'], $now) . ' angelegt.';
+        }
+        $start = (int) ($_POST['start'] ?? 0);
+        $end = (int) ($_POST['end'] ?? 0);
+        $s['custom'] = array_values(array_filter($s['custom'], static fn (array $w): bool => !($w['start'] === $start && $w['end'] === $end)));
+        $windows->save($s, $now);
+        return 'Eigenes Ladefenster gelöscht.';
     }
 
     /**
@@ -499,13 +607,15 @@ final class Actions
     {
         $cfg = cfg();
         return [
-            // 2: seit 1.10 mit den Modi Schnell und Netzladen (netz); ältere Sicherungen stellt applyPortable() um.
-            'version' => 2,
+            // 2: seit 1.10 mit den Modi Schnell und Netzladen (netz); 3: seit 1.13 Netzladen als charge.grid. Ältere
+            // Sicherungen stellt applyPortable() um.
+            'version' => 3,
             'mapping' => $cfg['mapping'],
             'tariffs' => $cfg['tariffs'],
             'tariff_history' => (new Tariff(store()))->history(),
             'plant' => $cfg['plant'],
             'charge' => $cfg['charge'],
+            'price_windows' => ['length_h' => (new PriceWindows(store()))->config()['length_h']],
             'battery_strategy' => $cfg['battery_strategy'],
             'vehicle' => $cfg['vehicle'],
             'chargepoint' => $cfg['chargepoint'],
@@ -643,9 +753,21 @@ final class Actions
                     }
                 }
             }
+            // Sicherungen vor 1.13 kennen Netzladen als Modus: daraus wird Intelligent mit Netzladen „Jetzt“.
+            if (($charge['mode'] ?? null) === 'netz') {
+                $charge['mode'] = 'smart';
+                $charge['grid'] = 'now';
+            }
+            if (($charge['after_unplug'] ?? null) === 'netz') {
+                $charge['after_unplug'] = '';
+            }
             $phase = (string) ($charge['phase_mode'] ?? 'auto');
+            $mode = Energy::userMode($charge['mode'] ?? 'smart');
+            $last = Energy::userMode($charge['last_mode'] ?? ($mode === 'aus' ? 'smart' : $mode));
             store()->merge('charge', [
-                'mode' => Energy::mode($charge['mode'] ?? 'smart'),
+                'mode' => $mode,
+                'last_mode' => $last === 'aus' ? 'smart' : $last,
+                'grid' => Energy::grid($charge['grid'] ?? 'off'),
                 'phase_mode' => in_array($phase, ['auto', '1p', '3p'], true) ? $phase : 'auto',
                 'solar_share' => self::clamped($charge['solar_share'] ?? null, 0, 100, 100),
                 'reserve_w' => self::clamped($charge['reserve_w'] ?? null, 0, 2000, 200),
@@ -655,9 +777,12 @@ final class Actions
                 'on_delay_s' => (int) round(self::clamped($charge['on_delay_s'] ?? null, 60, 600, 60)),
                 'off_delay_s' => (int) round(self::clamped($charge['off_delay_s'] ?? null, 60, 600, 180)),
                 'then_mode' => in_array($charge['then_mode'] ?? '', Target::THEN, true) ? (string) $charge['then_mode'] : 'smart',
-                'after_unplug' => in_array($charge['after_unplug'] ?? '', ['', ...Energy::MODES], true) ? (string) $charge['after_unplug'] : '',
-                'price_limit_ct' => is_numeric($charge['price_limit_ct'] ?? null) ? clamp_float((float) $charge['price_limit_ct'], -50, 200) : null,
+                'after_unplug' => in_array($charge['after_unplug'] ?? '', ['', 'aus', ...Energy::SUN_MODES], true) ? (string) $charge['after_unplug'] : '',
             ]);
+        }
+        if (isset($data['price_windows']['length_h'])) {
+            $windows = new PriceWindows(store());
+            $windows->save(['length_h' => $data['price_windows']['length_h']] + $windows->config(), time());
         }
         if (isset($data['battery_strategy']) && is_array($data['battery_strategy'])) {
             $incoming = $data['battery_strategy'];
@@ -676,6 +801,17 @@ final class Actions
             }
             if (array_key_exists('discharge_kw', $incoming)) {
                 $strategy['discharge_kw'] = is_numeric($incoming['discharge_kw']) && (float) $incoming['discharge_kw'] > 0 ? clamp_float((float) $incoming['discharge_kw'], 0.1, 50) : null;
+            }
+            if (array_key_exists('grid_charge', $incoming)) {
+                $strategy['grid_charge'] = !empty($incoming['grid_charge']);
+            }
+            if (array_key_exists('grid_kw', $incoming)) {
+                $strategy['grid_kw'] = is_numeric($incoming['grid_kw']) && (float) $incoming['grid_kw'] > 0 ? clamp_float((float) $incoming['grid_kw'], 0.1, 50) : null;
+            }
+            foreach (['grid_max_soc' => [10, 100, 100], 'grid_efficiency_pct' => [50, 100, 90], 'grid_wear_ct' => [0, 50, 2]] as $key => [$min, $max, $fallback]) {
+                if (array_key_exists($key, $incoming)) {
+                    $strategy[$key] = self::clamped($incoming[$key], $min, $max, $fallback);
+                }
             }
             $current = store()->get('battery_strategy', []);
             if (!is_array($current)) {
@@ -769,7 +905,10 @@ final class Actions
         $current = is_array($current) ? $current : [];
         $patch = [];
         if (array_key_exists('mode', $_POST)) {
-            $patch['mode'] = Energy::mode((string) $_POST['mode']);
+            $patch['mode'] = Energy::userMode((string) $_POST['mode']);
+            if ($patch['mode'] !== 'aus') {
+                $patch['last_mode'] = $patch['mode'];
+            }
         }
         if (array_key_exists('phase_mode', $_POST)) {
             $phase = (string) $_POST['phase_mode'];
@@ -779,12 +918,9 @@ final class Actions
             $then = (string) $_POST['then_mode'];
             $patch['then_mode'] = in_array($then, Target::THEN, true) ? $then : 'smart';
         }
-        if (array_key_exists('price_limit_ct', $_POST)) {
-            $patch['price_limit_ct'] = self::optional('price_limit_ct', -50, 200);
-        }
         if (array_key_exists('after_unplug', $_POST)) {
             $after = (string) $_POST['after_unplug'];
-            $patch['after_unplug'] = in_array($after, ['', ...Energy::MODES], true) ? $after : '';
+            $patch['after_unplug'] = in_array($after, ['', 'aus', ...Energy::SUN_MODES], true) ? $after : '';
         }
 
         $ranges = [
@@ -840,6 +976,8 @@ final class Actions
         $message = $controller->release(cfg(), $now);
         $snap = (new Snapshot(store(), ha()))->build();
         (new Reserve(store(), ha()))->sync($snap['values'], $snap['cfg'], $now, (new Sessions(store()))->open() !== null);
+        // Lädt der Speicher gerade aus dem Netz, endet das jetzt; der Betriebsmodus geht zurück.
+        (new BatteryPlan(store(), ha()))->sync($snap, $now);
         return $message;
     }
 
@@ -867,14 +1005,45 @@ final class Actions
         return 'Ladeziel gesetzt: ' . $view['label'] . ', danach ' . Energy::modeLabel((string) $built['target']['then']) . '.' . ($planText !== '' ? ' ' . $planText : '');
     }
 
-    /** Modus aus dem Segment-Umschalter (POST /api/modus). */
+    /**
+     * Schalter „Laden“, Modus und Netzladen aus der Ladepunkt-Karte (POST /api/modus mit mode und/oder grid). Ein Modus
+     * schaltet Laden an und merkt sich als last_mode, womit der Schalter es wieder anschaltet.
+     */
     public static function saveChargeMode(): void
     {
-        $mode = (string) ($_POST['mode'] ?? '');
-        if (!in_array($mode, Energy::MODES, true)) {
-            json_out(['error' => 'Unbekannter Modus.'], 422);
+        $patch = [];
+        if (array_key_exists('mode', $_POST)) {
+            $mode = (string) $_POST['mode'];
+            if ($mode === 'netz') {
+                // Eine Seite von vor 1.13 kennt Netzladen noch als Modus.
+                $current = store()->get('charge', []);
+                $mode = Energy::userMode(is_array($current) ? ($current['last_mode'] ?? 'smart') : 'smart');
+                $mode = $mode === 'aus' ? 'smart' : $mode;
+                $patch['grid'] = 'now';
+            }
+            if ($mode !== 'aus' && !in_array($mode, Energy::SUN_MODES, true)) {
+                json_out(['error' => 'Unbekannter Modus.'], 422);
+            }
+            $patch['mode'] = $mode;
+            if ($mode !== 'aus') {
+                $patch['last_mode'] = $mode;
+            }
         }
-        store()->merge('charge', ['mode' => $mode]);
+        if (array_key_exists('grid', $_POST)) {
+            $grid = (string) $_POST['grid'];
+            if (!in_array($grid, Energy::GRID, true)) {
+                json_out(['error' => 'Unbekannte Auswahl für Netzladen.'], 422);
+            }
+            $patch['grid'] = $grid;
+        }
+        if ($patch === []) {
+            json_out(['error' => 'Nichts zu ändern.'], 422);
+        }
+        store()->merge('charge', $patch);
+        if (isset($patch['grid'])) {
+            // Wer Netzladen neu wählt, will es wieder, auch wenn ein Ziel in diesem Ladevorgang schon erreicht war.
+            store()->put(ChargePlan::DONE, 0);
+        }
     }
 
     /** Ladelimit aus der Marke im Ladebalken (POST /api/limit), auf 5 % gerastert. */

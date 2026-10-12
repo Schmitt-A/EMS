@@ -34,15 +34,23 @@ final class PriceView
         if ($plan !== null && ($target === null || (int) ($plan['target_set_at'] ?? 0) !== (int) ($target['set_at'] ?? -1))) {
             $plan = null;
         }
+        $windows = new PriceWindows($this->store, $tariff);
+        $config = $windows->config();
+        $cfg = $this->store->all();
         return [
             'plan' => $plan,
-            'limit' => ChargePlan::limit((array) ($this->store->all()['charge'] ?? [])),
+            'windows' => $windows->list($now),
+            'windows_config' => $config,
+            'users' => [
+                'car' => Energy::grid($cfg['charge']['grid'] ?? 'off'),
+                'battery' => !empty($cfg['battery_strategy']['grid_charge']),
+            ],
+            'months' => $this->months($tariff, $config['length_h'], $now),
             'now' => $tariff->now($now),
             'today' => self::stats($tariff, $today->getTimestamp(), $tomorrow->getTimestamp()),
             'tomorrow' => self::stats($tariff, $tomorrow->getTimestamp(), $tomorrow->modify('+1 day')->getTimestamp()),
             'cheap' => [
                 'hour' => self::cheapest($ahead, 4),
-                'three' => self::cheapest($ahead, 12),
                 'dear' => self::cheapest($ahead, 4, true),
             ],
             'horizon' => $last,
@@ -83,30 +91,127 @@ final class PriceView
     }
 
     /**
-     * Günstigste (oder teuerste) zusammenhängende Zeit aus $length Viertelstunden.
+     * Günstigste (oder teuerste) zusammenhängende Zeit aus $length Viertelstunden, siehe PriceWindows::cheapest().
      *
-     * @param array<int, float> $prices Viertelstunde => ct, aufsteigend
+     * @param array<int, float> $prices Viertelstunde => ct
      * @return ?array{start: int, end: int, ct: float}
      */
     public static function cheapest(array $prices, int $length, bool $dearest = false): ?array
     {
-        ksort($prices);
-        $keys = array_keys($prices);
-        $best = null;
-        for ($i = 0; $i + $length <= count($keys); $i++) {
-            if ($keys[$i + $length - 1] - $keys[$i] !== ($length - 1) * 900) {
-                continue;
-            }
-            $sum = 0.0;
-            for ($j = $i; $j < $i + $length; $j++) {
-                $sum += $prices[$keys[$j]];
-            }
-            $avg = $sum / $length;
-            if ($best === null || ($dearest ? $avg > $best['ct'] : $avg < $best['ct'])) {
-                $best = ['start' => $keys[$i], 'end' => $keys[$i] + $length * 900, 'ct' => $avg];
+        return PriceWindows::cheapest($prices, $length, $dearest);
+    }
+
+    /**
+     * Entscheidungshilfe: je Monat mit Börsenpreisen, bis 24 Monate zurück, der dynamische Preis im Mittel über den
+     * Tag und im täglichen Ladefenster (je Tag das günstigste Fenster der eingestellten Länge), beides mit deinen
+     * Aufschlägen von heute, dazu der statische Preis von heute. Abgeschlossene Monate liegen in kv.price_months,
+     * solange Tarif und Fensterlänge gleich bleiben; der laufende Monat wird jedes Mal gerechnet.
+     *
+     * @return array{rows: list<array{month: string, label: string, days: int, flat_ct: float, window_ct: float, spot_ct: float, negative: int}>, static_ct: float, base_eur: ?float, dyn_base_eur: ?float, length_h: int}
+     */
+    public function months(Tariff $tariff, int $lengthH, int $now): array
+    {
+        $tz = new DateTimeZone('Europe/Berlin');
+        $t = $tariff->tariffAt($now);
+        $key = md5(json_encode($t) . '|' . $lengthH . '|2');
+        $cache = $this->store->get('price_months', []);
+        $cached = is_array($cache) && ($cache['key'] ?? '') === $key ? (array) ($cache['months'] ?? []) : [];
+        $market = $tariff->market();
+        $first = $market->firstStart();
+        $current = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->modify('first day of this month')->setTime(0, 0);
+        $rows = [];
+        $store = [];
+        if ($first !== null) {
+            $month = max($current->modify('-24 months'), (new DateTimeImmutable('@' . $first))->setTimezone($tz)->modify('first day of this month')->setTime(0, 0));
+            for (; $month <= $current; $month = $month->modify('+1 month')) {
+                $id = $month->format('Y-m');
+                $closed = $month < $current;
+                $row = $closed && isset($cached[$id]) ? $cached[$id] : self::month($market, $t, $month, min($now, $month->modify('+1 month')->getTimestamp()), $lengthH * 4);
+                if ($row === null) {
+                    continue;
+                }
+                if ($closed) {
+                    $store[$id] = $row;
+                }
+                $rows[] = $row + ['month' => $id, 'closed' => $closed, 'label' => month_label($id) . ($closed ? '' : ' bis heute')];
             }
         }
-        return $best;
+        if ($store !== $cached) {
+            $this->store->put('price_months', ['key' => $key, 'months' => $store]);
+        }
+        return [
+            'rows' => $rows,
+            'static_ct' => (float) $t['import_ct'],
+            'base_eur' => $t['base_eur'] === null ? null : (float) $t['base_eur'],
+            'dyn_base_eur' => $t['dyn_base_eur'] === null ? null : (float) $t['dyn_base_eur'],
+            'length_h' => $lengthH,
+        ];
+    }
+
+    /**
+     * Ein Jahr statisch gegen dynamisch aus den letzten bis zu zwölf ganzen Monaten: $windowKwh im Ladefenster (Auto und
+     * Speicher), $restKwh übriger Netzbezug, über den Tag gleich verteilt. Dazu, ab wie vielen kWh im Ladefenster
+     * dynamisch günstiger ist (null, wenn das Fenster nicht unter dem statischen Preis liegt). components/decide.js
+     * rechnet beim Tippen genauso.
+     */
+    public static function decision(array $months, float $windowKwh, float $restKwh): ?array
+    {
+        $rows = array_slice(array_values(array_filter($months['rows'], static fn (array $r): bool => !empty($r['closed']))), -12);
+        if ($rows === []) {
+            return null;
+        }
+        $flat = array_sum(array_column($rows, 'flat_ct')) / count($rows);
+        $window = array_sum(array_column($rows, 'window_ct')) / count($rows);
+        $static = (float) $months['static_ct'];
+        $base = (float) ($months['base_eur'] ?? 0) * 12;
+        $dynBase = (float) ($months['dyn_base_eur'] ?? 0) * 12;
+        $dynamic = ($windowKwh * $window + $restKwh * $flat) / 100 + $dynBase;
+        $fixed = ($windowKwh + $restKwh) * $static / 100 + $base;
+        $saved = $static - $window;
+        return [
+            'months' => count($rows),
+            'flat_ct' => round($flat, 2),
+            'window_ct' => round($window, 2),
+            'static_ct' => $static,
+            'base_eur' => $base,
+            'dyn_base_eur' => $dynBase,
+            'dynamic_eur' => round($dynamic, 2),
+            'static_eur' => round($fixed, 2),
+            'difference' => round($fixed - $dynamic, 2),
+            'break_even_kwh' => $saved > 0.01 ? max(0.0, round(($restKwh * ($flat - $static) / 100 + $dynBase - $base) / ($saved / 100))) : null,
+            'base_missing' => $months['base_eur'] === null || $months['dyn_base_eur'] === null,
+        ];
+    }
+
+    /** Ein Monat bis $to: Mittel über alle Viertelstunden, Mittel der täglichen Ladefenster, Börse, Viertelstunden unter 0. */
+    private static function month(MarketPrices $market, array $t, DateTimeImmutable $month, int $to, int $length): ?array
+    {
+        $spots = $market->quarters($month->getTimestamp(), $to);
+        $byDay = [];
+        foreach ($spots as $q => $spot) {
+            $byDay[(new DateTimeImmutable('@' . $q))->setTimezone($month->getTimezone())->format('Y-m-d')][$q] = $spot;
+        }
+        $flat = $window = $spotSum = 0.0;
+        $quarters = $days = $negative = 0;
+        foreach ($byDay as $prices) {
+            $dynamic = [];
+            foreach ($prices as $q => $spot) {
+                $dynamic[$q] = Tariff::dynamicCt($spot, $t, $q);
+                $flat += $dynamic[$q];
+                $spotSum += $spot;
+                $quarters++;
+                $negative += $spot < 0 ? 1 : 0;
+            }
+            $best = PriceWindows::cheapest($dynamic, $length);
+            if ($best !== null && count($prices) >= 80) {
+                $window += $best['ct'];
+                $days++;
+            }
+        }
+        if ($days === 0 || $quarters === 0) {
+            return null;
+        }
+        return ['days' => $days, 'flat_ct' => round($flat / $quarters, 2), 'window_ct' => round($window / $days, 2), 'spot_ct' => round($spotSum / $quarters, 2), 'negative' => $negative];
     }
 
     /** Vergleich mit dem Netzbezug des Zeitraums und dem Netzstrom des Autos je Viertelstunde. */

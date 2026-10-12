@@ -193,22 +193,27 @@ final class Snapshot
             (float) ($cfg['battery_strategy']['car_auto_soc'] ?? 100),
         );
         $reported = Energy::reportedPhases($values['wallbox_phases_raw'] ?? null);
-        // Laden nach Preis: in einer Viertelstunde des Ladeplans oder unter der Preisgrenze gilt für Regelung und
-        // Backup-Puffer Netzladen; die Modusauswahl zeigt weiter den eingestellten Modus (charge.mode).
+        // Netzladen „Jetzt“ oder in einem Ladefenster (auch einer Viertelstunde, die der Plan dazunimmt): Für Regelung
+        // und Backup-Puffer gilt Netzladen; die Modusauswahl zeigt weiter den eingestellten Modus (charge.mode).
         $pricing = new Tariff($this->store);
         $price = $pricing->now($now);
+        $windows = new PriceWindows($this->store, $pricing);
         $plan = ChargePlan::get($this->store);
         $target = Target::get($this->store);
         if ($plan !== null && ($target === null || (int) ($plan['target_set_at'] ?? 0) !== (int) ($target['set_at'] ?? -1))) {
             $plan = null;
         }
+        $cfg['charge']['mode'] = Energy::userMode($cfg['charge']['mode'] ?? 'smart');
+        $cfg['charge']['grid'] = Energy::grid($cfg['charge']['grid'] ?? 'off');
+        $window = $windows->current($now);
+        $gridDone = ChargePlan::done($this->store);
         $effective = ChargePlan::effective(
-            (string) ($cfg['charge']['mode'] ?? 'smart'),
-            $plan,
-            $price['dynamic_ct'] === null ? null : (float) $price['dynamic_ct'],
-            ChargePlan::limit($cfg['charge']),
-            $price['mode'] === 'dynamic',
+            $cfg['charge']['mode'],
+            $cfg['charge']['grid'],
             Sessions::carConnected($values['wallbox_car_raw'] ?? null, isset($values['wallbox_kw']) ? (float) $values['wallbox_kw'] : null) !== false,
+            $window !== null,
+            $plan,
+            $gridDone,
             $now
         );
         $cfg['charge']['effective_mode'] = $effective['mode'];
@@ -216,6 +221,7 @@ final class Snapshot
         $base['cfg'] = $cfg;
         $base['price'] = $price;
         $base['plan'] = $plan;
+        $base['windows'] = ['current' => $window, 'upcoming' => $windows->upcoming($now, 3), 'done' => $gridDone];
         $charge = ['mode' => $effective['mode']] + $cfg['charge'];
         // Backup-Puffer, Schonen beim Netzladen und Entladeleistung: woher dem Auto fehlende Leistung käme.
         $battery = Reserve::battery($cfg);
@@ -304,6 +310,8 @@ final class Snapshot
                 $outlook['buffer_at'] = null;
             }
         }
+        // Speicher in Ladefenstern aus dem Netz laden: die Entscheidung für das laufende oder nächste aktive Fenster.
+        $base['battery_plan'] = BatteryPlan::plan($cfg, $values, $series, $mean, $windows, $pricing, $now);
         $charging = ((float) ($values['wallbox_kw'] ?? 0) > 0.05)
             || Sessions::carState($values['wallbox_car_raw'] ?? null) === 'charging';
         $actualToday = null;
@@ -327,6 +335,7 @@ final class Snapshot
                 $brief['tomorrow_sd'] = isset($captions[$tomorrowKey]['sd']) ? round((float) $captions[$tomorrowKey]['sd'], 2) : null;
             }
         }
+        $base['days_outlook'] = BatteryPlan::days($series, $cfg['plant'], $mean, $now, is_array($brief) ? $brief : null);
         $sessions = new Sessions($this->store);
         $session = $sessions->open() ?: $sessions->latest();
         $base['balance'] = $balance;
@@ -358,9 +367,12 @@ final class Snapshot
             $base['warnings'][] = 'Backup-Puffer: ' . $base['reserve']['error'];
         }
         $base['target'] = Target::view(Target::get($this->store), Target::inputs($base), $now);
-        if ($base['target'] !== null) {
-            $base['target']['plan_text'] = ChargePlan::text($plan);
-        }
+        $base['chargepoint']['grid_text'] = self::gridText($cfg['charge'], $base['windows'], $plan, (bool) $base['vehicle']['connected'], $now);
+        $base['chargepoint']['grid_windows'] = array_map(static fn (array $w): array => [
+            'label' => ucfirst(PriceWindows::label($w, $now)),
+            'ct' => $w['ct'] === null ? '' : 'Ø ' . ct((float) $w['ct']),
+            'running' => PriceWindows::status($w, $now) === 'running',
+        ], $base['windows']['upcoming']);
         if ($base['target'] !== null && $base['target']['remaining_s'] !== null && !$base['target']['reached']) {
             // Mit Ziel zählt die Restzeit bis zum Ziel, nicht bis zum Limit.
             $base['chargepoint']['remaining_s'] = $base['target']['remaining_s'];
@@ -497,9 +509,19 @@ final class Snapshot
             $energy = 0.0;
         }
         $remaining = $charging ? Energy::timeToLimit($vehicle['soc'], $vehicle['limit'], $vehicle['capacity_kwh'], $power) : null;
+        $mode = Energy::userMode($cfg['charge']['mode'] ?? 'smart');
+        // Ist Laden aus, zeigt die Auswahl den Modus, mit dem es wieder angeht.
+        $sun = $mode === 'aus' ? Energy::userMode($cfg['charge']['last_mode'] ?? 'smart') : $mode;
+        $sun = $sun === 'aus' ? 'smart' : $sun;
+        $grid = Energy::grid($cfg['charge']['grid'] ?? 'off');
         return [
             'name' => trim((string) ($cfg['chargepoint']['name'] ?? '')) ?: 'Wallbox',
-            'mode' => (string) ($cfg['charge']['mode'] ?? 'smart'),
+            'mode' => $mode,
+            'on' => $mode !== 'aus',
+            'sun_mode' => $sun,
+            'mode_hint' => Energy::modeHint($sun),
+            'grid' => $grid,
+            'grid_hint' => Energy::gridText($grid),
             'charging' => $charging,
             'solar_only' => $charging && (float) ($v['grid_import_kw'] ?? 0) < 0.05 && (float) ($v['battery_discharge_kw'] ?? 0) < 0.05,
             'power_kw' => $power === null ? null : round($power, 3),
@@ -509,6 +531,36 @@ final class Snapshot
             'remaining_s' => $remaining,
             'remaining_text' => $remaining === null ? '—' : duration_clock($remaining),
         ];
+    }
+
+    /**
+     * Satz unter Netzladen in der Ladepunkt-Karte: was gerade gilt, ob ein Ladefenster läuft und, bei einem Ziel mit
+     * „fertig bis“, ob die Fenster bis dahin reichen (ChargePlan::text()). Die Fenster selbst stehen als Liste darüber.
+     */
+    public static function gridText(array $charge, array $windows, ?array $plan, bool $connected, int $now): string
+    {
+        $grid = Energy::grid($charge['grid'] ?? 'off');
+        if (($charge['mode'] ?? 'smart') === 'aus') {
+            return $grid === 'off' ? '' : 'Laden ist aus, Netzladen wartet, bis es wieder an ist.';
+        }
+        if ($grid === 'now') {
+            return $connected ? '' : 'Sobald das Auto angesteckt ist, lädt es voll aus dem Netz.';
+        }
+        if ($grid !== 'windows') {
+            return '';
+        }
+        if (!empty($windows['done'])) {
+            return 'Ladeziel erreicht. Bis zum Abstecken lädt das Auto in Ladefenstern nicht mehr aus dem Netz.';
+        }
+        $current = $windows['current'] ?? null;
+        // Die Fenster stehen als Liste darüber; der Satz sagt nur, was gerade gilt, und ob sie bis „fertig bis“ reichen.
+        $text = match (true) {
+            $current !== null && $connected => 'Das Ladefenster läuft bis ' . date('H:i', (int) $current['end']) . ', das Auto lädt voll aus dem Netz.',
+            $current !== null => 'Das Ladefenster läuft bis ' . date('H:i', (int) $current['end']) . '. Angesteckt lädt das Auto voll aus dem Netz.',
+            !empty($windows['upcoming']) => '',
+            default => 'Kein aktives Ladefenster bekannt. Fenster stehen unter Prognose → Strompreis.',
+        };
+        return trim($text . ' ' . ChargePlan::text($plan));
     }
 
     /**
@@ -588,18 +640,19 @@ final class Snapshot
         $batteryText = $soc === null ? 'ohne Ladestand' : pct($soc) . ($in > 0.05 ? ', lädt ' . kw($in) : ($out > 0.05 ? ', entlädt ' . kw($out) : ', ruht'));
         $own = Energy::batteryFor($active, $battery);
         $target = $setpoint['target_kw'] ?? null;
-        // Laden nach Preis: warum gerade Netzladen gilt, obwohl Solar oder Min+Solar eingestellt ist.
-        $limit = ChargePlan::limit($charge);
+        // Netzladen: warum gerade aus dem Netz geladen wird, obwohl ein Modus für Sonne und Speicher eingestellt ist.
         $override = match ($charge['effective_reason'] ?? null) {
-            'plan' => 'Ladeplan: Jetzt ist eine geplante Viertelstunde, das Auto lädt voll aus dem Netz.',
-            'limit' => 'Preisgrenze: Der Strompreis liegt bei höchstens ' . ct($limit) . ', das Auto lädt voll aus dem Netz.',
+            'now' => 'Netzladen jetzt: Das Auto lädt voll aus dem Netz, bis das Ziel erreicht ist oder es abgesteckt wird.',
+            'window' => 'Ladefenster: Das Auto lädt voll aus dem Netz, bis das Ziel erreicht ist.',
+            'plan' => 'Ladeplan: Die Ladefenster reichen bis zur Uhrzeit nicht, jetzt ist eine zusätzlich geplante Viertelstunde.',
             default => null,
         };
         return [
             'mode' => $active,
             'mode_label' => Energy::modeLabel($active) . match ($charge['effective_reason'] ?? null) {
+                'now' => ' (jetzt)',
+                'window' => ' (Ladefenster)',
                 'plan' => ' (Ladeplan)',
-                'limit' => ' (Preisgrenze)',
                 default => '',
             },
             'zone' => $zone,

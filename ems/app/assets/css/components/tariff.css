@@ -3,9 +3,14 @@
  * (Umschalter Sonne | Strompreis als Links, Kennzahlen, Vergleich statisch ↔ dynamisch).
  */
 
-/* Umschalter zwischen zwei Seiten: sieht aus wie ein Segment, sind aber Links. */
+/* Umschalter zwischen zwei Seiten: sieht aus wie ein Segment, sind aber Links. Direkt unter dem Seitenkopf hält er
+   Abstand zur ersten Kachel. */
 .seg-links {
   --seg-count: 2;
+}
+
+.page > .seg-links {
+  margin-block-end: var(--s-4);
 }
 
 .seg-links a {
@@ -210,4 +215,72 @@
 .compare-verdict {
   font-size: 1.0625rem;
   font-weight: 600;
+}
+
+/* Ladefenster: je Fenster Zeit und Preis, rechts der Schalter oder Löschen; vorbei blasser, laufend hinterlegt. */
+.window-list {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.window-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-field);
+  background: var(--surface-2);
+}
+
+.window-item[data-status="running"] {
+  background: var(--accent-soft);
+}
+
+.window-item[data-status="past"] .window-when {
+  color: var(--text-2);
+}
+
+.window-main {
+  display: grid;
+  min-width: 0;
+}
+
+.window-when {
+  font-weight: 600;
+}
+
+.window-item form {
+  display: flex;
+  align-items: center;
+}
+
+/* Eigenes Fenster: aufklappbar wie die Modul-3-Fenster. */
+.window-add summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  color: var(--accent-on-soft);
+  font-size: 0.875rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.window-add summary::-webkit-details-marker {
+  display: none;
+}
+
+.window-add summary:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+  border-radius: var(--r-field);
+}
+
+.window-add[open] summary {
+  margin-block-end: var(--s-3);
 }

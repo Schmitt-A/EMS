@@ -5,43 +5,82 @@
   gap: var(--s-5);
 }
 
+/* Kopf: Name, Einstellungen und der Schalter „Laden“ */
 .cp-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: var(--s-3);
+  gap: var(--s-2);
 }
 
 .cp-head .card-title {
   overflow-wrap: anywhere;
 }
 
+.cp-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Abschnitte „Sonne & Speicher“ und „Netzladen“: Überschrift, Auswahl, ein Satz darunter */
+.cp-section {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.cp-section-title {
+  margin: 0;
+  color: var(--text-2);
+}
+
 .cp-mode {
-  grid-column: 1 / -1;
-  grid-row: 2;
   min-width: 0;
 }
 
-.cp-head > .icon-btn {
-  grid-column: 2;
-  grid-row: 1;
+@container cp (min-width: 30rem) {
+  .cp-mode {
+    width: min(100%, 26rem);
+  }
 }
 
-@container cp (min-width: 30rem) {
-  .cp-head {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-  }
+.cp-off-note {
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-field);
+  background: var(--surface-2);
+}
 
-  .cp-mode {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: end;
-    width: min(100%, 24rem);
-  }
+.cp-off-note[hidden],
+.cp-grid-text[hidden],
+.cp-windows[hidden] {
+  display: none;
+}
 
-  .cp-head > .icon-btn {
-    grid-column: 3;
-  }
+/* Die nächsten Ladefenster; das laufende in der Akzentfläche. */
+.cp-windows {
+  display: grid;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cp-windows li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-field);
+  background: var(--surface-2);
+}
+
+.cp-windows li[data-running] {
+  background: var(--accent-soft);
+  color: var(--accent-on-soft);
 }
 
 .cp-power {

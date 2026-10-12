@@ -38,10 +38,10 @@ $staticGraph = Energy::flowGraph(
 $vehicle = ['name' => 'ID.3', 'status' => 'Lädt …', 'soc' => 57.0, 'range_km' => 296.0, 'limit' => 80.0, 'range_at_limit' => 416.0];
 $cards = [
     'Lädt mit Ziel und Übersicht' => ['name' => 'Garage', 'mode' => 'smart', 'charging' => true, 'solar_only' => true, 'power_kw' => 7.36, 'phases' => 3, 'session_kwh' => 12.4, 'remaining_s' => 4300, 'vehicle' => $vehicle,
-        'target' => ['label' => 'Ziel 20,0' . NNBSP . 'kWh · ≈ 115' . NNBSP . 'km', 'text' => 'bisher 12,4' . NNBSP . 'kWh ≈ 71' . NNBSP . 'km, noch ca. 1:02 h', 'then_text' => 'Danach Solar', 'progress' => 0.62],
+        'target' => ['label' => 'Ziel 20,0' . NNBSP . 'kWh · ≈ 115' . NNBSP . 'km', 'text' => 'bisher 12,4' . NNBSP . 'kWh ≈ 71' . NNBSP . 'km, noch ca. 1:02 h', 'then_text' => 'Danach Intelligent', 'progress' => 0.62],
         'session_view' => ['open' => true, 'since' => 'seit 10:12', 'duration' => '1:41 h', 'km' => '≈ 71' . NNBSP . 'km', 'avg' => '7,4' . NNBSP . 'kW', 'solar' => '92' . NNBSP . '%', 'cost' => '0,13' . NNBSP . '€']],
-    'Verbunden, wartet' => ['name' => 'Garage', 'mode' => 'smart_dauerhaft', 'charging' => false, 'solar_only' => false, 'power_kw' => 0.0, 'phases' => 0, 'session_kwh' => 0.0, 'remaining_s' => null, 'vehicle' => ['status' => 'Verbunden'] + $vehicle],
-    'Fahrzeugdaten fehlen (gesperrt)' => ['name' => 'Garage', 'mode' => 'aus', 'charging' => false, 'solar_only' => false, 'power_kw' => null, 'phases' => 0, 'session_kwh' => null, 'remaining_s' => null, 'vehicle' => ['name' => 'Auto', 'status' => 'Nicht verbunden', 'soc' => null, 'range_km' => null, 'limit' => null, 'range_at_limit' => null]],
+    'Verbunden, Netzladen in Ladefenstern' => ['name' => 'Garage', 'mode' => 'smart_dauerhaft', 'grid' => 'windows', 'grid_text' => 'Im nächsten Ladefenster lädt das Auto voll aus dem Netz, bis das Ziel erreicht ist.', 'grid_windows' => [['label' => 'Heute 23:00–02:00', 'ct' => 'Ø 24,1' . NNBSP . 'ct/kWh', 'running' => false], ['label' => 'Morgen 13:00–16:00', 'ct' => 'Ø 18,3' . NNBSP . 'ct/kWh', 'running' => false]], 'charging' => false, 'solar_only' => false, 'power_kw' => 0.0, 'phases' => 0, 'session_kwh' => 0.0, 'remaining_s' => null, 'vehicle' => ['status' => 'Verbunden'] + $vehicle],
+    'Laden aus, Fahrzeugdaten fehlen' => ['name' => 'Garage', 'mode' => 'aus', 'sun_mode' => 'smart', 'charging' => false, 'solar_only' => false, 'power_kw' => null, 'phases' => 0, 'session_kwh' => null, 'remaining_s' => null, 'vehicle' => ['name' => 'Auto', 'status' => 'Nicht verbunden', 'soc' => null, 'range_km' => null, 'limit' => null, 'range_at_limit' => null]],
 ];
 $battery = [
     'soc' => $v['battery_soc'],
@@ -86,11 +86,12 @@ $section('Buttons und Icon-Buttons', 'Kapseln für Aktionen, Primär in Tinte, S
     echo '</div>';
 });
 
-$section('Segment-Umschalter', 'Modi und Zeiträume als Kapsel-Segmente. Pfeiltasten wechseln, die aktive Kapsel gleitet. Bei wenig Platz wird „Min+Solar“ zu „Min+“ mit Sonne und „Netzladen“ zu „Netz“.', static function (string $s) use ($state): void {
+$section('Segment-Umschalter', 'Modi und Zeiträume als Kapsel-Segmente. Pfeiltasten wechseln, die aktive Kapsel gleitet. Bei wenig Platz wird „Min+Sonne“ zu „Min+“ mit Sonne und „In Ladefenstern“ zu „Fenster“.', static function (string $s) use ($state): void {
     echo $state('Modi', ui_segment('mode-' . $s, 'Lademodus', ui_mode_options(), 'smart', ['id' => 'g-mode-' . $s, 'tight' => true]));
     echo '<div class="gallery-narrow">' . $state('Schmal (Kurzlabel)', ui_segment('mode-n-' . $s, 'Lademodus', ui_mode_options(), 'smart_dauerhaft', ['id' => 'g-moden-' . $s, 'tight' => true])) . '</div>';
     echo $state('Kompakt (Filter)', ui_segment('span-' . $s, 'Zeitraum', ['month' => 'Monat', 'year' => 'Jahr', 'all' => 'Gesamt'], 'year', ['compact' => true, 'id' => 'g-span-' . $s]));
-    echo $state('Deaktiviert', ui_segment('mode-x-' . $s, 'Lademodus', ui_mode_options(), 'aus', ['id' => 'g-modex-' . $s, 'tight' => true, 'attrs' => ['disabled' => true]]));
+    echo $state('Netzladen', ui_segment('grid-' . $s, 'Netzladen', ui_grid_options(), 'windows', ['id' => 'g-grid-' . $s, 'tight' => true]));
+    echo $state('Deaktiviert', ui_segment('mode-x-' . $s, 'Lademodus', ui_mode_options(), 'smart', ['id' => 'g-modex-' . $s, 'tight' => true, 'attrs' => ['disabled' => true]]));
 });
 
 $section('Kennzahlen und unterstrichene Werte', 'Zahlen groß und fett, Labels klein in Versalien. Unterstrichen heißt bedienbar.', static function (string $s) use ($state): void {

@@ -654,13 +654,50 @@ final class Energy
         return 'Ruhe';
     }
 
-    /** Die Lademodi in der Reihenfolge der Auswahl: Aus, Solar, Min+Solar, Schnell und Netzladen. */
+    /**
+     * Alle Modi, nach denen die Regelung lädt: Aus, Intelligent, Min+Sonne, Schnell und Netzladen. Netzladen stellt
+     * man nicht als Modus ein, er gilt über charge.grid (jetzt oder in Ladefenstern, ChargePlan::effective()).
+     */
     public const MODES = ['aus', 'smart', 'smart_dauerhaft', 'schnell', 'netz'];
+    /** Die Modi für Sonne und Speicher in der Ladepunkt-Karte; „Aus“ ist der Schalter daneben. */
+    public const SUN_MODES = ['smart', 'smart_dauerhaft', 'schnell'];
+    /** Netzladen: aus, jetzt (bis zum Ziel oder Abstecken) oder in den Ladefenstern. */
+    public const GRID = ['off', 'now', 'windows'];
 
-    /** Ein gespeicherter oder gesendeter Modus; unbekannte werden zu Solar. */
+    /** Ein gespeicherter oder gesendeter Modus; unbekannte werden zu Intelligent. */
     public static function mode(mixed $mode): string
     {
         return in_array($mode, self::MODES, true) ? (string) $mode : 'smart';
+    }
+
+    /** Ein Modus, wie er in charge.mode stehen darf: Aus oder einer für Sonne und Speicher. */
+    public static function userMode(mixed $mode): string
+    {
+        return $mode === 'aus' || in_array($mode, self::SUN_MODES, true) ? (string) $mode : 'smart';
+    }
+
+    public static function grid(mixed $grid): string
+    {
+        return in_array($grid, self::GRID, true) ? (string) $grid : 'off';
+    }
+
+    public static function gridLabel(string $grid): string
+    {
+        return match ($grid) {
+            'now' => 'Jetzt',
+            'windows' => 'In Ladefenstern',
+            default => 'Aus',
+        };
+    }
+
+    /** Ein Satz zu Netzladen, unter der Auswahl in der Ladepunkt-Karte. */
+    public static function gridText(string $grid): string
+    {
+        return match ($grid) {
+            'now' => 'Volle Leistung aus dem Netz, bis das Ziel erreicht ist oder das Auto abgesteckt wird. Der Speicher gibt nichts ab.',
+            'windows' => 'In deinen Ladefenstern volle Leistung aus dem Netz, bis das Ziel erreicht ist. Dazwischen gilt der Modus oben.',
+            default => 'Es gilt nur der Modus oben.',
+        };
     }
 
     /** Volle Leistung sofort: Schnell (Sonne, Speicher bis zum Backup-Puffer, Netz) und Netzladen (Sonne und Netz). */
@@ -682,10 +719,10 @@ final class Energy
     {
         return match ($mode) {
             'aus' => 'Aus',
-            'smart_dauerhaft' => 'Min+Solar',
+            'smart_dauerhaft' => 'Min+Sonne',
             'schnell' => 'Schnell',
             'netz' => 'Netzladen',
-            default => 'Solar',
+            default => 'Intelligent',
         };
     }
 
@@ -696,7 +733,17 @@ final class Energy
             'smart_dauerhaft' => 'Lädt immer mit dem Mindeststrom. Sonnenüberschuss hebt die Leistung an, was fehlt, deckt der Speicher bis zum Backup-Puffer, danach das Netz.',
             'schnell' => 'Volle Ladeleistung sofort. Was die Sonne nicht schafft, deckt der Speicher bis zum Backup-Puffer, danach das Netz.',
             'netz' => 'Volle Ladeleistung, was die Sonne nicht schafft, kommt aus dem Netz. Solange das Auto lädt, hebt die App den Backup-Puffer auf den Ladestand, der Speicher gibt nichts ab; danach gilt wieder der Standardwert.',
-            default => 'Nur Sonnenüberschuss, Ziel nahe 0 W am Zähler. Unter 1,38 kW setzt der Vorschlag aus, außer der Speicher stützt die Ladung.',
+            default => 'Nur Sonnenüberschuss, Ziel nahe 0 W am Zähler, nach den Grenzen des Speichers. Unter 1,38 kW setzt der Vorschlag aus, außer der Speicher stützt die Ladung.',
+        };
+    }
+
+    /** Kurz unter der Modusauswahl in der Ladepunkt-Karte. */
+    public static function modeHint(string $mode): string
+    {
+        return match ($mode) {
+            'smart_dauerhaft' => 'Immer mindestens der Mindeststrom, die Sonne hebt an; was fehlt, deckt der Speicher, dann das Netz.',
+            'schnell' => 'Volle Leistung aus Sonne, Speicher bis zum Backup-Puffer und Netz.',
+            default => 'Nur Sonnenüberschuss, nach den Grenzen des Speichers.',
         };
     }
 }

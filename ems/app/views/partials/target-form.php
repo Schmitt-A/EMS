@@ -4,7 +4,8 @@ declare(strict_types=1);
  * Ladeziel-Sheet: nach Energiemenge, Uhrzeit, Ladestand oder Reichweite, dazu der Folgemodus. Die Felder der
  * gewählten Art zeigt CSS über :has() am Segment, ohne Skript. Unter jedem Feld rechnet components/target.js beim
  * Tippen die Kilometer und die Dauer aus den data-Werten des Formulars. Gespeichert wird per Formular (section target).
- * Energie, Ladestand und Reichweite haben optional „fertig bis“: Dann plant ChargePlan die günstigsten Viertelstunden.
+ * Energie, Ladestand und Reichweite haben optional „fertig bis“: Mit Netzladen in Ladefenstern prüft ChargePlan, ob
+ * die Fenster reichen, und plant sonst die günstigsten Viertelstunden dazu.
  * @var ?array $target gespeichertes Ziel
  * @var array $snap
  * @var string $back
@@ -76,8 +77,8 @@ $hint = static fn (string $panel): string => '<p class="caption target-km" data-
     <?= $hint('range') ?>
 <?php endif; ?>
   </div>
-  <div class="form-rows target-ready"><?= ui_form_row('Fertig bis', ui_input('ready_by', $ready, ['id' => 'f-ready_by', 'type' => 'time', 'class' => 'field-num']), ['for' => 'f-ready_by', 'hint' => 'Optional. Dann lädt EMS in Solar und Min+Solar in den günstigsten Viertelstunden davor voll aus dem Netz, was die Sonne bis dahin nicht schafft.']) ?></div>
-  <div class="form-rows"><?= ui_form_row('Danach', ui_select('then', ['smart' => 'Solar', 'smart_dauerhaft' => 'Min+Solar', 'aus' => 'Aus (Wallbox stoppt)'], $then), ['for' => 'f-then']) ?></div>
+  <div class="form-rows target-ready"><?= ui_form_row('Fertig bis', ui_input('ready_by', $ready, ['id' => 'f-ready_by', 'type' => 'time', 'class' => 'field-num']), ['for' => 'f-ready_by', 'hint' => 'Optional, mit Netzladen „In Ladefenstern“. EMS prüft dann, ob die Ladefenster bis dahin reichen, mit der erwarteten Sonne, und nimmt sonst die günstigsten Viertelstunden davor dazu.']) ?></div>
+  <div class="form-rows"><?= ui_form_row('Danach', ui_select('then', ['smart' => 'Intelligent', 'smart_dauerhaft' => 'Min+Sonne', 'aus' => 'Laden aus (Wallbox stoppt)'], $then), ['for' => 'f-then', 'hint' => 'Netzladen „Jetzt“ endet mit dem Ziel, „In Ladefenstern“ ruht bis zum Abstecken.']) ?></div>
   <div class="form-actions">
     <button class="btn btn-primary" type="submit"><?= icon('target', 'icon-16') ?>Ziel setzen</button>
 <?php if ($target !== null): ?>
