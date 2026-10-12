@@ -878,4 +878,67 @@ if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
     }
 }
 
+// Börsenpreise: Energy-Charts mit Viertelstunden und Stunden, aWATTar in Millisekunden.
+$ec = MarketPrices::parseEnergyCharts(json_encode(['unix_seconds' => [1000 * 900, 1001 * 900, 1002 * 900], 'price' => [80.5, null, -12.0], 'unit' => 'EUR / MWh']));
+check(count($ec) === 2 && $ec[0] == ['start' => 900000, 'end' => 900900, 'eur_mwh' => 80.5] && $ec[1]['eur_mwh'] === -12.0 && $ec[1]['end'] - $ec[1]['start'] === 900, 'Energy-Charts: Viertelstunden, Lücken ohne Preis entfallen, negative Preise bleiben');
+$ecHours = MarketPrices::parseEnergyCharts(json_encode(['unix_seconds' => [3600, 7200], 'price' => [50, 60]]));
+check($ecHours[0]['end'] === 7200 && $ecHours[1]['end'] === 10800, 'Energy-Charts: vor Oktober 2025 Stunden');
+$aw = MarketPrices::parseAwattar(json_encode(['data' => [['start_timestamp' => 1791813600000, 'end_timestamp' => 1791817200000, 'marketprice' => 180.68, 'unit' => 'Eur/MWh']]]));
+check($aw === [['start' => 1791813600, 'end' => 1791817200, 'eur_mwh' => 180.68]], 'aWATTar: Millisekunden zu Sekunden');
+$priceStore = new ConfigStore(':memory:');
+$market = new MarketPrices($priceStore);
+$q0 = (int) strtotime('2026-10-12 02:00:00 Europe/Berlin');
+$market->save([['start' => $q0, 'end' => $q0 + 3600, 'eur_mwh' => 100.0]], 'awattar');
+$market->save([['start' => $q0, 'end' => $q0 + 900, 'eur_mwh' => 90.0], ['start' => $q0 + 900, 'end' => $q0 + 1800, 'eur_mwh' => -20.0]], 'energy-charts');
+$market->save([['start' => $q0, 'end' => $q0 + 3600, 'eur_mwh' => 300.0], ['start' => $q0 + 3600, 'end' => $q0 + 7200, 'eur_mwh' => 50.0]], 'awattar');
+$quarters = (new MarketPrices($priceStore))->quarters($q0, $q0 + 7200);
+check($quarters === [$q0 => 9.0, $q0 + 900 => -2.0, $q0 + 3600 => 5.0, $q0 + 4500 => 5.0, $q0 + 5400 => 5.0, $q0 + 6300 => 5.0], 'Genauere Viertelstunden ersetzen die Stunde des Ersatzes; der Ersatz füllt nur Stunden ohne sie');
+
+// Tarif: Endpreis aus Börse und Aufschlägen, Modul 3 über Mitternacht, Verlauf nach Datum.
+$dyn = Tariff::normalize(['mode' => 'dynamic', 'dyn_grid_ct' => 10, 'dyn_levies_ct' => 6, 'dyn_supplier_ct' => 2, 'dyn_vat_pct' => 19, 'dyn_windows' => [['from' => '22:00', 'to' => '06:00', 'ct' => 2.5], ['from' => '17:00', 'to' => '17:00', 'ct' => 1]]]);
+$night = (int) strtotime('2026-10-12 03:00:00 Europe/Berlin');
+$noon = (int) strtotime('2026-10-12 12:00:00 Europe/Berlin');
+$parts = Tariff::parts(8.0, $dyn, $noon);
+check(abs($parts['total'] - (8 + 10 + 6 + 2) * 1.19) < 1e-9 && abs($parts['vat'] - 26 * 0.19) < 1e-9 && count($dyn['dyn_windows']) === 1, 'Endpreis = (Börse + Netz + Steuern und Umlagen + Anbieter) × (1 + MwSt); ein leeres Fenster entfällt');
+check(Tariff::gridCt($dyn, $night) === 2.5 && Tariff::gridCt($dyn, $noon) === 10.0 && abs(Tariff::dynamicCt(-5.0, $dyn, $night) - (-5 + 2.5 + 6 + 2) * 1.19) < 1e-9, 'Modul 3: das Fenster gilt auch über Mitternacht, auch bei negativer Börse');
+check(Tariff::clock('24:00') === '00:00' && Tariff::clock('7:5') === null && Tariff::clock('07:05') === '07:05' && Tariff::normalize([])['mode'] === 'static' && Tariff::normalize([])['base_eur'] === null, 'Uhrzeiten und Standardwerte des Tarifs');
+$hist = Tariff::withEntry([], Tariff::ORIGIN, ['import_ct' => 30]);
+$hist = Tariff::withEntry($hist, '2026-07-01', ['import_ct' => 34.7]);
+$hist = Tariff::withEntry($hist, '2026-07-01', ['import_ct' => 35.0]);
+check(count($hist) === 2 && Tariff::at($hist, (int) strtotime('2026-06-30 23:00:00 Europe/Berlin'))['import_ct'] === 30.0 && Tariff::at($hist, (int) strtotime('2026-07-01 00:30:00 Europe/Berlin'))['import_ct'] === 35.0, 'Verlauf: gleiches Datum ersetzt, jede Zeit hat ihren Preis');
+check(count(Tariff::withoutEntry($hist, '2026-07-01')) === 1 && count(Tariff::withoutEntry(Tariff::withoutEntry($hist, '2026-07-01'), Tariff::ORIGIN)) === 1, 'Löschen lässt immer einen Satz übrig');
+$tariffStore = new ConfigStore(':memory:');
+$tariff = new Tariff($tariffStore);
+$tariff->saveHistory([['from' => Tariff::ORIGIN, 'tariffs' => ['mode' => 'static', 'import_ct' => 30, 'base_eur' => 10, 'dyn_base_eur' => 15] + $dyn]], $noon);
+(new MarketPrices($tariffStore))->save([['start' => $noon, 'end' => $noon + 900, 'eur_mwh' => 80.0], ['start' => $noon + 900, 'end' => $noon + 1800, 'eur_mwh' => 120.0]], 'energy-charts');
+$tariff = new Tariff($tariffStore);
+check($tariff->importCt($noon) === 30.0 && abs($tariff->dynamicAt($noon) - 26 * 1.19) < 1e-9 && (float) $tariffStore->get('tariffs')['import_ct'] === 30.0, 'Aktiv statisch: Bezug zum Arbeitspreis, dynamisch rechnet trotzdem mit');
+$cmp = $tariff->compare($noon, $noon + 1800, [$noon => [1.0, 900], $noon + 900 => [2.0, 900]]);
+check(abs($cmp['static']['energy'] - 0.9) < 1e-9 && abs($cmp['dynamic']['spot'] - (1 * 8 + 2 * 12) / 100) < 1e-9 && abs($cmp['dynamic']['total'] - $cmp['dynamic']['base'] - (1 * 26 + 2 * 30) * 1.19 / 100) < 1e-9 && $cmp['quarter_share'] === 1.0, 'Vergleich: Viertelstunden einzeln, Bestandteile summieren sich zum Endpreis');
+check(abs($cmp['static']['base'] - 10 / 31) < 1e-9 && abs($cmp['dynamic']['base'] - 15 / 31) < 1e-9, 'Grundpreis anteilig für den einen Tag im Oktober');
+$shift = $tariff->shift([$noon + 900 => 1.0], 11.0);
+check($shift['days'] === 1 && abs($shift['actual'] - 30 * 1.19 / 100) < 1e-9 && abs($shift['best'] - 26 * 1.19 / 100) < 1e-9 && $shift['saving'] > 0, 'Verschieben: dieselbe Menge in der günstigsten Viertelstunde des Tages');
+$row = ['started_at' => date('c', $noon), 'duration_s' => 1800, 'energy_kwh' => 5, 'solar_kwh' => 0, 'grid_kwh' => 5];
+$tariff->saveHistory([['from' => Tariff::ORIGIN, 'tariffs' => ['mode' => 'dynamic'] + $dyn]], $noon);
+check(abs((new Tariff($tariffStore))->forRow($row)['import_ct'] - (26 + 30) / 2 * 1.19) < 1e-9, 'Ladevorgang im dynamischen Tarif: Mittel der Viertelstunden der Ladezeit');
+
+// Preis-Entität des Anbieters: Listen in Euro oder Cent, Zeit als Text oder Zahl.
+$entity = Tariff::parseEntity(['state' => '0.2841', 'attributes' => ['unit_of_measurement' => 'EUR/kWh', 'today' => [['startsAt' => '2026-10-12T00:00:00+02:00', 'total' => 0.25], ['startsAt' => '2026-10-12T00:15:00+02:00', 'total' => 0.26]], 'other' => 'x']], $noon);
+check($entity['now'] === 28.41 && count($entity['rows']) === 2 && $entity['rows'][0]['ct'] === 25.0 && $entity['rows'][0]['end'] - $entity['rows'][0]['start'] === 900, 'Preis-Entität in Euro mit Viertelstunden');
+$octo = Tariff::parseEntity(['state' => '31.2', 'attributes' => ['unit_of_measurement' => 'ct/kWh', 'rates' => [['start' => '2026-10-12T00:00:00Z', 'end' => '2026-10-12T01:00:00Z', 'value_inc_vat' => 30.5]]]], $noon);
+check($octo['now'] === 31.2 && $octo['rows'][0]['ct'] === 30.5 && $octo['rows'][0]['end'] - $octo['rows'][0]['start'] === 3600 && Tariff::parseEntity(null, $noon)['rows'] === [], 'Preis-Entität in Cent mit Beginn und Ende');
+
+// Viertelstunden wie ein Smart Meter: Leistung mal Zeit, geteilt an der Grenze; Lücken bleiben leer.
+check(GridMeter::split(890, 920) === [[0, 10], [900, 20]], 'Viertelstunden: geteilt an der Grenze');
+$meterStore = new ConfigStore(':memory:');
+$meter = new GridMeter($meterStore);
+$meter->record(['grid_import_kw' => 3.6, 'grid_export_kw' => 0.0], 1790);
+$meter->record(['grid_import_kw' => 0.0, 'grid_export_kw' => 1.8], 1810);
+$meter->record(['grid_import_kw' => 9.9, 'grid_export_kw' => 0.0], 2400);
+$meterRows = $meter->quarters(0, 3600);
+check(abs($meterRows[900]['import'] - 0.01) < 1e-9 && abs($meterRows[1800]['import'] - 0.01) < 1e-9 && count($meterRows) === 2, 'Netzbezug 3,6 kW über 20 s verteilt; nach einer Lücke von 10 min wird nichts geschätzt');
+$merged = GridMeter::merge([0 => 1.0, 3600 => 2.0], [3600 => ['import' => 0.4, 'export' => 0, 'seconds' => 900], 4500 => ['import' => 0.4, 'export' => 0, 'seconds' => 900], 5400 => ['import' => 0.4, 'export' => 0, 'seconds' => 900], 6300 => ['import' => 0.4, 'export' => 0, 'seconds' => 900]]);
+check($merged === [0 => [1.0, 3600], 3600 => [0.4, 900], 4500 => [0.4, 900], 5400 => [0.4, 900], 6300 => [0.4, 900]], 'Gemessene Stunden als Viertelstunden, die übrigen aus Home Assistant');
+check(PriceView::cheapest([0 => 30.0, 900 => 10.0, 1800 => 12.0, 2700 => 40.0, 7200 => 1.0], 2) == ['start' => 900, 'end' => 2700, 'ct' => 11.0] && PriceView::cheapest([0 => 30.0, 900 => 10.0], 2, true)['ct'] === 20.0, 'Günstigste zusammenhängende Zeit, Lücken unterbrechen');
+
 echo "alle prüfungen bestanden\n";

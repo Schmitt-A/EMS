@@ -24,13 +24,17 @@ function startOfDay(ms) {
   return guess - Number(offset) * 3600000;
 }
 
-/** Sichtbares Fenster: „today“ ab heute, anchor „now“ volle Tage bis heute (heute ganz rechts). */
+/**
+ * Sichtbares Fenster: „today“ ab heute, anchor „now“ volle Tage bis heute (heute ganz rechts). Gibt die Antwort ein
+ * windowEnd vor (Strompreis: Ende des letzten Tages mit Preisen), enden mehrtägige Fenster dort.
+ */
 export function windowRange(name, anchor, payload, bounds) {
   const now = payload.now || Date.now();
   const today = payload.today ? payload.today[0] : startOfDay(now);
   if (name === 'all') return bounds;
   if (name === 'today') return [today, today + DAY];
   const days = name === '24' ? 1 : Number(name) || 3;
+  if (payload.windowEnd) return [payload.windowEnd - days * DAY, payload.windowEnd];
   return anchor === 'now' ? [today + DAY - days * DAY, today + DAY] : [today, today + days * DAY];
 }
 
@@ -90,17 +94,18 @@ export function renderTime(figure, payload, state) {
   let axis = null;
   if (payload.axes && payload.axes[unitKey]) {
     const a = payload.axes[unitKey];
-    axis = { max: a.yMax, step: a.yStep, dataMax: a.yDataMax, decimals: a.yDecimals ?? 1, title: a.yTitle };
+    axis = { max: a.yMax, min: a.yMin || 0, step: a.yStep, dataMax: a.yDataMax, decimals: a.yDecimals ?? 1, title: a.yTitle };
   } else if (payload.yLock) {
-    axis = { max: payload.yMax, step: payload.yStep, dataMax: payload.yDataMax, decimals: payload.yDecimals ?? 1, title: payload.yTitle };
+    axis = { max: payload.yMax, min: payload.yMin || 0, step: payload.yStep, dataMax: payload.yDataMax, decimals: payload.yDecimals ?? 1, title: payload.yTitle };
   } else {
     const maxY = Math.max(0, ...left.flatMap((series) => (series.data || []).map((p) => (p.y ?? p.max ?? 0))));
     const n = nice(maxY * 1.08, 4);
-    axis = { max: n.max, step: n.step, dataMax: n.max, decimals: n.step < 1 ? 1 : 0, title: payload.yTitle };
+    axis = { max: n.max, min: 0, step: n.step, dataMax: n.max, decimals: n.step < 1 ? 1 : 0, title: payload.yTitle };
   }
-  const y = linear([0, axis.max], [height - bottom, top]);
+  // Werte unter null (Strompreis) bekommen Platz unter der Nulllinie; sonst beginnt die Achse bei null.
+  const y = linear([axis.min, axis.max], [height - bottom, top]);
   const unit = style._unit || unitFromTitle(axis.title);
-  drawAxis(f.yAxis, y, ticks(axis.dataMax ?? axis.max, axis.step), (v) => fmt(v, axis.decimals), { unit });
+  drawAxis(f.yAxis, y, ticks(axis.dataMax ?? axis.max, axis.step, axis.min), (v) => fmt(v, axis.decimals), { unit });
   let y1 = null;
   if (f.y1Axis) {
     const max1 = Math.max(1, ...right.flatMap((series) => (series.data || []).map((p) => p.y ?? 0)));
@@ -157,7 +162,7 @@ export function renderTime(figure, payload, state) {
     const scaleY = series.axis === 'y1' && y1 ? y1 : y;
     const points = (series.data || [])
       .filter((p) => p.x >= bounds[0] - DAY && p.x <= bounds[1] + DAY)
-      .map((p) => [x(p.x), p.y === null || p.y === undefined ? null : scaleY(Math.max(0, p.y))]);
+      .map((p) => [x(p.x), p.y === null || p.y === undefined ? null : scaleY(Math.max(scaleY === y ? axis.min : 0, p.y))]);
     const group = svg('g', { class: colorClass(series.color) }, plot);
     const kind = series.curve || (series.type === 'step' ? 'step' : 'monotone');
     if (series.type === 'area') {

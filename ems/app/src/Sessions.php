@@ -122,7 +122,7 @@ final class Sessions
     /** Vorgänge, die zwischen $start und $end geladen haben können (Beginn bis drei Tage davor), mit Energie und Dauer. */
     public function overlapping(int $start, int $end): array
     {
-        $stmt = $this->store->pdo()->prepare('SELECT started_at, duration_s, energy_kwh FROM sessions WHERE started_at >= ? AND started_at < ? ORDER BY started_at ASC');
+        $stmt = $this->store->pdo()->prepare('SELECT started_at, duration_s, energy_kwh, grid_kwh FROM sessions WHERE started_at >= ? AND started_at < ? ORDER BY started_at ASC');
         $stmt->execute([date('c', $start - 3 * 86400), date('c', $end)]);
         return $stmt->fetchAll() ?: [];
     }
@@ -430,12 +430,13 @@ final class Sessions
     }
 
     /** Summen über Vorgänge: Energie, Sonne, Netz, Kosten, Ø-Preis, Sonnenanteil, Ersparnis und CO₂. */
-    public static function summary(array $rows, array $tariffs): array
+    /** Mit $pricing rechnet jeder Vorgang zum Tarif, der damals galt (Tariff::forRow), sonst mit $tariffs. */
+    public static function summary(array $rows, array $tariffs, ?Tariff $pricing = null): array
     {
         $factor = (float) ($tariffs['co2_g_kwh'] ?? 380);
         $out = ['count' => count($rows), 'energy' => 0.0, 'solar' => 0.0, 'grid' => 0.0, 'cost' => 0.0, 'reference' => 0.0, 'saved' => 0.0, 'duration' => 0, 'co2_saved_kg' => 0.0, 'co2_caused_kg' => 0.0];
         foreach ($rows as $row) {
-            $cost = self::cost($row, $tariffs);
+            $cost = self::cost($row, $pricing?->forRow($row) ?? $tariffs);
             $co2 = self::co2($row, $factor);
             $out['energy'] += (float) $row['energy_kwh'];
             $out['solar'] += (float) $row['solar_kwh'];
@@ -541,7 +542,7 @@ final class Sessions
      * Tage vor dem Zeitraum erscheinen blasser und zählen nicht zur Summe der Legende.
      * Kennzahl energy (Sonne/Netz in kWh), cost (Kosten in €, dazu Ø ct/kWh) oder co2 (gespart/verursacht in kg).
      */
-    public static function chart(array $rows, string $span, string $metric, array $tariffs, string $month, int $year, ?int $now = null): array
+    public static function chart(array $rows, string $span, string $metric, array $tariffs, string $month, int $year, ?int $now = null, ?Tariff $pricing = null): array
     {
         $tz = new DateTimeZone('Europe/Berlin');
         $factor = (float) ($tariffs['co2_g_kwh'] ?? 380);
@@ -568,11 +569,11 @@ final class Sessions
                 continue;
             }
             $i = $index[$key];
-            $cost = self::cost($row, $tariffs);
+            $priced = $pricing?->forRow($row) ?? $tariffs;
             $energy[$i] += (float) $row['energy_kwh'];
             if ($metric === 'cost') {
-                $a[$i] += (float) $row['solar_kwh'] * (float) ($tariffs['export_ct'] ?? 0) / 100;
-                $b[$i] += (float) $row['grid_kwh'] * (float) ($tariffs['import_ct'] ?? 0) / 100;
+                $a[$i] += (float) $row['solar_kwh'] * (float) ($priced['export_ct'] ?? 0) / 100;
+                $b[$i] += (float) $row['grid_kwh'] * (float) ($priced['import_ct'] ?? 0) / 100;
             } elseif ($metric === 'co2') {
                 $co2 = self::co2($row, $factor);
                 $a[$i] += $co2['saved_kg'];

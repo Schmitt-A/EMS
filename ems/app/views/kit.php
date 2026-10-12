@@ -126,6 +126,16 @@ function ui_segment(string $name, string $legend, array $options, ?string $curre
     return $html . '</fieldset>';
 }
 
+/** Umschalter zwischen Seiten: sieht aus wie ein Segment, sind aber Links (Prognose: Sonne | Strompreis). */
+function ui_seg_links(string $label, array $links, string $current): string
+{
+    $html = '<nav class="seg seg-links" aria-label="' . e($label) . '">';
+    foreach ($links as $href => $text) {
+        $html .= '<a href="' . e(url((string) $href)) . '"' . ((string) $href === $current ? ' aria-current="page"' : '') . '>' . e($text) . '</a>';
+    }
+    return $html . '</nav>';
+}
+
 /** Die fünf Lademodi (Energy::MODES). Schmal stehen Kurzformen, der volle Name im aria-label. */
 function ui_mode_options(): array
 {

@@ -16,6 +16,7 @@ final class Heatmap
     public const GROUPS = [
         'sonne' => 'Sonne und Prognose',
         'haus' => 'Haus und Netz',
+        'preis' => 'Strompreis',
         'speicher' => 'Speicher',
         'laden' => 'Laden',
         'wetter' => 'Wetter (DWD)',
@@ -24,7 +25,7 @@ final class Heatmap
     /**
      * Kennzahlen. kind bestimmt Einheit, Summe und Skala: energy (kWh), euro, co2 (kg), radiation (kWh/m²),
      * duration (Sekunden, als min oder h gezeigt), count, ratio (Prozent aus Summen), level (Prozent als Mittel),
-     * temp (°C). color: Farbe aus tokens.css (data-… oder success, info).
+     * temp (°C), price (ct/kWh, Mittel). color: Farbe aus tokens.css (data-… oder success, info).
      */
     public const METRICS = [
         'pv' => ['group' => 'sonne', 'label' => 'PV gemessen', 'kind' => 'energy', 'color' => 'solar'],
@@ -38,6 +39,11 @@ final class Heatmap
         'autarky' => ['group' => 'haus', 'label' => 'Autarkie', 'kind' => 'ratio', 'color' => 'success'],
         'selfuse' => ['group' => 'haus', 'label' => 'Eigenverbrauch der PV', 'kind' => 'ratio', 'color' => 'success'],
         'co2' => ['group' => 'haus', 'label' => 'CO₂ gespart', 'kind' => 'co2', 'color' => 'success'],
+        'price_spot' => ['group' => 'preis', 'label' => 'Börsenpreis', 'kind' => 'price', 'color' => 'price'],
+        'price_paid' => ['group' => 'preis', 'label' => 'Bezahlter Preis', 'kind' => 'price', 'color' => 'price'],
+        'cost_static' => ['group' => 'preis', 'label' => 'Netzbezug statisch', 'kind' => 'euro', 'color' => 'price'],
+        'cost_dynamic' => ['group' => 'preis', 'label' => 'Netzbezug dynamisch', 'kind' => 'euro', 'color' => 'price'],
+        'saving' => ['group' => 'preis', 'label' => 'Ersparnis dynamisch', 'kind' => 'euro', 'color' => 'success'],
         'soc' => ['group' => 'speicher', 'label' => 'Speicherstand', 'kind' => 'level', 'color' => 'battery'],
         'bat_in' => ['group' => 'speicher', 'label' => 'Speicher geladen', 'kind' => 'energy', 'color' => 'battery'],
         'bat_out' => ['group' => 'speicher', 'label' => 'Speicher entladen', 'kind' => 'energy', 'color' => 'battery'],
@@ -64,6 +70,7 @@ final class Heatmap
     private DateTimeZone $tz;
     private ?array $index = null;
     private array $notes = [];
+    private ?Tariff $tariff = null;
 
     public function __construct(private ConfigStore $store, private HaSource $ha)
     {
@@ -352,10 +359,11 @@ final class Heatmap
         if (!$values) {
             return [0.0, 0.0];
         }
-        if ($kind === 'temp') {
+        if ($kind === 'temp' || $kind === 'price') {
             return [min($values), max($values)];
         }
-        return [0.0, max(0.0, max($values))];
+        // Beträge können unter null liegen (Ersparnis); die Skala reicht dann bis dorthin.
+        return [min(0.0, min($values)), max(0.0, max($values))];
     }
 
     /**
@@ -412,17 +420,25 @@ final class Heatmap
                 $v = $this->house($m, $period, $start, $end, false);
                 return ['values' => $v, 'total' => $sum($v)];
             case 'import':
-            case 'import_cost':
                 $v = $this->grid($m, 'import', $period, $start, $end);
-                if ($metric === 'import_cost') {
-                    $v = array_map(static fn (float $kwh): float => $kwh * (float) $tariffs['import_ct'] / 100, $v);
-                }
                 return ['values' => $v, 'total' => $sum($v)];
+            case 'import_cost':
+                return $this->priced('cost_paid', $period, $start, $end);
+            case 'price_spot':
+                return $this->spot($period, $start, $end);
+            case 'price_paid':
+            case 'cost_static':
+            case 'cost_dynamic':
+            case 'saving':
+                return $this->priced($metric, $period, $start, $end);
             case 'export':
             case 'export_pay':
                 $v = $this->grid($m, 'export', $period, $start, $end);
                 if ($metric === 'export_pay') {
-                    $v = array_map(static fn (float $kwh): float => $kwh * (float) $tariffs['export_ct'] / 100, $v);
+                    // Jeder Abschnitt zur Vergütung, die damals galt.
+                    foreach ($v as $key => $kwh) {
+                        $v[$key] = $kwh * (float) $this->tariff()->tariffAt($this->keyTime((string) $key, $period))['export_ct'] / 100;
+                    }
                 }
                 return ['values' => $v, 'total' => $sum($v)];
             case 'autarky':
@@ -514,6 +530,116 @@ final class Heatmap
             $out[$bucket] = ($out[$bucket] ?? 0.0) + $kwh;
         }
         return $out;
+    }
+
+    private function tariff(): Tariff
+    {
+        return $this->tariff ??= new Tariff($this->store);
+    }
+
+    /** Beginn eines Abschnitts als Zeitpunkt (Tage und Monate zur Mitte, für den Tarif, der dann galt). */
+    private function keyTime(string $key, string $period): int
+    {
+        return (int) match ($period) {
+            'hour' => strtotime($key . ':00:00 Europe/Berlin'),
+            'day' => strtotime($key . ' 12:00:00 Europe/Berlin'),
+            default => strtotime($key . '-15 12:00:00 Europe/Berlin'),
+        };
+    }
+
+    /**
+     * Netzbezug je Stunde (Beginn in Sekunden) aus der Langzeitstatistik, für Tarifvergleich und Preise. Monatsweise
+     * abgefragt, damit abgeschlossene Monate im Zwischenspeicher bleiben.
+     *
+     * @return array<int, float>
+     */
+    public function importHours(int $from, int $to): array
+    {
+        $m = $this->store->all()['mapping'];
+        $out = [];
+        $cursor = (new DateTimeImmutable('@' . $from))->setTimezone($this->tz);
+        while ($cursor->getTimestamp() < $to) {
+            $next = $cursor->modify('first day of next month')->setTime(0, 0);
+            foreach ($this->grid($m, 'import', 'hour', $cursor->getTimestamp(), min($to, $next->getTimestamp())) as $key => $kwh) {
+                $t = $this->keyTime((string) $key, 'hour');
+                $out[$t] = ($out[$t] ?? 0.0) + $kwh;
+            }
+            $cursor = $next;
+        }
+        ksort($out);
+        return $out;
+    }
+
+    /** Börsenpreis netto je Abschnitt als Mittel der Viertelstunden. */
+    private function spot(string $period, int $start, int $end): array
+    {
+        $prices = $this->tariff()->market()->quarters($start, $end);
+        $sum = $count = [];
+        foreach ($prices as $q => $ct) {
+            $key = $this->slot($q, $period);
+            $sum[$key] = ($sum[$key] ?? 0.0) + $ct;
+            $count[$key] = ($count[$key] ?? 0) + 1;
+        }
+        $out = [];
+        foreach ($sum as $key => $total) {
+            $out[$key] = $total / $count[$key];
+        }
+        if (!$prices) {
+            $this->notes[] = 'Für diesen Zeitraum hat EMS noch keine Börsenpreise. Ältere lädt es nach und nach, bis zwei Jahre zurück.';
+        }
+        return ['values' => $out, 'total' => $prices ? array_sum($prices) / count($prices) : null];
+    }
+
+    /**
+     * Netzbezug mit Preis: Kosten im Tarif, der damals aktiv war (cost_paid), statisch, dynamisch (Börse plus
+     * Aufschläge), die Ersparnis dynamisch gegen statisch und der bezahlte Preis je kWh. Wo EMS Viertelstunden gemessen
+     * hat, zählt jede für sich, sonst die Stunde aus Home Assistant zu gleichen Teilen.
+     */
+    private function priced(string $what, string $period, int $start, int $end): array
+    {
+        $tariff = $this->tariff();
+        $energy = GridMeter::merge($this->importHours($start, $end), (new GridMeter($this->store))->quarters($start, $end));
+        $cost = $kwh = [];
+        $missing = false;
+        foreach ($energy as $t0 => [$e, $len]) {
+            if ($e <= 0 || $t0 < $start || $t0 >= $end) {
+                continue;
+            }
+            $key = $this->slot($t0, $period);
+            $t = $tariff->tariffAt($t0);
+            $parts = max(1, intdiv($len, 900));
+            $value = 0.0;
+            for ($q = $t0; $q < $t0 + $parts * 900; $q += 900) {
+                $dynamic = in_array($what, ['cost_dynamic', 'saving'], true) ? $tariff->dynamicAt($q, $t, false) : null;
+                $ct = match ($what) {
+                    'cost_static' => (float) $t['import_ct'],
+                    'cost_dynamic' => $dynamic,
+                    'saving' => $dynamic === null ? null : (float) $t['import_ct'] - $dynamic,
+                    default => $tariff->importCt($q),
+                };
+                if ($ct === null) {
+                    $missing = true;
+                    continue;
+                }
+                $value += $e / $parts * $ct / 100;
+            }
+            $cost[$key] = ($cost[$key] ?? 0.0) + $value;
+            $kwh[$key] = ($kwh[$key] ?? 0.0) + $e;
+        }
+        if ($missing) {
+            $this->notes[] = 'Für manche Stunden fehlt noch der Börsenpreis; EMS lädt ihn nach und nach.';
+        }
+        if ($what === 'price_paid') {
+            $out = [];
+            foreach ($cost as $key => $eur) {
+                if ($kwh[$key] > 0.01) {
+                    $out[$key] = $eur * 100 / $kwh[$key];
+                }
+            }
+            $total = array_sum($kwh);
+            return ['values' => $out, 'total' => $total > 0.01 ? array_sum($cost) * 100 / $total : null];
+        }
+        return ['values' => $cost, 'total' => $cost ? array_sum($cost) : null];
     }
 
     /** Netzbezug oder Einspeisung, aus zwei Entitäten oder einer mit Vorzeichen. */
@@ -610,7 +736,7 @@ final class Heatmap
             }
             $energy = (float) $row['energy_kwh'];
             $solar = (float) $row['solar_kwh'];
-            $cost = Sessions::cost($row, $tariffs)['cost'];
+            $cost = Sessions::cost($row, $this->tariff()->forRow($row))['cost'];
             for ($cur = $t0; $cur < $t1; $cur = $next) {
                 $next = min($t1, $this->next($cur, $period));
                 if ($next <= $start || $cur >= $end) {
@@ -859,6 +985,7 @@ final class Heatmap
             'duration' => $period === 'hour' ? with_unit($value / 60, 0, 'min') : with_unit($value / 3600, $period === 'month' ? 0 : 1, 'h'),
             'count' => num($value, 0),
             'temp' => with_unit($value, 1, '°C'),
+            'price' => ct($value),
             default => pct($value),
         };
     }
@@ -872,6 +999,7 @@ final class Heatmap
             'duration' => $period === 'hour' ? num($value / 60, 0) : num($value / 3600, 1),
             'count' => num($value, 0),
             'temp' => num($value, 0),
+            'price' => num($value, abs($value) >= 10 ? 0 : 1),
             default => num($value, 0),
         };
     }
@@ -894,6 +1022,10 @@ final class Heatmap
             $out[] = ['label' => 'Summe', 'text' => self::text($kind, (float) $total, $period === 'hour' ? 'day' : $period)];
             $out[] = ['label' => 'Ø je ' . $per, 'text' => self::text($kind, $mean, $period)];
             $out[] = ['label' => 'Höchster Wert', 'text' => self::text($kind, $value($best), $period), 'sub' => $best['l']];
+        } elseif ($kind === 'price') {
+            $out[] = ['label' => 'Ganzer Zeitraum', 'text' => $total === null ? '—' : ct($total)];
+            $out[] = ['label' => 'Am teuersten', 'text' => ct($value($best)), 'sub' => $best['l']];
+            $out[] = ['label' => 'Am günstigsten', 'text' => ct($value($worst)), 'sub' => $worst['l']];
         } elseif ($kind === 'ratio') {
             $out[] = ['label' => 'Ganzer Zeitraum', 'text' => $total === null ? '—' : pct($total)];
             $out[] = ['label' => 'Am besten', 'text' => pct($value($best)), 'sub' => $best['l']];

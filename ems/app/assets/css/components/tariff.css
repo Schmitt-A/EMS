@@ -1,0 +1,213 @@
+/*
+ * Tarif und Strompreis: Einstellungen → Tarif (Modul-3-Fenster, Verlauf nach Datum) und Prognose → Strompreis
+ * (Umschalter Sonne | Strompreis als Links, Kennzahlen, Vergleich statisch ↔ dynamisch).
+ */
+
+/* Umschalter zwischen zwei Seiten: sieht aus wie ein Segment, sind aber Links. */
+.seg-links {
+  --seg-count: 2;
+}
+
+.seg-links a {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-width: 0;
+  min-height: 2.75rem;
+  margin-block: -4px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-pill);
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.seg-links a[aria-current="page"] {
+  background: var(--ink);
+  color: var(--on-ink);
+  box-shadow: var(--shadow-pill);
+}
+
+.seg-links a:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .seg-links a:not([aria-current="page"]):hover {
+    color: var(--text);
+  }
+}
+
+/* Modul 3: aufklappbar wie die Details der Regelung. */
+.tariff-windows summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.tariff-windows summary > span {
+  order: -1;
+}
+
+.tariff-windows summary::-webkit-details-marker {
+  display: none;
+}
+
+.tariff-windows summary .icon {
+  color: var(--text-2);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.tariff-windows[open] summary .icon {
+  transform: rotate(180deg);
+}
+
+.tariff-windows summary:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+  border-radius: var(--r-field);
+}
+
+/* Ein Fenster: Von, Bis und Preis nebeneinander, jeweils mit Beschriftung darüber. */
+.tariff-window {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  grid-auto-flow: column;
+  gap: var(--s-1) var(--s-2);
+  margin: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+}
+
+.tariff-window legend {
+  padding: 0 var(--s-1);
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.tariff-window label {
+  color: var(--text-2);
+  font-size: 0.8125rem;
+}
+
+.tariff-window .field {
+  min-width: 0;
+}
+
+/* Verlauf: ein Satz je Zeile, Löschen rechts. */
+.tariff-history li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-3);
+  padding-block: var(--s-2);
+  border-block-end: 1px solid var(--border);
+}
+
+.tariff-history li:last-child {
+  border-block-end: 0;
+}
+
+.tariff-history li > span {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+/* Prognose → Strompreis: Kennzahlen über dem Diagramm, ab 36rem Kartenbreite in einer Reihe. */
+.price-card {
+  container-type: inline-size;
+}
+
+.price-now {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+
+@container (min-width: 36rem) {
+  .price-now {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.price-cheap {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.price-cheap li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--s-1) var(--s-3);
+}
+
+/* Vergleich: zwei Spalten mit Beträgen, die Summe hervorgehoben. */
+/* Feste Spalten, damit die Tabelle auch auf 360 px ganz zu sehen ist; Beschriftungen brechen um. */
+.compare-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-table thead th:first-child {
+  width: 40%;
+}
+
+.compare-table th,
+.compare-table td {
+  padding: var(--s-2) var(--s-1);
+  border-block-end: 1px solid var(--border);
+  text-align: end;
+  vertical-align: top;
+}
+
+.compare-table th:first-child,
+.compare-table td:first-child {
+  text-align: start;
+}
+
+.compare-table thead th {
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.compare-table tfoot td,
+.compare-table tfoot th {
+  border-block-end: 0;
+  font-weight: 700;
+}
+
+.compare-table .sub {
+  display: block;
+  color: var(--text-2);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.compare-verdict {
+  font-size: 1.0625rem;
+  font-weight: 600;
+}

@@ -23,7 +23,7 @@ $areas = [
     'speicher' => ['Speicher', 'battery', 'Haus bis ' . pct((float) $b['priority_soc']) . ' · ' . ($reserve['default'] !== null ? 'Puffer ' . pct((float) $reserve['default']) : 'Puffer offen')],
     'energie' => ['Energie', 'zap', $missing ? 'Fehlt: ' . implode(', ', $missing) : 'PV, Speicher, Netz und Haus zugeordnet'],
     'prognose' => ['Prognose', 'sun', num((float) $p['kwp'], 2) . NNBSP . 'kWp · Faktor ' . num((float) $p['factor'], 2)],
-    'tarif' => ['Tarif & CO₂', 'coins', ct((float) $t['import_ct']) . ' · ' . num((float) ($t['co2_g_kwh'] ?? 380), 0) . NNBSP . 'g/kWh'],
+    'tarif' => ['Tarif & CO₂', 'coins', (($t['mode'] ?? 'static') === 'dynamic' ? 'Dynamisch, Börse + ' . ct(Tariff::surchargeCt(Tariff::normalize($t), time())) : 'Statisch ' . ct((float) $t['import_ct'])) . ' · ' . num((float) ($t['co2_g_kwh'] ?? 380), 0) . NNBSP . 'g/kWh'],
     'mitteilungen' => ['Mitteilungen', 'bell', Notify::summary($cfg)],
     'darstellung' => ['Darstellung', 'monitor', (['system' => 'System', 'light' => 'Hell', 'dark' => 'Dunkel'][$theme] ?? 'System') . ' · ' . (($cfg['ui']['flow_view'] ?? 'bar') === 'graph' ? 'Energie-Flow' : 'Balken')],
     'system' => ['System', 'server', $ping['ok'] ? 'Verbunden mit Home Assistant ' . $ping['version'] : 'Keine Verbindung'],

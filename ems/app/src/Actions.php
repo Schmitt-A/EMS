@@ -38,6 +38,7 @@ final class Actions
         'pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'battery_reserve',
         'car_soc', 'car_capacity', 'car_range', 'car_odometer', 'car_limit', 'car_wakeup', 'grid_import', 'grid_export', 'grid_signed', 'house_power',
         'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force', 'wallbox_energy',
+        'price_import',
     ];
 
     /**
@@ -188,12 +189,12 @@ final class Actions
         csrf_check();
         $section = (string) ($_POST['section'] ?? '');
         if ($section === 'tariffs') {
-            $current = store()->get('tariffs', []);
-            store()->merge('tariffs', [
-                'import_ct' => post_float('import_ct', 0, 200, 34.7),
-                'export_ct' => post_float('export_ct', 0, 200, 11),
-                'co2_g_kwh' => post_float('co2_g_kwh', 0, 1500, (float) ($current['co2_g_kwh'] ?? 380)),
-            ]);
+            self::saveTariff();
+        } elseif ($section === 'tariff_delete') {
+            $tariff = new Tariff(store());
+            $from = (string) ($_POST['from'] ?? '');
+            $tariff->saveHistory(Tariff::withoutEntry($tariff->history(), $from), time());
+            flash('Preis ab ' . self::dateText($from) . ' gelöscht.');
         } elseif ($section === 'plant') {
             $plant = store()->get('plant', []);
             $factor = post_float('factor', 0.3, 1.8, (float) ($plant['factor'] ?? 0.93));
@@ -502,6 +503,7 @@ final class Actions
             'version' => 2,
             'mapping' => $cfg['mapping'],
             'tariffs' => $cfg['tariffs'],
+            'tariff_history' => (new Tariff(store()))->history(),
             'plant' => $cfg['plant'],
             'charge' => $cfg['charge'],
             'battery_strategy' => $cfg['battery_strategy'],
@@ -585,11 +587,21 @@ final class Actions
             store()->put('mapping', $current);
         }
         if (isset($data['tariffs']) && is_array($data['tariffs'])) {
-            store()->merge('tariffs', [
-                'import_ct' => self::clamped($data['tariffs']['import_ct'] ?? null, 0, 200, 34.7),
-                'export_ct' => self::clamped($data['tariffs']['export_ct'] ?? null, 0, 200, 11),
-                'co2_g_kwh' => self::clamped($data['tariffs']['co2_g_kwh'] ?? null, 0, 1500, 380),
-            ]);
+            store()->put('tariffs', Tariff::normalize($data['tariffs']));
+        }
+        // Tarif-Verlauf (seit 1.11); ältere Sicherungen haben nur den jetzigen Tarif, der dann seit jeher gilt.
+        if (isset($data['tariff_history']) && is_array($data['tariff_history'])) {
+            $history = [];
+            foreach ($data['tariff_history'] as $entry) {
+                if (is_array($entry) && is_string($entry['from'] ?? null) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $entry['from']) && is_array($entry['tariffs'] ?? null)) {
+                    $history = Tariff::withEntry($history, $entry['from'], $entry['tariffs']);
+                }
+            }
+            if ($history) {
+                (new Tariff(store()))->saveHistory($history, time());
+            }
+        } elseif (isset($data['tariffs']) && is_array($data['tariffs'])) {
+            store()->put(Tariff::HISTORY, [['from' => Tariff::ORIGIN, 'tariffs' => Tariff::normalize($data['tariffs'])]]);
         }
         if (isset($data['vehicle']) && is_array($data['vehicle'])) {
             $capacity = $data['vehicle']['capacity_kwh'] ?? null;
@@ -694,6 +706,59 @@ final class Actions
         if (isset($data['notify']) && is_array($data['notify'])) {
             store()->put(Notify::KEY, Notify::clean($data['notify']));
         }
+    }
+
+    /**
+     * Tarif aus Einstellungen → Tarif: beide Tarife, welcher aktiv ist, Einspeisung und CO₂, gültig ab einem Datum.
+     * Gleiches Datum ersetzt den Satz, ein anderes kommt in den Verlauf; frühere Zeiten behalten ihre Preise.
+     */
+    private static function saveTariff(): void
+    {
+        $tariff = new Tariff(store());
+        $now = time();
+        $from = self::validFrom((string) ($_POST['valid_from'] ?? ''), $now);
+        $base = Tariff::at($tariff->history(), (int) strtotime($from . ' 12:00:00 Europe/Berlin'));
+        $windows = [];
+        $fromTimes = (array) ($_POST['win_from'] ?? []);
+        $toTimes = (array) ($_POST['win_to'] ?? []);
+        $cts = (array) ($_POST['win_ct'] ?? []);
+        for ($i = 0; $i < 3; $i++) {
+            $windows[] = ['from' => (string) ($fromTimes[$i] ?? ''), 'to' => (string) ($toTimes[$i] ?? ''), 'ct' => str_replace(',', '.', trim((string) ($cts[$i] ?? '')))];
+        }
+        $next = [
+            'mode' => ($_POST['mode'] ?? '') === 'dynamic' ? 'dynamic' : 'static',
+            'import_ct' => post_float('import_ct', 0, 200, (float) $base['import_ct']),
+            'base_eur' => self::optional('base_eur', 0, 500),
+            'dyn_base_eur' => self::optional('dyn_base_eur', 0, 500),
+            'dyn_grid_ct' => post_float('dyn_grid_ct', 0, 100, (float) $base['dyn_grid_ct']),
+            'dyn_levies_ct' => post_float('dyn_levies_ct', 0, 100, (float) $base['dyn_levies_ct']),
+            'dyn_supplier_ct' => post_float('dyn_supplier_ct', -20, 100, (float) $base['dyn_supplier_ct']),
+            'dyn_vat_pct' => post_float('dyn_vat_pct', 0, 30, (float) $base['dyn_vat_pct']),
+            'dyn_windows' => ($_POST['modul3'] ?? '0') === '1' ? $windows : [],
+            'export_ct' => post_float('export_ct', 0, 200, (float) $base['export_ct']),
+            'co2_g_kwh' => post_float('co2_g_kwh', 0, 1500, (float) $base['co2_g_kwh']),
+        ];
+        $tariff->saveHistory(Tariff::withEntry($tariff->history(), $from, $next), $now);
+        if (array_key_exists('price_import', $_POST)) {
+            store()->merge('mapping', ['price_import' => post_entity('price_import')]);
+        }
+        flash('Tarif gespeichert, gültig ab ' . self::dateText($from) . '.');
+    }
+
+    /** „gültig ab“ als Y-m-d; ohne gültiges Datum heute. */
+    private static function validFrom(string $raw, int $now): string
+    {
+        $raw = trim($raw);
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $raw, new DateTimeZone('Europe/Berlin'));
+        if ($date === false || $date->format('Y-m-d') !== $raw || $raw < '1990-01-01') {
+            return (new DateTimeImmutable('@' . $now))->setTimezone(new DateTimeZone('Europe/Berlin'))->format('Y-m-d');
+        }
+        return $raw;
+    }
+
+    private static function dateText(string $day): string
+    {
+        return $day === Tariff::ORIGIN ? 'Beginn' : (string) date('d.m.Y', (int) strtotime($day . ' 12:00:00'));
     }
 
     /** Ladeparameter aus dem Formular: nur gesendete Felder, damit ein einzelner Modus die übrigen Werte behält. */

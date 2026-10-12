@@ -335,6 +335,100 @@ final class Series
         ]);
     }
 
+    /**
+     * Strompreis für Prognose → Strompreis, je Viertelstunde von 14 Tagen zurück bis zum letzten bekannten Preis
+     * (gegen 13 Uhr kommt morgen dazu): dynamisch (was der Anbieter gemeldet hat, sonst Börse plus Aufschläge),
+     * statisch, Börsenpreis netto und Einspeisevergütung, jede Zeit im Tarif, der damals galt. Je Tag der günstigste
+     * und der teuerste dynamische Preis. Lücken bleiben Lücken.
+     */
+    public function price(): array
+    {
+        $tz = new DateTimeZone('Europe/Berlin');
+        $now = time();
+        $today = (new DateTimeImmutable('now', $tz))->setTime(0, 0);
+        $from = $today->modify('-14 days')->getTimestamp();
+        $tariff = new Tariff($this->store);
+        $market = $tariff->market();
+        $last = $market->lastEnd();
+        $spots = $market->quarters($from, max($last, $now));
+        $series = ['dynamic' => [], 'static' => [], 'spot' => [], 'export' => []];
+        $days = [];
+        $prev = null;
+        $lo = 0.0;
+        $hi = 1.0;
+        foreach ($spots as $q => $spot) {
+            if ($prev !== null && $q !== $prev + 900) {
+                foreach ($series as $key => $_) {
+                    $series[$key][] = ['x' => ($prev + 900) * 1000, 'y' => null];
+                }
+            }
+            $t = $tariff->tariffAt($q);
+            $dynamic = $tariff->dynamicAt($q, $t);
+            $values = ['dynamic' => $dynamic, 'static' => (float) $t['import_ct'], 'spot' => $spot, 'export' => (float) $t['export_ct']];
+            foreach ($values as $key => $value) {
+                $series[$key][] = ['x' => $q * 1000, 'y' => $value === null ? null : round($value, 2)];
+                if ($value !== null) {
+                    $lo = min($lo, $value);
+                    $hi = max($hi, $value);
+                }
+            }
+            if ($dynamic !== null) {
+                $day = (new DateTimeImmutable('@' . $q))->setTimezone($tz)->format('Y-m-d');
+                if (!isset($days[$day]) || $dynamic > $days[$day]['max']['y']) {
+                    $days[$day]['max'] = ['x' => ($q + 450) * 1000, 'y' => round($dynamic, 2)];
+                }
+                if (!isset($days[$day]['min']) || $dynamic < $days[$day]['min']['y']) {
+                    $days[$day]['min'] = ['x' => ($q + 450) * 1000, 'y' => round($dynamic, 2)];
+                }
+            }
+            $prev = $q;
+        }
+        // Die letzte Stufe reicht bis zum Ende ihrer Viertelstunde.
+        if ($prev !== null) {
+            foreach ($series as $key => $points) {
+                $series[$key][] = ['x' => ($prev + 900) * 1000, 'y' => $points[count($points) - 1]['y']];
+            }
+        }
+        $step = $hi - $lo > 40 ? 10.0 : 5.0;
+        $yMin = $lo < 0 ? floor($lo / $step) * $step : 0.0;
+        $yMax = ceil(($hi * 1.05) / $step) * $step;
+        $endDay = (new DateTimeImmutable('@' . max($last, $now)))->setTimezone($tz);
+        $windowEnd = ($endDay->format('H:i') === '00:00' ? $endDay : $endDay->modify('+1 day')->setTime(0, 0))->getTimestamp();
+        $extrema = [];
+        foreach ($days as $day) {
+            if (isset($day['min'], $day['max'])) {
+                $extrema[] = ['max' => $day['max'], 'min' => $day['min']];
+            }
+        }
+        $payload = [
+            'days' => max(1, (int) round(($windowEnd - $from) / 86400)),
+            'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
+            'view' => [$today->getTimestamp() * 1000, $windowEnd * 1000],
+            'bounds' => [$from * 1000, $windowEnd * 1000],
+            'windowEnd' => $windowEnd * 1000,
+            'unit' => 'ct',
+            'extrema' => ['ct' => $extrema],
+            'yLock' => true,
+            'yMin' => $yMin,
+            'yMax' => $yMax,
+            'yStep' => $step,
+            'yDataMax' => $yMax,
+            'yDecimals' => 0,
+            'yTitle' => 'Preis (ct/kWh)',
+            'series' => [
+                ['key' => 'dynamic', 'label' => 'Dynamisch', 'color' => 'price', 'axis' => 'y', 'data' => $series['dynamic']],
+                ['key' => 'static', 'label' => 'Statisch', 'color' => 'v1', 'axis' => 'y', 'data' => $series['static']],
+                ['key' => 'spot', 'label' => 'Börse netto', 'color' => 'muted', 'axis' => 'y', 'data' => $series['spot']],
+                ['key' => 'export', 'label' => 'Einspeisung', 'color' => 'export', 'axis' => 'y', 'data' => $series['export']],
+            ],
+        ];
+        if (!$spots) {
+            $error = $market->meta()['error'] ?? null;
+            $payload['error'] = $error ? 'Börsenpreise: ' . $error : 'Noch keine Börsenpreise. Der Recorder holt sie gleich.';
+        }
+        return $payload;
+    }
+
     public function outlook(array $plant): array
     {
         $tz = new DateTimeZone('Europe/Berlin');

@@ -196,7 +196,7 @@ $sortLink = static function (string $key, string $label, bool $numeric = false) 
 <?php
 // Ebene 2: Detail eines Vorgangs
 if ($detail) {
-    $cost = Sessions::cost($detail, $tariffs);
+    $cost = Sessions::cost($detail, (new Tariff(store()))->forRow($detail));
     $co2 = Sessions::co2($detail, (float) ($tariffs['co2_g_kwh'] ?? 380));
     $seconds = (int) $detail['duration_s'];
     $avg = $seconds > 0 ? (float) $detail['energy_kwh'] / ($seconds / 3600) : null;

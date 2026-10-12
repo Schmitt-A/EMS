@@ -31,7 +31,9 @@ foreach ($periods as $key => $name) {
 }
 echo '<dl class="kv">';
 echo '<div><dt>Grundlage</dt><dd>Alle gespeicherten Ladevorgänge, Sonnenanteil mit der entgangenen Vergütung bewertet.</dd></div>';
-echo '<div><dt>Netzbezug</dt><dd>' . ui_inline(e(ct((float) $tariffs['import_ct'])), ['href' => url('/einstellungen/tarif')], 'align-start') . '</dd></div>';
+$price = $overview['price'] ?? null;
+$importText = is_array($price) && $price['mode'] === 'dynamic' ? 'dynamisch, jetzt ' . ct($price['import_ct'] === null ? null : (float) $price['import_ct']) : ct((float) $tariffs['import_ct']);
+echo '<div><dt>Netzbezug</dt><dd>' . ui_inline(e($importText), ['href' => url('/einstellungen/tarif')], 'align-start') . '<span class="sub">Ladevorgänge rechnen mit dem Preis, der damals galt.</span></dd></div>';
 echo '<div><dt>Einspeisung</dt><dd>' . ui_inline(e(ct((float) $tariffs['export_ct'])), ['href' => url('/einstellungen/tarif')], 'align-start') . '</dd></div>';
 echo '<div><dt>CO₂-Faktor</dt><dd>' . ui_inline(e(num((float) ($tariffs['co2_g_kwh'] ?? 380), 0)) . NNBSP . 'g/kWh', ['href' => url('/einstellungen/tarif')], 'align-start') . '<span class="sub">Strommix, mit dem Netzstrom und gesparter Sonnenstrom gerechnet werden.</span></dd></div>';
 echo '</dl>';

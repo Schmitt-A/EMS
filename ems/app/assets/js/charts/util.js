@@ -21,9 +21,10 @@ export function nice(max, target = 4) {
   return { max: Math.ceil(max / step - 1e-9) * step, step };
 }
 
-export function ticks(max, step) {
+/** Teilstriche von min (ein Vielfaches von step, auch unter null) bis max. */
+export function ticks(max, step, min = 0) {
   const out = [];
-  for (let value = 0; value <= max + step / 1000; value += step) out.push(Math.round(value * 1e6) / 1e6);
+  for (let value = min; value <= max + step / 1000; value += step) out.push(Math.round(value * 1e6) / 1e6);
   return out;
 }
 

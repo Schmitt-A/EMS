@@ -27,6 +27,7 @@ $after = $captions[$day(2)]['kwh'] ?? null;
 
 $todayText = $f ? num($f['today_kwh'] ?? null, 1) . NNBSP . 'kWh' : '—';
 echo ui_page_head('Prognose', ui_head_chip('sun', e($todayText), 'Prognose heute ' . $todayText . '. Energieübersicht öffnen'));
+echo ui_seg_links('Prognose', ['/prognose' => 'Sonne', '/prognose/strompreis' => 'Strompreis'], '/prognose');
 
 if (!empty($weather['error'])) {
     echo ui_notice('circle-alert', e('Wetterdatei: ' . $weather['error']), 'error');

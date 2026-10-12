@@ -31,6 +31,8 @@ if ($path === '/api/live') {
         (new Controller(store(), ha()))->tick($snap, time());
         (new Reserve(store(), ha()))->sync($snap['values'], $snap['cfg'], time(), $sessions->open() !== null);
         (new Notify(store(), ha()))->tick($snap, time());
+        (new GridMeter(store()))->record($snap['values'], time());
+        (new MarketPrices(store()))->refresh(time());
     }
     json_out($snapshot->livePayload($snap));
 }
@@ -106,6 +108,9 @@ if ($path === '/api/series') {
         if ($chart === 'outlook') {
             json_out($series->outlook($config['plant']));
         }
+        if ($chart === 'price') {
+            json_out($series->price());
+        }
         if ($chart === 'weather') {
             json_out($series->weather($config['mapping']));
         }
@@ -114,7 +119,7 @@ if ($path === '/api/series') {
         }
         if ($chart === 'sessions') {
             $params = sessions_params($_GET);
-            json_out(Sessions::chart(sessions_chart_rows($params), $params['span'], $params['metric'], cfg()['tariffs'], $params['month'], $params['year']));
+            json_out(Sessions::chart(sessions_chart_rows($params), $params['span'], $params['metric'], cfg()['tariffs'], $params['month'], $params['year'], null, new Tariff(store())));
         }
     } catch (Throwable $e) {
         json_out(['series' => [], 'error' => $e->getMessage()], 500);
@@ -203,8 +208,9 @@ if ($path === '/ladevorgaenge') {
     $cycles = sessions_rows($params);
     // Ein Ladevorgang reicht vom Anstecken bis zum Abstecken; seine Zyklen klappen in der Liste auf.
     $rows = Sessions::groups($cycles);
-    $priced = static function (array $row) use ($tariffs): array {
-        $row['costed'] = Sessions::cost($row, $tariffs);
+    $pricing = new Tariff(store());
+    $priced = static function (array $row) use ($tariffs, $pricing): array {
+        $row['costed'] = Sessions::cost($row, $pricing->forRow($row));
         $row['co2'] = Sessions::co2($row, (float) ($tariffs['co2_g_kwh'] ?? 380));
         return $row;
     };
@@ -224,7 +230,7 @@ if ($path === '/ladevorgaenge') {
         };
         return str_ends_with($sort, '_asc') ? $cmp : -$cmp;
     });
-    $summary = Sessions::summary($cycles, $tariffs);
+    $summary = Sessions::summary($cycles, $tariffs, $pricing);
     $years = [];
     if ($params['span'] === 'all') {
         $byYear = [];
@@ -233,13 +239,19 @@ if ($path === '/ladevorgaenge') {
         }
         krsort($byYear);
         foreach ($byYear as $y => $list) {
-            $years[] = ['year' => (int) $y, 'summary' => Sessions::summary($list, $tariffs)];
+            $years[] = ['year' => (int) $y, 'summary' => Sessions::summary($list, $tariffs, $pricing)];
         }
     }
     $detail = isset($_GET['vorgang']) ? $sessions->group((int) $_GET['vorgang']) : null;
     $hasAny = $params['span'] === 'all' ? (bool) $rows : (bool) $sessions->latest();
     $overview = energy_overview();
     page('ladevorgaenge', compact('live', 'params', 'rows', 'summary', 'years', 'detail', 'tariffs', 'hasAny', 'overview') + ['title' => 'Ladevorgänge']);
+}
+if ($path === '/prognose/strompreis') {
+    // Strompreis: Preis jetzt, Diagramm (über /api/series?chart=price), günstige Zeiten und Vergleich statisch ↔ dynamisch.
+    $price = (new PriceView(store(), ha()))->build((string) ($_GET['vergleich'] ?? 'jahr'), time());
+    $overview = energy_overview();
+    page('strompreis', ['price' => $price, 'overview' => $overview, 'title' => 'Strompreis']);
 }
 if ($path === '/prognose') {
     $yield = safe_yield();
@@ -341,6 +353,7 @@ function known_suggestions(): array
 function energy_overview(): array
 {
     $tariffs = cfg()['tariffs'];
+    $pricing = new Tariff(store());
     $sessions = new Sessions(store());
     $all = $sessions->all();
     $tz = new DateTimeZone('Europe/Berlin');
@@ -349,10 +362,11 @@ function energy_overview(): array
     $within = static fn (string $from): array => array_values(array_filter($all, static fn (array $row): bool => strcmp((string) $row['started_at'], $from) >= 0));
     return [
         'tariffs' => $tariffs,
+        'price' => $pricing->now(time()),
         'periods' => [
-            '30' => Sessions::summary($within($since30), $tariffs),
-            'year' => Sessions::summary($within($yearStart), $tariffs),
-            'all' => Sessions::summary($all, $tariffs),
+            '30' => Sessions::summary($within($since30), $tariffs, $pricing),
+            'year' => Sessions::summary($within($yearStart), $tariffs, $pricing),
+            'all' => Sessions::summary($all, $tariffs, $pricing),
         ],
     ];
 }

@@ -48,13 +48,13 @@ $rows = [
             'value' => '<span data-live="flow_rows.forecast_value">' . e(Snapshot::forecastValue($f)) . '</span>',
             'context' => ui_inline('<span data-live="flow_rows.forecast_text">' . e(Snapshot::forecastRest($f)) . '</span><span class="sr-only">, zur Prognose</span>', ['href' => url('/prognose')])],
         ['key' => 'battery', 'icon' => 'battery', 'tone' => 'battery', 'label' => 'Speicher', 'kw' => $v['battery_discharge_kw'], 'context' => $socLink],
-        ['key' => 'grid', 'icon' => 'utility-pole', 'tone' => 'grid-in', 'label' => 'Netz', 'kw' => $v['grid_import_kw'], 'context' => e(ct((float) $tariffs['import_ct']))],
+        ['key' => 'grid', 'icon' => 'utility-pole', 'tone' => 'grid-in', 'label' => 'Netz', 'kw' => $v['grid_import_kw'], 'context' => '<span data-live="price.import_text">' . e(Snapshot::priceTexts($snap)['import_text']) . '</span>'],
     ],
     'out' => [
         ['key' => 'house', 'icon' => 'house', 'tone' => 'muted', 'label' => 'Haus', 'kw' => $b['house_base_kw']],
         ['key' => 'wallbox', 'icon' => 'car', 'tone' => 'muted', 'label' => $cp['name'], 'kw' => $v['wallbox_kw'], 'context' => e($vehicle['name'])],
         ['key' => 'battery', 'icon' => 'battery', 'tone' => 'battery', 'label' => 'Speicher', 'kw' => $v['battery_charge_kw'], 'context' => $socLink],
-        ['key' => 'grid', 'icon' => 'utility-pole', 'tone' => 'grid-out', 'label' => 'Einspeisung', 'kw' => $v['grid_export_kw'], 'context' => e(ct((float) $tariffs['export_ct']))],
+        ['key' => 'grid', 'icon' => 'utility-pole', 'tone' => 'grid-out', 'label' => 'Einspeisung', 'kw' => $v['grid_export_kw'], 'context' => '<span data-live="price.export_text">' . e(Snapshot::priceTexts($snap)['export_text']) . '</span>'],
     ],
 ];
 ?>

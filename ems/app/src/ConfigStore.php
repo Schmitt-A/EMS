@@ -68,6 +68,12 @@ final class ConfigStore
                 test INTEGER NOT NULL DEFAULT 0
             )'
         );
+        // Börsenstrompreis DE-LU je Viertelstunde (vor Oktober 2025 je Stunde), EUR/MWh netto; siehe MarketPrices.
+        $this->pdo->exec('CREATE TABLE IF NOT EXISTS market_prices (start INTEGER PRIMARY KEY, "end" INTEGER NOT NULL, eur_mwh REAL NOT NULL, source TEXT NOT NULL)');
+        // Preise der Anbieter-Entität (Tibber, Octopus …), ct/kWh brutto, wie der Recorder sie gesehen hat.
+        $this->pdo->exec('CREATE TABLE IF NOT EXISTS provider_prices (start INTEGER PRIMARY KEY, "end" INTEGER NOT NULL, ct REAL NOT NULL, source TEXT NOT NULL)');
+        // Netzbezug und Einspeisung je Viertelstunde, von EMS selbst gemessen (GridMeter).
+        $this->pdo->exec('CREATE TABLE IF NOT EXISTS grid_quarters (start INTEGER PRIMARY KEY, import_kwh REAL NOT NULL, export_kwh REAL NOT NULL, seconds INTEGER NOT NULL)');
         $this->migrateModes();
     }
 
@@ -152,6 +158,8 @@ final class ConfigStore
                 'wallbox_phases' => '',
                 'wallbox_force' => '',
                 'wallbox_energy' => '',
+                // Preis-Entität des Anbieters (Tibber, Octopus …), optional; ohne sie rechnet EMS Börse plus Aufschläge.
+                'price_import' => '',
                 'car_wakeup' => '',
                 'weather_radiation' => '',
                 'weather_cloud' => '',
@@ -159,7 +167,21 @@ final class ConfigStore
                 'weather_temp' => '',
                 'weather_station' => 'soonwald',
             ],
-            'tariffs' => ['import_ct' => 34.7, 'export_ct' => 11.0, 'co2_g_kwh' => 380.0],
+            // Tarif, siehe Tariff: aktiv statisch oder dynamisch; statisch Arbeitspreis und Grundpreis brutto, dynamisch
+            // Börse plus Netzentgelt, Steuern und Umlagen, Anbieter (netto ct/kWh), MwSt, Grundpreis, optional Modul-3-Fenster.
+            'tariffs' => [
+                'mode' => 'static',
+                'import_ct' => 34.7,
+                'base_eur' => null,
+                'dyn_base_eur' => null,
+                'dyn_grid_ct' => Tariff::TYPICAL['dyn_grid_ct'],
+                'dyn_levies_ct' => Tariff::TYPICAL['dyn_levies_ct'],
+                'dyn_supplier_ct' => Tariff::TYPICAL['dyn_supplier_ct'],
+                'dyn_vat_pct' => Tariff::TYPICAL['dyn_vat_pct'],
+                'dyn_windows' => [],
+                'export_ct' => 11.0,
+                'co2_g_kwh' => 380.0,
+            ],
             'plant' => [
                 'kwp' => 10.03,
                 'inverter_kw' => 10.0,

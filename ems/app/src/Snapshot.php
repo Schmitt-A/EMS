@@ -339,7 +339,10 @@ final class Snapshot
             $base['chargepoint']['remaining_s'] = $base['target']['remaining_s'];
             $base['chargepoint']['remaining_text'] = duration_clock((int) $base['target']['remaining_s']);
         }
-        $base['session_view'] = self::sessionView($base, $cfg['tariffs'], $now);
+        $pricing = new Tariff($this->store);
+        $base['session_view'] = self::sessionView($base, $cfg['tariffs'], $now, $pricing);
+        // Preis jetzt im aktiven Tarif (dynamisch je Viertelstunde), für Energie-Flow, Rein/Raus und Übersicht.
+        $base['price'] = $pricing->now($now);
         $base['control'] = self::control($live, $cfg['charge'], $strategy, $latched, $modes, $battery, $base['reserve'], $ems);
         $base['warnings'] = array_values(array_unique($base['warnings']));
         return $base;
@@ -377,6 +380,7 @@ final class Snapshot
             'flow' => Energy::flowBar($v, $b),
             'flow_graph' => self::flowGraph($snap),
             'flow_rows' => self::flowRows($v, $b, $f),
+            'price' => self::priceTexts($snap),
             'chargepoint' => $snap['chargepoint'],
             'vehicle' => $snap['vehicle'],
             'battery' => [
@@ -487,7 +491,7 @@ final class Snapshot
      * Übersicht des Ladevorgangs, solange er läuft oder das Auto noch steckt: seit wann, wie lange geladen,
      * Energie, Ø Leistung, Sonnenanteil und Kosten bisher.
      */
-    public static function sessionView(array $base, array $tariffs, int $now): array
+    public static function sessionView(array $base, array $tariffs, int $now, ?Tariff $pricing = null): array
     {
         $session = $base['session'] ?? null;
         $group = $base['plug_group'] ?? null;
@@ -499,7 +503,7 @@ final class Snapshot
         $energy = (float) $row['energy_kwh'];
         $duration = (int) $row['duration_s'];
         $start = (int) strtotime((string) (($row['plug_at'] ?? '') ?: $row['started_at']));
-        $cost = Sessions::cost($row, $tariffs);
+        $cost = Sessions::cost($row, $pricing?->forRow($row) ?? $tariffs);
         // Strecke aus der geladenen Energie wie auf der Karte (bei go-e „wh“ der Zähler der Wallbox) und dem Verbrauch.
         $counter = $base['chargepoint']['session_kwh'] ?? null;
         $km = Energy::kmFromKwh($counter !== null ? (float) $counter : $energy, $base['vehicle']['consumption_kwh'] ?? null);
@@ -746,12 +750,27 @@ final class Snapshot
     public static function flowGraph(array $snap): array
     {
         $tariffs = is_array($snap['cfg']['tariffs'] ?? null) ? $snap['cfg']['tariffs'] : [];
+        $price = is_array($snap['price'] ?? null) ? $snap['price'] : [];
         return Energy::flowGraph($snap['values'] ?? [], $snap['balance'] ?? [], self::flowForecast($snap), [
             'house_mean_kw' => $snap['house_mean_kw'] ?? null,
-            'import_ct' => $tariffs['import_ct'] ?? null,
-            'export_ct' => $tariffs['export_ct'] ?? null,
+            'import_ct' => $price['import_ct'] ?? $tariffs['import_ct'] ?? null,
+            'export_ct' => $price['export_ct'] ?? $tariffs['export_ct'] ?? null,
             'car_range_km' => $snap['vehicle']['range_km'] ?? null,
         ]);
+    }
+
+    /** Bezugs- und Einspeisepreis von jetzt als Text, für Rein/Raus auf Laden (live). */
+    public static function priceTexts(array $snap): array
+    {
+        $price = is_array($snap['price'] ?? null) ? $snap['price'] : [];
+        $tariffs = is_array($snap['cfg']['tariffs'] ?? null) ? $snap['cfg']['tariffs'] : [];
+        $import = $price['import_ct'] ?? $tariffs['import_ct'] ?? null;
+        $export = $price['export_ct'] ?? $tariffs['export_ct'] ?? null;
+        return [
+            'mode' => (string) ($price['mode'] ?? 'static'),
+            'import_text' => ct($import === null ? null : (float) $import),
+            'export_text' => ct($export === null ? null : (float) $export),
+        ];
     }
 
     /** Leistungen für die Detail-Liste „Rein“ und „Raus“ unter dem Energiefluss-Balken, dazu die Prognose für heute. */

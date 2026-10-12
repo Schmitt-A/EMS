@@ -51,6 +51,18 @@ for ($k = 8; $k >= 1; $k--) {
 }
 (new WeatherFeed($store))->refresh(true);
 
+// Börsenpreise der letzten 120 Tage und bis morgen, wie sie der Recorder holen würde; dazu ein Tarif mit Grundpreisen
+// und einer Preisänderung im Sommer, damit Vergleich und Statistik etwas zu zeigen haben.
+$market = new MarketPrices($store);
+$market->save($model->marketPrices(strtotime('today -120 days'), strtotime('today +2 days')), 'demo');
+$store->put('market_meta', ['fetched_at' => time(), 'tried_at' => time(), 'source' => 'demo', 'error' => null, 'backfill_until' => date('Y-m-d', strtotime('today -120 days')), 'backfill_at' => time()]);
+$tariffs = Tariff::normalize(['import_ct' => (float) $data['tarif']['bezug_ct'], 'export_ct' => (float) $data['tarif']['einspeisung_ct'], 'co2_g_kwh' => (float) $data['tarif']['co2_g_kwh'], 'base_eur' => 12.5, 'dyn_base_eur' => 14.9]);
+$older = ['import_ct' => round((float) $data['tarif']['bezug_ct'] - 2.4, 2)] + $tariffs;
+(new Tariff($store))->saveHistory([
+    ['from' => Tariff::ORIGIN, 'tariffs' => $older],
+    ['from' => date('Y') . '-07-01', 'tariffs' => $tariffs],
+], time());
+
 // Ist und Rohmodell der letzten vier Monate, damit Güte und Regression ein Fenster haben.
 $tz = new DateTimeZone('Europe/Berlin');
 $today = new DateTimeImmutable('today', $tz);

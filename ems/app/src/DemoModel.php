@@ -304,6 +304,29 @@ final class DemoModel
         return $sum;
     }
 
+    /**
+     * Börsenpreise wie MarketPrices sie speichert, je Viertelstunde in EUR/MWh: nachts günstig, morgens und abends
+     * teuer, mittags je nach Sonne bis unter null, am Wochenende etwas niedriger.
+     *
+     * @return list<array{start:int, end:int, eur_mwh:float}>
+     */
+    public function marketPrices(int $from, int $to): array
+    {
+        $rows = [];
+        for ($t = intdiv($from, 900) * 900; $t < $to; $t += 900) {
+            [$dayKey, $hour] = self::local($t + 450);
+            $d = $this->day($dayKey);
+            $weekend = (int) date('N', strtotime($dayKey . ' 12:00:00')) >= 6 ? -18.0 : 0.0;
+            $base = 85.0 + 30.0 * (self::noise('mp' . $dayKey) - 0.5) + $weekend;
+            $peaks = 55.0 * exp(-(($hour - 8.0) ** 2) / 2.5) + 85.0 * exp(-(($hour - 19.0) ** 2) / 3.5);
+            $solar = 120.0 * $d['sun'] * max(0.0, sin(M_PI * ($hour - 7.0) / 12.0)) ** 2;
+            $night = -12.0 * exp(-(($hour - 3.0) ** 2) / 4.0);
+            $price = $base + $peaks + $night - $solar + 14.0 * (self::noise('mq' . $t) - 0.5);
+            $rows[] = ['start' => $t, 'end' => $t + 900, 'eur_mwh' => round($price, 2)];
+        }
+        return $rows;
+    }
+
     /** Eine MOSMIX-Datei, wie sie WeatherFeed::parse liefern würde: 14 Tage zurück, 10 Tage voraus. */
     public function weatherFile(int $now): array
     {

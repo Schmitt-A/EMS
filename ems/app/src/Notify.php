@@ -348,7 +348,7 @@ final class Notify
      * Werte der Platzhalter aus dem Snapshot, formatiert wie auf den Seiten. $session (Sessions::merge) liefert
      * geladen, dauer, sonnenanteil, kosten und ersparnis; $extra ergänzt oder ersetzt, etwa grund oder ziel.
      */
-    public static function context(array $snap, int $now, ?array $session = null, array $extra = []): array
+    public static function context(array $snap, int $now, ?array $session = null, array $extra = [], ?Tariff $pricing = null): array
     {
         $v = is_array($snap['values'] ?? null) ? $snap['values'] : [];
         $cfg = is_array($snap['cfg'] ?? null) ? $snap['cfg'] : [];
@@ -390,7 +390,7 @@ final class Notify
             'vorgaenge' => '—',
         ];
         if ($session !== null) {
-            $cost = Sessions::cost($session, (array) ($cfg['tariffs'] ?? []));
+            $cost = Sessions::cost($session, $pricing?->forRow($session) ?? (array) ($snap['cfg']['tariffs'] ?? []));
             $out['geladen'] = kwh((float) $session['energy_kwh']);
             $out['strecke'] = self::km((float) $session['energy_kwh'], $vehicle['consumption_kwh'] ?? null);
             $out['dauer'] = duration_clock((int) $session['duration_s']);
@@ -435,7 +435,7 @@ final class Notify
             if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
                 $month = $local->modify('first day of last month')->format('Y-m');
             }
-            $sum = Sessions::summary($sessions->month($month), (array) $cfg['tariffs']);
+            $sum = Sessions::summary($sessions->month($month), (array) $cfg['tariffs'], new Tariff($this->store));
             $extra = array_merge($extra, [
                 'monat' => month_label($month),
                 'geladen' => kwh((float) $sum['energy']),
@@ -447,7 +447,7 @@ final class Notify
                 'vorgaenge' => (string) $sum['count'],
             ]);
         }
-        return self::context($snap, $now, $session, $extra);
+        return self::context($snap, $now, $session, $extra, new Tariff($this->store));
     }
 
     /** „≈ 80 km“ aus Energie ab Wallbox und Verbrauch, „—“ ohne Verbrauch. */
