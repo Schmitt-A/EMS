@@ -17,8 +17,7 @@ final class Sessions
         if ($power === null) {
             return;
         }
-        $car = strtolower((string) ($live['wallbox_car_raw'] ?? ''));
-        $active = $power > 0.2 || $car === 'charging';
+        $active = $power > 0.2 || self::carState($live['wallbox_car_raw'] ?? null) === 'charging';
         $pdo = $this->store->pdo();
         $open = $this->open();
         $runtime = $this->store->get('session_runtime', ['idle_since' => null]);
@@ -73,20 +72,59 @@ final class Sessions
 
     /**
      * Fahrzeugstatus der Wallbox vereinheitlicht: charging, waiting (angesteckt, lädt nicht), complete, idle (kein
-     * Auto) oder error; null, wenn der Status nichts sagt. Versteht die go-e-API (Integration von marq24: Charging,
-     * WaitCar, Complete, Idle) und die MQTT-Integration von syssi (charging, wait_for_car, complete, idle, error,
-     * unknown_error).
+     * Auto) oder error; null, wenn der Status nichts sagt. Versteht die Integration „go-eCharger API v2“ von marq24
+     * (Text in der Sprache von Home Assistant: „Warte auf Fahrzeug“, „Laden“ … oder englisch, der Code-Sensor 0–5),
+     * die MQTT-Integration von syssi (charging, wait_for_car, complete, idle, error, unknown_error) und die
+     * MQTT-Entitäten der go-e selbst (WaitCar …).
      */
     public static function carState(?string $raw): ?string
     {
-        return match (strtolower(str_replace([' ', '-'], '_', trim((string) $raw)))) {
-            'charging' => 'charging',
-            'wait_car', 'waitcar', 'wait_for_car', 'waiting' => 'waiting',
-            'complete', 'completed' => 'complete',
-            'idle', 'standby', 'disconnected', 'not_connected' => 'idle',
-            'error', 'unknown_error' => 'error',
+        return match (mb_strtolower(str_replace([' ', '-'], '_', trim((string) $raw)))) {
+            'charging', 'laden', '2' => 'charging',
+            'wait_car', 'waitcar', 'wait_for_car', 'waiting', 'warte_auf_fahrzeug', '3' => 'waiting',
+            'complete', 'completed', 'abgeschlossen', '4' => 'complete',
+            'idle', 'standby', 'disconnected', 'not_connected', 'inaktiv/frei', '1' => 'idle',
+            'error', 'unknown_error', 'unknown/error', 'fehler', 'unbekannt/fehler', '5', '0' => 'error',
             default => null,
         };
+    }
+
+    /**
+     * Ladeenergie je Stunde (Beginn in Sekunden, auf volle Stunden), gleichmäßig über die Ladezeit jedes Vorgangs
+     * verteilt; für Stunden, in denen Home Assistant keine Statistik der Wallbox hat.
+     *
+     * @param iterable<array{started_at:string, duration_s:int|string, energy_kwh:float|string}> $rows
+     * @return array<int, float>
+     */
+    public static function energyByHour(iterable $rows, int $start, int $end): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $t0 = (int) strtotime((string) $row['started_at']);
+            $t1 = $t0 + max(60, (int) $row['duration_s']);
+            $energy = (float) $row['energy_kwh'];
+            if ($energy <= 0 || $t1 <= $start || $t0 >= $end) {
+                continue;
+            }
+            for ($cur = $t0; $cur < $t1; $cur = $next) {
+                $hour = intdiv($cur, 3600) * 3600;
+                $next = min($t1, $hour + 3600);
+                if ($next <= $start || $cur >= $end) {
+                    continue;
+                }
+                $out[$hour] = ($out[$hour] ?? 0.0) + $energy * ($next - $cur) / ($t1 - $t0);
+            }
+        }
+        ksort($out);
+        return $out;
+    }
+
+    /** Vorgänge, die zwischen $start und $end geladen haben können (Beginn bis drei Tage davor), mit Energie und Dauer. */
+    public function overlapping(int $start, int $end): array
+    {
+        $stmt = $this->store->pdo()->prepare('SELECT started_at, duration_s, energy_kwh FROM sessions WHERE started_at >= ? AND started_at < ? ORDER BY started_at ASC');
+        $stmt->execute([date('c', $start - 3 * 86400), date('c', $end)]);
+        return $stmt->fetchAll() ?: [];
     }
 
     /**

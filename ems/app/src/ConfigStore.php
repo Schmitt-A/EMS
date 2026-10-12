@@ -68,6 +68,53 @@ final class ConfigStore
                 test INTEGER NOT NULL DEFAULT 0
             )'
         );
+        $this->migrateModes();
+    }
+
+    /**
+     * Seit 1.10 sind Schnell (Sonne, Speicher, Netz) und Netzladen (Netz, der Speicher gibt nichts ab) zwei Modi. Bis
+     * dahin hieß Netzladen intern „schnell“ und schonte den Speicher nur mit battery_strategy.grid_protect. Einmal
+     * umstellen, damit jeder weiter so lädt wie vorher: mit Schonen wird „schnell“ zu „netz“, ohne bleibt es Schnell.
+     * Auch die Regelung und die Mitteilungen merken sich den Modus, sonst sähen sie einen Wechsel, den es nicht gab.
+     */
+    private function migrateModes(): void
+    {
+        if ($this->get('modes_v2') !== null) {
+            return;
+        }
+        $this->pdo->exec('BEGIN IMMEDIATE');
+        try {
+            if ($this->get('modes_v2') === null) {
+                $strategy = $this->get('battery_strategy', []);
+                $strategy = is_array($strategy) ? $strategy : [];
+                $protect = !array_key_exists('grid_protect', $strategy) || !empty($strategy['grid_protect']);
+                $charge = $this->get('charge', []);
+                if (is_array($charge) && $charge) {
+                    foreach (['mode', 'after_unplug'] as $field) {
+                        if (isset($charge[$field])) {
+                            $charge[$field] = Energy::migratedMode($charge[$field], $protect);
+                        }
+                    }
+                    $this->put('charge', $charge);
+                }
+                foreach (['control_state', 'notify_state'] as $key) {
+                    $state = $this->get($key, []);
+                    if (is_array($state) && isset($state['mode'])) {
+                        $state['mode'] = Energy::migratedMode($state['mode'], $protect);
+                        $this->put($key, $state);
+                    }
+                }
+                if (array_key_exists('grid_protect', $strategy)) {
+                    unset($strategy['grid_protect']);
+                    $this->put('battery_strategy', $strategy);
+                }
+                $this->put('modes_v2', 1);
+            }
+            $this->pdo->exec('COMMIT');
+        } catch (\Throwable $e) {
+            $this->pdo->exec('ROLLBACK');
+            throw $e;
+        }
     }
 
     public function defaults(): array
@@ -133,7 +180,7 @@ final class ConfigStore
                 'reserve_w' => 200.0,
                 'min_a' => 6,
                 'max_a' => 16,
-                // Wie evcc: Einschalten nach 1 min, Ausschalten nach 3 min, 60 s zwischen zwei Schaltvorgängen.
+                // Standard: Einschalten nach 1 min, Ausschalten nach 3 min, 60 s zwischen zwei Schaltvorgängen.
                 'switch_s' => 60,
                 'on_delay_s' => 60,
                 'off_delay_s' => 180,
@@ -143,7 +190,7 @@ final class ConfigStore
             ],
             // Hauptschalter: Nur wenn aktiv, schreibt EMS an Wallbox und Speicher.
             'control' => ['active' => false],
-            // backup_soc: Standardwert des Backup-Puffers (null: nicht gesetzt), grid_protect: Netzladen hebt den Puffer an,
+            // backup_soc: Standardwert des Backup-Puffers (null: nicht gesetzt; Netzladen hebt den Puffer an),
             // discharge_kw: höchste Entladeleistung des Speichers (null: unbekannt).
             'battery_strategy' => [
                 'priority_soc' => 80.0,
@@ -151,7 +198,6 @@ final class ConfigStore
                 'car_buffer_soc' => 100.0,
                 'car_auto_soc' => 100.0,
                 'backup_soc' => null,
-                'grid_protect' => true,
                 'discharge_kw' => null,
             ],
             'chargepoint' => ['name' => 'Wallbox'],

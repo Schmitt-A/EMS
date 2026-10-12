@@ -1,6 +1,6 @@
 /*
  * Regelung unter der Ladepunkt-Karte: Stufe beim Einschalten, Aufteilung von Überschuss und Ladeleistung,
- * Phasen-Leiter, aufklappbar die drei Modi und der Rechenweg. Breiten setzt components/control.js per
+ * Phasen-Leiter, aufklappbar die vier Lademodi und der Rechenweg. Breiten setzt components/control.js per
  * flex-grow (CSSOM).
  */
 .ctl {
@@ -234,7 +234,7 @@
   stroke-width: 3;
 }
 
-/* Die drei Modi: aktiv mit Amber-Rahmen, ab 40 rem nebeneinander */
+/* Die vier Lademodi: aktiv mit Amber-Rahmen, ab 40 rem zu zweit, ab 64 rem alle nebeneinander */
 .ctl-modes {
   display: grid;
   gap: var(--s-3);
@@ -287,11 +287,17 @@
 
 @container ctl (min-width: 40rem) {
   .ctl-modes {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-/* Aufklappbar: die drei Modi, der Rechenweg und die Modi im Wortlaut. Zu beim Laden der Seite. */
+@container ctl (min-width: 64rem) {
+  .ctl-modes {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Aufklappbar: die Lademodi jetzt, der Rechenweg und die Modi im Wortlaut. Zu beim Laden der Seite. */
 .ctl-details {
   border-block-start: 1px solid var(--border);
 }

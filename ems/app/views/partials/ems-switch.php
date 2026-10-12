@@ -21,9 +21,9 @@ $stale = !empty($snap['ems']['stale']);
     <span class="pill<?= $active && !$paused ? '' : ' pill-neutral' ?>"><?= e($active ? ($paused ? 'pausiert' : 'aktiv') : 'aus') ?></span>
   </div>
 <?php if ($active): ?>
-  <p class="body-sm">EMS stellt Ladestrom, Phasen und Start/Stopp der go-e nach dem Modus ein und hebt beim Netzladen den Backup-Puffer. evcc darf die Wallbox in der Zeit nicht steuern.</p>
+  <p class="body-sm">EMS stellt Ladestrom, Phasen und Start/Stopp der go-e nach dem Modus ein und hebt beim Netzladen den Backup-Puffer. Kein anderer Regler darf die Wallbox in der Zeit steuern.</p>
 <?php else: ?>
-  <p class="body-sm muted">Aus: EMS zeigt nur an, was es einstellen würde. evcc oder die go-e regeln weiter über Home Assistant. Zum Testen evcc vom Ladepunkt lösen und hier einschalten.</p>
+  <p class="body-sm muted">Aus: EMS zeigt nur an, was es einstellen würde, und schreibt nichts an die Wallbox. Vor dem Einschalten einen anderen Regler von der Wallbox lösen.</p>
 <?php endif; ?>
 <?php if ($paused): ?>
   <?= ui_notice('triangle-alert', e((string) $paused), 'warn') ?>

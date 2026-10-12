@@ -24,12 +24,12 @@ $m = $cfg['mapping'];
 </section>
 <section class="card stack" aria-labelledby="cp-entities-title">
   <h3 class="card-title" id="cp-entities-title">Entitäten der Wallbox</h3>
-  <p class="body-sm muted">Tippe einen Namen oder eine Entität. Die Liste sucht in Home Assistant und übernimmt die gewählte Kennung.</p>
+  <p class="body-sm muted">Tippe einen Namen oder eine Entität. Die Liste sucht in Home Assistant und übernimmt die gewählte Kennung. Zum Regeln der go-e eignet sich die Integration „go-eCharger API v2“, sie schreibt über die lokale HTTP-API; über MQTT nehmen manche go-e keine Befehle an.</p>
   <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack">
     <?= csrf_field() ?>
     <input type="hidden" name="section" value="mapping"><input type="hidden" name="back" value="<?= e($back) ?>">
     <?= ui_entity_field('wallbox_power', 'Ladeleistung', (string) $m['wallbox_power'], 'Watt oder Kilowatt.', $suggest['wallbox_power'] ?? '') ?>
-    <?= ui_entity_field('wallbox_car', 'Fahrzeugstatus', (string) $m['wallbox_car'], 'Zum Beispiel charging oder idle.', $suggest['wallbox_car'] ?? '') ?>
+    <?= ui_entity_field('wallbox_car', 'Fahrzeugstatus', (string) $m['wallbox_car'], 'Zum Beispiel charging, idle oder „Warte auf Fahrzeug“.', $suggest['wallbox_car'] ?? '') ?>
     <?= ui_entity_field('wallbox_amps', 'Ladestrom (amp)', (string) $m['wallbox_amps'], 'number in Ampere. Regelt EMS, stellt es hier den Strom ein.', $suggest['wallbox_amps'] ?? '') ?>
     <?= ui_entity_field('wallbox_amps_max', 'Maximalstrom', (string) $m['wallbox_amps_max'], 'Optional, nur Anzeige.', $suggest['wallbox_amps_max'] ?? '') ?>
     <?= ui_entity_field('wallbox_phases', 'Phasenumschaltung (psm)', (string) $m['wallbox_phases'], 'select der go-e: 1 einphasig, 2 dreiphasig, 0 automatisch.', $suggest['wallbox_phases'] ?? '') ?>

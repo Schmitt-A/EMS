@@ -42,17 +42,24 @@ final class Actions
 
     /**
      * Muster für Entitäten, die nicht in SUGGEST stehen: der Backup-Puffer der sonnenBatterie (aus der Integration oder
-     * als eigene Template-Number, etwa number.sonnenbatterie_backup_puffer) und die Sensoren von ESPHome Tesla BLE
-     * (englisch und mit deutschem Sprachpaket). [Zuordnung => [Muster für die ID, Einheiten]]
+     * als eigene Template-Number, etwa number.sonnenbatterie_backup_puffer), die Sensoren von ESPHome Tesla BLE
+     * (englisch und mit deutschem Sprachpaket) und die go-e der Integration „go-eCharger API v2“ mit ihren
+     * Standard-Kennungen. [Zuordnung => [Muster für die ID, Einheiten]]
      */
     private const PATTERNS = [
+        'wallbox_power' => ['/^sensor\.goe_\w+_nrg_11$/', ['w', 'kw']],
+        'wallbox_car' => ['/^sensor\.goe_\w+_car_value$/', ['']],
+        'wallbox_amps' => ['/^number\.goe_\w+_amp$/', ['a']],
+        'wallbox_amps_max' => ['/^number\.goe_\w+_ama$/', ['a']],
+        'wallbox_phases' => ['/^select\.goe_\w+_psm$/', ['']],
+        'wallbox_force' => ['/^select\.goe_\w+_frc$/', ['']],
         'battery_reserve' => ['/^number\.\w*(battery_reserve|backup_buffer|backup_reserve|backup_puffer)$/', ['%']],
         'car_soc' => ['/^sensor\.\w*tesla\w*_(charge_level|battery_level|ladezustand(_\d)?)$/', ['%']],
         'car_range' => ['/^sensor\.\w*tesla\w*_(range|battery_range|reichweite)$/', ['km', 'mi']],
         'car_odometer' => ['/^sensor\.\w*tesla\w*_(odometer|kilometerstand)$/', ['km', 'mi']],
         'car_limit' => ['/^sensor\.\w*tesla\w*_(charge_limit|ladelimit)$/', ['%']],
         'car_wakeup' => ['/^button\.\w*tesla\w*_(wake_up|wake|aufwecken|wecken)$/', ['']],
-        'wallbox_energy' => ['/^sensor\.go_echarger_\w+_wh$/', ['kwh', 'wh']],
+        'wallbox_energy' => ['/^sensor\.(go_echarger|goe)_\w+_wh$/', ['kwh', 'wh']],
     ];
 
     /**
@@ -239,7 +246,7 @@ final class Actions
                 store()->merge('battery_strategy', $patch);
             }
         } elseif ($section === 'reserve') {
-            // Backup-Puffer: Entität, Standardwert und Schonen beim Netzladen. Der Standardwert geht gleich an den Speicher.
+            // Backup-Puffer: Entität und Standardwert. Der Standardwert geht gleich an den Speicher.
             $mapping = store()->get('mapping', []);
             $mapping = is_array($mapping) ? $mapping : [];
             if (array_key_exists('battery_reserve', $_POST)) {
@@ -251,12 +258,9 @@ final class Actions
                 $value = self::optional('backup_soc', 0, 100);
                 $patch['backup_soc'] = $value === null ? null : (float) round($value);
             }
-            if (array_key_exists('grid_protect', $_POST)) {
-                $patch['grid_protect'] = $_POST['grid_protect'] === '1';
-            }
             store()->merge('battery_strategy', $patch);
             $reserve = new Reserve(store(), ha());
-            // Ist das Schonen jetzt aus, aber der Puffer noch angehoben, erst zurücksetzen, dann den Standardwert setzen.
+            // Fehlt jetzt Entität oder Standardwert, aber der Puffer ist noch angehoben, erst zurücksetzen.
             $snap = (new Snapshot(store(), ha()))->build();
             $reserve->sync($snap['values'], $snap['cfg'], time(), (new Sessions(store()))->open() !== null);
             flash($reserve->apply(cfg(), time()));
@@ -494,7 +498,8 @@ final class Actions
     {
         $cfg = cfg();
         return [
-            'version' => 1,
+            // 2: seit 1.10 mit den Modi Schnell und Netzladen (netz); ältere Sicherungen stellt applyPortable() um.
+            'version' => 2,
             'mapping' => $cfg['mapping'],
             'tariffs' => $cfg['tariffs'],
             'plant' => $cfg['plant'],
@@ -616,10 +621,19 @@ final class Actions
         }
         if (isset($data['charge']) && is_array($data['charge'])) {
             $charge = $data['charge'];
-            $mode = (string) ($charge['mode'] ?? 'smart');
+            // Sicherungen vor 1.10 kennen „schnell“ noch als Netzladen, siehe Energy::migratedMode().
+            if ((int) ($data['version'] ?? 1) < 2) {
+                $old = is_array($data['battery_strategy'] ?? null) ? $data['battery_strategy'] : [];
+                $protect = !array_key_exists('grid_protect', $old) || !empty($old['grid_protect']);
+                foreach (['mode', 'after_unplug'] as $field) {
+                    if (isset($charge[$field])) {
+                        $charge[$field] = Energy::migratedMode($charge[$field], $protect);
+                    }
+                }
+            }
             $phase = (string) ($charge['phase_mode'] ?? 'auto');
             store()->merge('charge', [
-                'mode' => in_array($mode, ['aus', 'smart', 'smart_dauerhaft', 'schnell'], true) ? $mode : 'smart',
+                'mode' => Energy::mode($charge['mode'] ?? 'smart'),
                 'phase_mode' => in_array($phase, ['auto', '1p', '3p'], true) ? $phase : 'auto',
                 'solar_share' => self::clamped($charge['solar_share'] ?? null, 0, 100, 100),
                 'reserve_w' => self::clamped($charge['reserve_w'] ?? null, 0, 2000, 200),
@@ -629,7 +643,7 @@ final class Actions
                 'on_delay_s' => (int) round(self::clamped($charge['on_delay_s'] ?? null, 60, 600, 60)),
                 'off_delay_s' => (int) round(self::clamped($charge['off_delay_s'] ?? null, 60, 600, 180)),
                 'then_mode' => in_array($charge['then_mode'] ?? '', Target::THEN, true) ? (string) $charge['then_mode'] : 'smart',
-                'after_unplug' => in_array($charge['after_unplug'] ?? '', ['', 'aus', 'smart', 'smart_dauerhaft', 'schnell'], true) ? (string) $charge['after_unplug'] : '',
+                'after_unplug' => in_array($charge['after_unplug'] ?? '', ['', ...Energy::MODES], true) ? (string) $charge['after_unplug'] : '',
             ]);
         }
         if (isset($data['battery_strategy']) && is_array($data['battery_strategy'])) {
@@ -646,9 +660,6 @@ final class Actions
             }
             if (array_key_exists('backup_soc', $incoming)) {
                 $strategy['backup_soc'] = is_numeric($incoming['backup_soc']) ? (float) round(clamp_float((float) $incoming['backup_soc'], 0, 100)) : null;
-            }
-            if (array_key_exists('grid_protect', $incoming)) {
-                $strategy['grid_protect'] = (bool) $incoming['grid_protect'];
             }
             if (array_key_exists('discharge_kw', $incoming)) {
                 $strategy['discharge_kw'] = is_numeric($incoming['discharge_kw']) && (float) $incoming['discharge_kw'] > 0 ? clamp_float((float) $incoming['discharge_kw'], 0.1, 50) : null;
@@ -692,8 +703,7 @@ final class Actions
         $current = is_array($current) ? $current : [];
         $patch = [];
         if (array_key_exists('mode', $_POST)) {
-            $mode = (string) $_POST['mode'];
-            $patch['mode'] = in_array($mode, ['aus', 'smart', 'smart_dauerhaft', 'schnell'], true) ? $mode : 'smart';
+            $patch['mode'] = Energy::mode((string) $_POST['mode']);
         }
         if (array_key_exists('phase_mode', $_POST)) {
             $phase = (string) $_POST['phase_mode'];
@@ -705,7 +715,7 @@ final class Actions
         }
         if (array_key_exists('after_unplug', $_POST)) {
             $after = (string) $_POST['after_unplug'];
-            $patch['after_unplug'] = in_array($after, ['', 'aus', 'smart', 'smart_dauerhaft', 'schnell'], true) ? $after : '';
+            $patch['after_unplug'] = in_array($after, ['', ...Energy::MODES], true) ? $after : '';
         }
 
         $ranges = [
@@ -728,8 +738,8 @@ final class Actions
         if ($maxA < $minA) {
             $patch['max_a'] = $minA;
         }
-        if (!empty($_POST['evcc_defaults'])) {
-            // Wie evcc: Einschalten nach 1 min, Ausschalten nach 3 min, 60 s Beruhigung nach dem Schalten.
+        if (!empty($_POST['standard_times'])) {
+            // Standardzeiten: Einschalten nach 1 min, Ausschalten nach 3 min, 60 s Beruhigung nach dem Schalten.
             $patch = ['on_delay_s' => 60, 'off_delay_s' => 180, 'switch_s' => 60] + $patch;
         }
         return $patch;
@@ -755,7 +765,7 @@ final class Actions
             }
             store()->merge('control', ['active' => true]);
             $controller->resume($now);
-            return 'EMS regelt jetzt die Wallbox. evcc darf sie in der Zeit nicht steuern.';
+            return 'EMS regelt jetzt die Wallbox. Kein anderer Regler darf sie in der Zeit steuern.';
         }
         store()->merge('control', ['active' => false]);
         $message = $controller->release(cfg(), $now);
@@ -788,7 +798,7 @@ final class Actions
     public static function saveChargeMode(): void
     {
         $mode = (string) ($_POST['mode'] ?? '');
-        if (!in_array($mode, ['aus', 'smart', 'smart_dauerhaft', 'schnell'], true)) {
+        if (!in_array($mode, Energy::MODES, true)) {
             json_out(['error' => 'Unbekannter Modus.'], 422);
         }
         store()->merge('charge', ['mode' => $mode]);

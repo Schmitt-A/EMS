@@ -98,7 +98,7 @@ function ui_metric_block(string $icon, string $tone, string $label, string $valu
  */
 function ui_segment(string $name, string $legend, array $options, ?string $current, array $opts = []): string
 {
-    $classes = 'seg' . (!empty($opts['compact']) ? ' seg-compact' : '') . (!empty($opts['fit']) ? ' seg-fit' : '');
+    $classes = 'seg' . (!empty($opts['compact']) ? ' seg-compact' : '') . (!empty($opts['fit']) ? ' seg-fit' : '') . (!empty($opts['tight']) ? ' seg-tight' : '');
     $base = (string) ($opts['id'] ?? ('seg-' . $name));
     $html = '<fieldset class="' . $classes . '"' . ui_attrs($opts['attrs'] ?? []) . '><legend>' . e($legend) . '</legend><span class="seg-thumb" aria-hidden="true"></span>';
     foreach ($options as $value => $option) {
@@ -126,14 +126,15 @@ function ui_segment(string $name, string $legend, array $options, ?string $curre
     return $html . '</fieldset>';
 }
 
-/** Die vier Lademodi, intern unverändert (schnell ist Netzladen). Schmal stehen Kurzformen, der volle Name im aria-label. */
+/** Die fünf Lademodi (Energy::MODES). Schmal stehen Kurzformen, der volle Name im aria-label. */
 function ui_mode_options(): array
 {
     return [
         'aus' => ['label' => 'Aus'],
-        'smart' => ['label' => 'Nur Solar', 'short' => 'Nur', 'shortIcon' => 'sun'],
+        'smart' => ['label' => 'Solar'],
         'smart_dauerhaft' => ['label' => 'Min+Solar', 'short' => 'Min+', 'shortIcon' => 'sun'],
-        'schnell' => ['label' => 'Netzladen', 'short' => 'Netz'],
+        'schnell' => ['label' => 'Schnell'],
+        'netz' => ['label' => 'Netzladen', 'short' => 'Netz'],
     ];
 }
 
@@ -539,6 +540,7 @@ function ui_chargepoint(array $cp, array $opts = []): string
     $p = static fn (string $path): ?string => $live ? $path : null;
     $mode = ui_segment($id === 'cp' ? 'mode' : $id . '-mode', 'Lademodus', ui_mode_options(), (string) $cp['mode'], [
         'id' => $id . '-mode',
+        'tight' => true,
         'attrs' => ['data-mode-switch' => $live ? '1' : null, 'disabled' => !$editable],
     ]);
     $power = '<span class="cp-power">' . icon('zap', 'icon-16') . ($live ? ui_live_num('chargepoint.power_kw', $cp['power_kw'], 'kW') : ui_num($cp['power_kw'], 'kW')) . '</span>';
@@ -619,7 +621,7 @@ function ui_chargepoint(array $cp, array $opts = []): string
 
 /**
  * Regelung unter der Ladepunkt-Karte: mit welcher Stufe die Wallbox jetzt laden würde, woher die Leistung
- * käme und wohin der Überschuss ginge und die Phasen-Leiter. Aufgeklappt: was die drei Modi täten und der
+ * käme und wohin der Überschuss ginge und die Phasen-Leiter. Aufgeklappt: was die vier Lademodi täten und der
  * Rechenweg. Daten aus Snapshot::control(); Breiten und Positionen setzt components/control.js (CSSOM und
  * SVG-Attribute).
  * opts: id, live (Texte über data-live aktualisieren)
@@ -712,9 +714,9 @@ function ui_control(array $c, array $charge, array $strategy, array $opts = []):
         : 'Fest ' . ($phaseMode === '1p' ? 'einphasig' : 'dreiphasig') . ', einstellbar in den Ladeparametern.';
     $html .= '<div class="ctl-block ctl-block-ladder"><h3 class="ctl-title">Phasen und Stufe</h3>' . $ladder . '<p class="body-sm muted">' . e($auto) . '</p></div>';
 
-    // 4. Aufgeklappt: was die drei Modi jetzt täten, der Rechenweg und die Modi im Wortlaut
+    // 4. Aufgeklappt: was die vier Lademodi jetzt täten, der Rechenweg und die Modi im Wortlaut
     $html .= '<details class="ctl-details"><summary>' . icon('chevron-down', 'icon-16') . '<span>Lademodi und Rechenweg</span></summary><div class="ctl-details-body">'
-        . '<div class="ctl-block ctl-block-modes"><h3 class="ctl-title">Die drei Modi jetzt</h3><ul class="ctl-modes" role="list">';
+        . '<div class="ctl-block ctl-block-modes"><h3 class="ctl-title">Die Modi jetzt</h3><ul class="ctl-modes" role="list">';
     foreach ($c['modes'] as $key => $m) {
         $html .= '<li class="ctl-mode" data-ctl-mode="' . e($key) . '"' . ($m['active'] ? ' data-active' : '') . '>'
             . '<div class="ctl-mode-head"><span class="ctl-mode-name">' . e((string) $m['label']) . '</span><span class="pill ctl-active-pill">aktiv</span>'
@@ -734,7 +736,7 @@ function ui_control(array $c, array $charge, array $strategy, array $opts = []):
         ['Am Zähler verfügbar', 'meter', 'Ladeleistung plus Einspeisung minus Bezug und Regelreserve. Ab der Hausgrenze zählt Speicherladen mit, bis zur Stützung Entladen dagegen.'],
         ['Ziel und Stufe', 'target', ''],
         ['Abweichung zur Wallbox', 'delta', ''],
-        ['Was fehlt, deckt', 'cover', 'Wie im Eigenverbrauch: erst der Speicher bis zu seinem Backup-Puffer, dann das Netz. Beim Netzladen mit „Speicher schonen“ nur das Netz.'],
+        ['Was fehlt, deckt', 'cover', 'Wie im Eigenverbrauch: erst der Speicher bis zu seinem Backup-Puffer, dann das Netz. Beim Netzladen nur das Netz.'],
     ];
     $html .= '<div class="ctl-block"><h3 class="ctl-title">Rechenweg</h3><dl class="kv">';
     foreach ($details as [$label, $key, $sub]) {

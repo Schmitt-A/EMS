@@ -48,7 +48,7 @@ if (!$snap['connected']) {
         <li class="zone-item"><span class="zone-icon zone-icon-house"><?= icon('house', 'icon-20') ?></span>
           <p class="body">Bis <?= $limit('priority', $priority) ?> geht Sonnenüberschuss zuerst in den Hausspeicher. Das Auto bekommt nur, was der Speicher gerade nicht aufnimmt.</p></li>
         <li class="zone-item"><span class="zone-icon zone-icon-car"><?= icon('car', 'icon-20') ?></span>
-          <p class="body">Von <?= $read('priority', $priority) ?> bis <?= $limit('buffer', $buffer) ?> hat das Auto den Überschuss. Im Modus Nur Solar bleibt der Speicher in diesem Bereich fürs Haus.</p></li>
+          <p class="body">Von <?= $read('priority', $priority) ?> bis <?= $limit('buffer', $buffer) ?> hat das Auto den Überschuss. Im Modus Solar bleibt der Speicher in diesem Bereich fürs Haus.</p></li>
         <li class="zone-item"><span class="zone-icon zone-icon-boost"><?= icon('zap', 'icon-20') ?></span>
           <p class="body"><span data-zone-when="buffer-on"<?= $buffer >= 100 ? ' hidden' : '' ?>>Ab <?= $read('buffer', $buffer) ?> darf gespeicherte Energie das Auto stützen.</span><span data-zone-when="buffer-off"<?= $buffer >= 100 ? '' : ' hidden' ?>>Gespeicherte Energie stützt das Auto nicht, die Grenze steht auf 100<?= NNBSP ?>%.</span>
             <span data-zone-when="auto-on"<?= $auto >= 100 ? ' hidden' : '' ?>>Ab <?= $limit('auto', $auto) ?> startet die Ladung auch ohne Sonne.</span><span data-zone-when="auto-off"<?= $auto >= 100 ? '' : ' hidden' ?>>Ohne Sonne startet keine Ladung.</span></p></li>
@@ -104,7 +104,7 @@ $rows[] = [
 ];
 ob_start();
 ?>
-<p class="body muted">Die Grenzen rasten auf 5 % und bleiben geordnet: Haus bis Auto bis Start. Sie wirken im Modus Nur Solar und Min+Solar auf den Vorschlag und die Zeiten.</p>
+<p class="body muted">Die Grenzen rasten auf 5 % und bleiben geordnet: Haus bis Auto bis Start. Sie wirken in den Modi Solar und Min+Solar auf den Vorschlag und die Zeiten.</p>
 <div class="stack">
   <div class="range"><div class="range-head"><label for="z-priority">Haus bis</label><output class="range-out" for="z-priority"><?= e(pct($priority)) ?></output></div>
     <input type="range" id="z-priority" min="0" max="100" step="5" value="<?= $priority ?>" data-zone-input="priority"></div>
@@ -114,7 +114,7 @@ ob_start();
     <input type="range" id="z-auto" min="0" max="100" step="5" value="<?= $auto ?>" data-zone-input="auto"></div>
 </div>
 <?= ui_divider('Zonen im Detail') ?>
-<p class="body-sm muted">So entscheidet Nur Solar. Min+Solar hält zusätzlich den Mindeststrom; was dafür fehlt, deckt der Speicher bis zum Backup-Puffer, dann das Netz.</p>
+<p class="body-sm muted">So entscheidet Solar. Min+Solar hält zusätzlich den Mindeststrom; was dafür fehlt, deckt der Speicher bis zum Backup-Puffer, dann das Netz.</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Zonen im Detail">
   <table class="table">
     <thead><tr><th scope="col">Speicher</th><th scope="col">Sonne reicht</th><th scope="col">Sonne reicht nicht</th></tr></thead>
@@ -128,9 +128,10 @@ ob_start();
 <?= ui_divider('Modi und Grenzen') ?>
 <dl class="kv">
   <div><dt>Aus</dt><dd>Kein Ladestrom. Der Überschuss geht in den Speicher, danach ins Netz.</dd></div>
-  <div><dt>Nur Solar</dt><dd>Die drei Zonen gelten. Unter der Hausgrenze zuerst der Speicher, darüber das Auto, ab der Stützung darf der Speicher mit.</dd></div>
+  <div><dt>Solar</dt><dd>Die drei Zonen gelten. Unter der Hausgrenze zuerst der Speicher, darüber das Auto, ab der Stützung darf der Speicher mit.</dd></div>
   <div><dt>Min+Solar</dt><dd>Die Mindestleistung bleibt an. Was die Sonne nicht schafft, deckt der Speicher bis zum Backup-Puffer, dann das Netz.</dd></div>
-  <div><dt>Netzladen</dt><dd>Volle Leistung, die Grenzen bleiben außen vor. Mit „Speicher schonen“ hebt die App den Backup-Puffer, solange das Auto lädt; sonst deckt der Speicher mit.</dd></div>
+  <div><dt>Schnell</dt><dd>Volle Leistung, die Grenzen bleiben außen vor. Was die Sonne nicht schafft, deckt der Speicher bis zum Backup-Puffer, dann das Netz.</dd></div>
+  <div><dt>Netzladen</dt><dd>Volle Leistung, die Grenzen bleiben außen vor. Was die Sonne nicht schafft, kommt aus dem Netz: Solange das Auto lädt, hebt die App den Backup-Puffer auf den Ladestand, danach gilt wieder der Standardwert.</dd></div>
 </dl>
 <p class="caption muted">Aktuell: <?= e(Energy::modeLabel($mode)) ?>. Geändert wird sofort, ohne Speichern-Knopf. Backup-Puffer und Entladeleistung stehen unter <?= ui_inline('Einstellungen → Speicher', ['href' => url('/einstellungen/speicher')]) ?>.</p>
 <?php

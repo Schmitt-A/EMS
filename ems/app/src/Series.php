@@ -169,7 +169,8 @@ final class Series
         $houseId = trim((string) ($mapping['house_power'] ?? ''));
         $wallId = trim((string) ($mapping['wallbox_power'] ?? ''));
         $includes = (bool) ($mapping['house_includes_wallbox'] ?? true);
-        $key = $day . '|' . $houseId . '|' . $wallId . '|' . ($includes ? '1' : '0');
+        // „|s“: seit 1.10 mit den Ladevorgängen, wo die Statistik der Wallbox fehlt; ein alter Wert gilt dann nicht mehr.
+        $key = $day . '|' . $houseId . '|' . $wallId . '|' . ($includes ? '1' : '0') . '|s';
         $cache = $this->store->get('house_mean', []);
         if (is_array($cache) && ($cache['key'] ?? '') === $key && (int) ($cache['until'] ?? 0) > time() && array_key_exists('mean', $cache)) {
             return $cache['mean'] === null ? null : (float) $cache['mean'];
@@ -1103,13 +1104,23 @@ final class Series
             $house[] = ['start' => (int) $row['start'], 'kw' => $this->meanKw($row['mean'], $houseUnit)];
         }
         $wall = [];
-        if ($includes && $wallId !== '') {
-            $wallUnit = $this->unitOf($wallId);
-            foreach ($this->statisticRows($wallId, $start, $end, 'hour') as $row) {
-                if ($row['mean'] === null) {
-                    continue;
+        if ($includes) {
+            if ($wallId !== '') {
+                $wallUnit = $this->unitOf($wallId);
+                foreach ($this->statisticRows($wallId, $start, $end, 'hour') as $row) {
+                    if ($row['mean'] === null) {
+                        continue;
+                    }
+                    $wall[] = ['start' => (int) $row['start'], 'kw' => $this->meanKw($row['mean'], $wallUnit)];
                 }
-                $wall[] = ['start' => (int) $row['start'], 'kw' => $this->meanKw($row['mean'], $wallUnit)];
+            }
+            // Stunden ohne Statistik der Wallbox (Entität ohne state_class, Zeit vor dem Wechsel auf eine neue
+            // Entität): die Ladevorgänge von EMS, über ihre Ladezeit verteilt. kWh einer Stunde sind ihr Mittel in kW.
+            $have = array_fill_keys(array_column($wall, 'start'), true);
+            foreach (Sessions::energyByHour((new Sessions($this->store))->overlapping($start, $end), $start, $end) as $hour => $kwh) {
+                if (!isset($have[$hour])) {
+                    $wall[] = ['start' => $hour, 'kw' => $kwh];
+                }
             }
         }
         return Energy::meanHouseBase($house, $wall, $includes);

@@ -68,7 +68,7 @@ echo ui_page_head('Einrichten');
     <div class="form-rows"><?= ui_form_row('Enthält die Wallbox', ui_toggle('house_includes_wallbox', !empty($m['house_includes_wallbox']), 'Dieser Wert enthält die Wallbox'), ['hint' => 'Dann zieht die App die Wallbox vom Hausverbrauch ab.']) ?></div>
 <?php elseif ($step === 'wallbox'): ?>
     <?= $entity('wallbox_power', 'Ladeleistung', 'Watt oder Kilowatt.') ?>
-    <?= $entity('wallbox_car', 'Fahrzeugstatus', 'Zum Beispiel charging oder idle.') ?>
+    <?= $entity('wallbox_car', 'Fahrzeugstatus', 'Zum Beispiel charging, idle oder „Warte auf Fahrzeug“.') ?>
     <p class="body-sm muted">Die folgenden Felder werden nur gelesen. Bei einer go-e sind sie meist vorhanden.</p>
     <?= $entity('wallbox_amps', 'Gemeldeter Strom', 'Ampere, nur Anzeige.') ?>
     <?= $entity('wallbox_amps_max', 'Maximalstrom der Wallbox', 'Optional.') ?>

@@ -51,7 +51,11 @@ $hint = Energy::suggest($live, $charge, 1);
 check($hint['amps'] === 0, 'Sonnenanteil deckelt unter 1,38 kW');
 
 $fast = Energy::suggest($live, array_merge($charge, ['mode' => 'schnell']), 1);
-check($fast['amps'] === 16 && $fast['phases'] === 3, 'Schnellladen 16 A dreiphasig');
+check($fast['amps'] === 16 && $fast['phases'] === 3, 'Schnell lädt mit 16 A dreiphasig');
+$grid = Energy::suggest($live, array_merge($charge, ['mode' => 'netz']), 1);
+check($grid['amps'] === 16 && $grid['phases'] === 3 && $grid['reason'] === 'Netzladen mit voller Leistung.', 'Netzladen lädt ebenfalls mit voller Leistung');
+check(Energy::MODES === ['aus', 'smart', 'smart_dauerhaft', 'schnell', 'netz'] && Energy::mode('netz') === 'netz' && Energy::mode('turbo') === 'smart' && Energy::modeLabel('smart') === 'Solar' && Energy::modeLabel('schnell') === 'Schnell' && Energy::modeLabel('netz') === 'Netzladen', 'Fünf Modi: Aus, Solar, Min+Solar, Schnell, Netzladen');
+check(Energy::migratedMode('schnell', true) === 'netz' && Energy::migratedMode('schnell', false) === 'schnell' && Energy::migratedMode('smart', true) === 'smart' && Energy::migratedMode('', true) === '', 'Altes „schnell“ wird mit Schonen zu Netzladen, ohne bleibt es Schnell');
 
 $off = Energy::suggest($live, array_merge($charge, ['mode' => 'aus']), 3);
 check($off['amps'] === 0, 'Aus ist 0 A');
@@ -88,13 +92,13 @@ $atReserve = Energy::suggest($night + ['battery_soc' => 20], ['mode' => 'smart_d
 check(abs($atReserve['flows']['grid_kw'] - 1.38) < 0.001 && $atReserve['flows']['battery_kw'] < 0.001, 'Min+Solar: am Backup-Puffer kommt sie aus dem Netz');
 $sunnyFull = ['pv_kw' => 5.0, 'house_base_kw' => 0.5, 'battery_charge_kw' => 0.0, 'battery_discharge_kw' => 0.0, 'wallbox_kw' => 0.0, 'grid_import_kw' => 0.0, 'grid_export_kw' => 4.5, 'battery_soc' => 60, 'surplus_kw' => 4.5];
 $full = Energy::suggest($sunnyFull, ['mode' => 'schnell'] + $solarCfg, 1, $zones);
-check($full['amps'] === 16 && $full['phases'] === 3 && abs($full['flows']['sun_kw'] - 4.5) < 0.001 && abs($full['flows']['mixed_kw'] - 6.54) < 0.001, 'Netzladen ohne Entladeleistung: Sonne zuerst, der Rest erst Speicher, dann Netz');
-$spared = Energy::suggest($sunnyFull, ['mode' => 'schnell'] + $solarCfg, 1, $zones, ['reserve_soc' => 10, 'protect' => true]);
-check(abs($spared['flows']['grid_kw'] - 6.54) < 0.001 && $spared['flows']['mixed_kw'] < 0.001 && $spared['flows']['battery_kw'] < 0.001, 'Netzladen mit Speicher schonen: der Rest kommt nur aus dem Netz');
+check($full['amps'] === 16 && $full['phases'] === 3 && abs($full['flows']['sun_kw'] - 4.5) < 0.001 && abs($full['flows']['mixed_kw'] - 6.54) < 0.001, 'Schnell ohne Entladeleistung: Sonne zuerst, der Rest erst Speicher, dann Netz');
+$spared = Energy::suggest($sunnyFull, ['mode' => 'netz'] + $solarCfg, 1, $zones, ['reserve_soc' => 10, 'protect' => true]);
+check(abs($spared['flows']['grid_kw'] - 6.54) < 0.001 && $spared['flows']['mixed_kw'] < 0.001 && $spared['flows']['battery_kw'] < 0.001, 'Netzladen: der Rest kommt nur aus dem Netz');
 $capped = Energy::suggest($night + ['battery_soc' => 60], ['mode' => 'schnell'] + $solarCfg, 1, $zones, ['reserve_soc' => 10, 'max_discharge_kw' => 4.6]);
-check(abs($capped['flows']['battery_kw'] - 4.1) < 0.001 && abs($capped['flows']['grid_kw'] - 6.94) < 0.001, 'Netzladen ohne Schonen: der Speicher gibt seine Entladeleistung abzüglich Haus, den Rest das Netz');
+check(abs($capped['flows']['battery_kw'] - 4.1) < 0.001 && abs($capped['flows']['grid_kw'] - 6.94) < 0.001, 'Schnell: der Speicher gibt seine Entladeleistung abzüglich Haus, den Rest das Netz');
 $keepSpare = Energy::suggest($sunnyFull, ['mode' => 'smart_dauerhaft'] + $solarCfg, 1, $zones, ['protect' => true]);
-check($keepSpare['flows']['grid_kw'] < 0.001 && Energy::batteryFor('smart', ['protect' => true])['protect'] === false && Energy::batteryFor('schnell', ['protect' => true])['protect'] === true, 'Geschont wird nur beim Netzladen');
+check($keepSpare['flows']['grid_kw'] < 0.001 && Energy::batteryFor('smart', ['protect' => true])['protect'] === false && Energy::batteryFor('schnell', ['protect' => true])['protect'] === false && Energy::batteryFor('netz', ['protect' => true])['protect'] === true && Energy::batteryFor('netz', [])['protect'] === false, 'Geschont wird nur beim Netzladen und nur mit Backup-Puffer');
 $exporting = Energy::allot(1.38, 'smart_dauerhaft', ['pv_kw' => 5.0, 'house_base_kw' => 0.5, 'battery_charge_kw' => 3.0, 'battery_discharge_kw' => 0.0, 'grid_export_kw' => 1.5, 'battery_soc' => 40]);
 check(abs($exporting['sun_kw'] - 1.38) < 0.001 && abs($exporting['charge_kw'] - 3.0) < 0.001 && abs($exporting['export_kw'] - 0.12) < 0.001, 'Lädt der Speicher schon voll, geht der Rest der Sonne ins Netz');
 // Energie-Flow: Sonne zuerst in den Verbrauch, dann Speicher, Rest ins Netz; Haus und Auto teilen sich die Quellen.
@@ -109,17 +113,18 @@ check(abs($evening['links']['battery_car'] - 2.51) < 0.01 && abs($evening['links
 check(abs(Energy::distanceKm(100.0, 'mi')[0] - 160.9344) < 0.0001 && Energy::distanceKm(42.0, 'km')[0] === 42.0 && Energy::distanceKm(1.0, 'kWh')[0] === null, 'Meilen werden Kilometer');
 
 // Backup-Puffer beim Netzladen: anheben, halten, zurücksetzen
-$rs = ['entity' => 'number.x', 'default' => 20, 'protect' => true, 'discharge_kw' => null, 'active' => true];
+$rs = ['entity' => 'number.x', 'default' => 20, 'discharge_kw' => null, 'active' => true];
 $down = ['raised' => false];
-check(Reserve::decide($rs, $down, 'schnell', 64.7, true, true, true) == ['action' => 'raise', 'value' => 64, 'entity' => 'number.x'], 'Netzladen hebt den Puffer auf den Ladestand');
-check(Reserve::decide($rs, $down, 'smart', 64.7, true, true, true)['action'] === 'none' && Reserve::decide($rs, $down, 'schnell', 64.7, false, false, true)['action'] === 'none', 'Andere Modi und Netzladen ohne Ladung heben nicht an');
-check(Reserve::decide($rs, $down, 'schnell', 18.0, true, true, true)['action'] === 'none' && Reserve::decide(['active' => false] + $rs, $down, 'schnell', 64.7, true, true, true)['action'] === 'none', 'Unter dem Standardwert oder ohne Schonen bleibt der Puffer');
+check(Reserve::decide($rs, $down, 'netz', 64.7, true, true, true) == ['action' => 'raise', 'value' => 64, 'entity' => 'number.x'], 'Netzladen hebt den Puffer auf den Ladestand');
+check(Reserve::decide($rs, $down, 'smart', 64.7, true, true, true)['action'] === 'none' && Reserve::decide($rs, $down, 'netz', 64.7, false, false, true)['action'] === 'none', 'Andere Modi und Netzladen ohne Ladung heben nicht an');
+check(Reserve::decide($rs, $down, 'netz', 18.0, true, true, true)['action'] === 'none' && Reserve::decide(['active' => false] + $rs, $down, 'netz', 64.7, true, true, true)['action'] === 'none', 'Unter dem Standardwert oder ohne Entität und Standardwert bleibt der Puffer');
+check(Reserve::decide($rs, $down, 'schnell', 64.7, true, true, true)['action'] === 'none', 'Schnell hebt den Puffer nicht an, der Speicher gibt mit ab');
 $up = ['raised' => true, 'value' => 64, 'restore' => 20, 'entity' => 'number.x'];
-check(Reserve::decide($rs, $up, 'schnell', 64.0, false, true, true)['action'] === 'none', 'In einer Ladepause bleibt der Puffer oben');
+check(Reserve::decide($rs, $up, 'netz', 64.0, false, true, true)['action'] === 'none', 'In einer Ladepause bleibt der Puffer oben');
 check(Reserve::decide($rs, $up, 'smart', 64.0, true, true, true) == ['action' => 'restore', 'value' => 20, 'entity' => 'number.x'], 'Der Moduswechsel setzt zurück');
-check(Reserve::decide($rs, $up, 'schnell', 64.0, false, false, true)['action'] === 'restore' && Reserve::decide($rs, $up, 'schnell', 64.0, false, true, false)['action'] === 'restore', 'Ende des Ladevorgangs und Abstecken setzen zurück');
-check(Reserve::decide(['entity' => '', 'default' => null, 'active' => false] + $rs, $up, 'schnell', 64.0, true, true, true) == ['action' => 'restore', 'value' => 20, 'entity' => 'number.x'], 'Ohne Zuordnung setzt der gemerkte Wert auf der gemerkten Entität zurück');
-check(Reserve::settings(['battery_strategy' => ['backup_soc' => '15', 'grid_protect' => true, 'discharge_kw' => 0], 'mapping' => ['battery_reserve' => 'number.x']]) === ['entity' => 'number.x', 'default' => 15, 'protect' => true, 'discharge_kw' => null, 'active' => true], 'Einstellungen des Puffers');
+check(Reserve::decide($rs, $up, 'netz', 64.0, false, false, true)['action'] === 'restore' && Reserve::decide($rs, $up, 'netz', 64.0, false, true, false)['action'] === 'restore', 'Ende des Ladevorgangs und Abstecken setzen zurück');
+check(Reserve::decide(['entity' => '', 'default' => null, 'active' => false] + $rs, $up, 'netz', 64.0, true, true, true) == ['action' => 'restore', 'value' => 20, 'entity' => 'number.x'], 'Ohne Zuordnung setzt der gemerkte Wert auf der gemerkten Entität zurück');
+check(Reserve::settings(['battery_strategy' => ['backup_soc' => '15', 'discharge_kw' => 0], 'mapping' => ['battery_reserve' => 'number.x']]) === ['entity' => 'number.x', 'default' => 15, 'discharge_kw' => null, 'active' => true] && Reserve::settings(['battery_strategy' => [], 'mapping' => ['battery_reserve' => 'number.x']])['active'] === false, 'Einstellungen des Puffers');
 check(Snapshot::coverText(['protect' => true], 60.0) === 'Das Netz, der Speicher bleibt geschont.' && Snapshot::coverText(['reserve_soc' => 20, 'max_discharge_kw' => 4.6], 60.0) === 'Der Speicher bis 20' . NNBSP . '% mit höchstens 4,6' . NNBSP . 'kW, dann das Netz.', 'Wer fehlende Leistung deckt');
 // sync schreibt nur bei einem Wechsel, merkt sich Fehler und versucht es nach einer Minute wieder.
 $guardHa = new class implements HaSource {
@@ -152,7 +157,7 @@ $guardHa = new class implements HaSource {
     public function search(string $query, int $limit = 20): array { return []; }
 };
 $guard = new Reserve(new ConfigStore(':memory:'), $guardHa);
-$gridCfg = ['charge' => ['mode' => 'schnell'], 'mapping' => ['battery_reserve' => 'number.x'], 'battery_strategy' => ['backup_soc' => 20, 'grid_protect' => true], 'control' => ['active' => true]];
+$gridCfg = ['charge' => ['mode' => 'netz'], 'mapping' => ['battery_reserve' => 'number.x'], 'battery_strategy' => ['backup_soc' => 20], 'control' => ['active' => true]];
 $charging = ['wallbox_kw' => 11.0, 'wallbox_car_raw' => 'charging', 'battery_soc' => 64.7];
 $guard->sync($charging, $gridCfg, 1000, true);
 $guard->sync($charging, $gridCfg, 1010, true);
@@ -178,6 +183,43 @@ check(($found['battery_reserve'] ?? '') === 'number.sonnenbatterie_382994_batter
 check(Sessions::carConnected('wait_for_car') === true && Sessions::carConnected('WaitCar') === true && Sessions::carConnected('idle') === false && Sessions::carConnected('unknown_error') === null && Sessions::carState('Wait for car') === 'waiting'
     && Snapshot::vehicleStatus('wait_for_car', false) === 'Verbunden' && Energy::carLabel('wait_for_car') === 'Wartet auf Auto' && Controller::input(['wallbox_car_raw' => 'complete'], ['charge' => []], [])['complete'], 'Fahrzeugstatus beider go-e-Integrationen, auch wait_for_car der MQTT-Integration, heißt angesteckt');
 check((Actions::suggestions(['number.sonnenbatterie_backup_puffer' => ['attributes' => ['unit_of_measurement' => '%']]])['battery_reserve'] ?? '') === 'number.sonnenbatterie_backup_puffer', 'Eine eigene Template-Number für den Backup-Puffer wird vorgeschlagen');
+// Integration „go-eCharger API v2“: Fahrzeugstatus als Text in der Sprache von Home Assistant oder als Code.
+check(Sessions::carState('Warte auf Fahrzeug') === 'waiting' && Sessions::carState('Laden') === 'charging' && Sessions::carState('Abgeschlossen') === 'complete' && Sessions::carState('Inaktiv/Frei') === 'idle'
+    && Sessions::carState('Unbekannt/Fehler') === 'error' && Sessions::carState('Charging') === 'charging' && Sessions::carState('Unknown/Error') === 'error' && Sessions::carState('3') === 'waiting' && Sessions::carState('1') === 'idle'
+    && Sessions::carConnected('Warte auf Fahrzeug') === true && Sessions::carConnected('Inaktiv/Frei') === false && Snapshot::vehicleStatus('Laden', false) === 'Lädt …' && Energy::carLabel('Warte auf Fahrzeug') === 'Wartet auf Auto', 'Fahrzeugstatus der Integration von marq24, deutsch, englisch und als Code');
+$goe = Actions::suggestions([
+    'sensor.goe_506181_nrg_11' => ['attributes' => ['unit_of_measurement' => 'W']],
+    'sensor.goe_506181_car_value' => ['attributes' => []],
+    'number.goe_506181_amp' => ['attributes' => ['unit_of_measurement' => 'A']],
+    'number.goe_506181_ama' => ['attributes' => ['unit_of_measurement' => 'A']],
+    'select.goe_506181_psm' => ['attributes' => []],
+    'select.goe_506181_frc' => ['attributes' => []],
+    'sensor.goe_506181_wh' => ['attributes' => ['unit_of_measurement' => 'kWh']],
+]);
+check(($goe['wallbox_power'] ?? '') === 'sensor.goe_506181_nrg_11' && ($goe['wallbox_car'] ?? '') === 'sensor.goe_506181_car_value' && ($goe['wallbox_amps'] ?? '') === 'number.goe_506181_amp' && ($goe['wallbox_amps_max'] ?? '') === 'number.goe_506181_ama'
+    && ($goe['wallbox_phases'] ?? '') === 'select.goe_506181_psm' && ($goe['wallbox_force'] ?? '') === 'select.goe_506181_frc' && ($goe['wallbox_energy'] ?? '') === 'sensor.goe_506181_wh', 'Vorschläge für die Integration „go-eCharger API v2“');
+// Ladevorgänge je Stunde, wo Home Assistant keine Statistik der Wallbox hat: gleichmäßig über die Ladezeit.
+$h0 = (int) strtotime('2026-10-11T10:00:00+00:00');
+$byHour = Sessions::energyByHour([['started_at' => '2026-10-11T10:30:00+00:00', 'duration_s' => 3600, 'energy_kwh' => 2.0], ['started_at' => '2026-10-11T08:00:00+00:00', 'duration_s' => 600, 'energy_kwh' => 0.0]], $h0 - 86400, $h0 + 86400);
+check(array_keys($byHour) === [$h0, $h0 + 3600] && abs($byHour[$h0] - 1.0) < 1e-9 && abs($byHour[$h0 + 3600] - 1.0) < 1e-9 && Sessions::energyByHour([['started_at' => '2026-10-11T10:30:00+00:00', 'duration_s' => 3600, 'energy_kwh' => 2.0]], $h0 + 3600, $h0 + 7200) === [$h0 + 3600 => 1.0], 'Ladeenergie je Stunde nach Anteil der Ladezeit, nur im Zeitraum');
+// Einmalige Umstellung der Modi (1.10): mit Schonen wird „schnell“ zu Netzladen, ohne bleibt es Schnell; Regelung und Mitteilungen ziehen mit.
+$migFile = tempnam(sys_get_temp_dir(), 'ems-mig');
+foreach ([true, false] as $protectBefore) {
+    @unlink($migFile);
+    $mig = new ConfigStore($migFile);
+    $mig->pdo()->exec("DELETE FROM kv WHERE k = 'modes_v2'");
+    $mig->put('charge', ['mode' => 'schnell', 'after_unplug' => 'schnell', 'then_mode' => 'smart']);
+    $mig->put('battery_strategy', ['backup_soc' => 20, 'grid_protect' => $protectBefore]);
+    $mig->put('control_state', ['mode' => 'schnell', 'enabled' => true]);
+    $mig->put('notify_state', ['mode' => 'schnell']);
+    $mig = new ConfigStore($migFile);
+    $want = $protectBefore ? 'netz' : 'schnell';
+    check($mig->get('charge')['mode'] === $want && $mig->get('charge')['after_unplug'] === $want && $mig->get('charge')['then_mode'] === 'smart' && $mig->get('control_state')['mode'] === $want && $mig->get('notify_state')['mode'] === $want
+        && !array_key_exists('grid_protect', (array) $mig->get('battery_strategy')) && (int) $mig->get('modes_v2') === 1, 'Umstellung der Modi ' . ($protectBefore ? 'mit' : 'ohne') . ' Schonen');
+    $mig->put('charge', ['mode' => 'schnell']);
+    check((new ConfigStore($migFile))->get('charge')['mode'] === 'schnell', 'Die Umstellung läuft nur einmal, ein neues Schnell bleibt Schnell');
+}
+@unlink($migFile);
 
 $fit = Forecast::regression([10, 20, 30], [12, 22, 32]);
 check(abs($fit['a'] - 2) < 0.01 && abs($fit['b'] - 1) < 0.01, 'Regression');
@@ -221,7 +263,9 @@ check($guarded['enabled'] === false && $guarded['note'] === 'guard', 'Angesteckt
 $guarded = $run($guarded, ['available_kw' => 2.0], 4050);
 check($guarded['enabled'] === true, 'Nach der Schutzzeit ohne weitere Einschaltverzögerung');
 $fast = $run(['enabled' => false, 'amps' => 6, 'phases' => 1, 'step_at' => 4990, 'mode' => 'smart', 'connected' => true], ['mode' => 'schnell'], 5000);
-check($fast['enabled'] === true && $fast['amps'] === 16 && $fast['phases'] === 3, 'Netzladen gibt sofort frei, dreiphasig mit Höchststrom');
+check($fast['enabled'] === true && $fast['amps'] === 16 && $fast['phases'] === 3, 'Schnell gibt sofort frei, dreiphasig mit Höchststrom');
+$gridStep = Controller::step(['enabled' => false, 'amps' => 6, 'phases' => 3, 'step_at' => 4990, 'mode' => 'schnell', 'connected' => true], ['mode' => 'netz'] + $ctl, 5000);
+check($gridStep['state']['enabled'] === true && $gridStep['state']['amps'] === 16 && in_array('Netzladen: frei mit 16' . NNBSP . 'A · 3-phasig.', $gridStep['events'], true), 'Netzladen gibt ebenso sofort frei und nennt sich im Protokoll');
 $off = $run($fast, ['mode' => 'aus', 'charging' => true], 5010);
 check($off['enabled'] === false, 'Aus sperrt sofort');
 $min = $run(['enabled' => false, 'amps' => 6, 'phases' => 1, 'step_at' => 5990, 'mode' => 'smart_dauerhaft', 'connected' => true], ['mode' => 'smart_dauerhaft', 'available_kw' => 0.0], 6000);
@@ -271,7 +315,7 @@ foreach ([3000, 3070, 3140] as $at) {
     $deaf = $wall->apply(['enabled' => true, 'amps' => 6, 'phases' => 1] + $deaf, $wallCfg, ['frc' => 'off', 'amp' => 6, 'psm' => '1p'], $at);
 }
 $deaf = $wall->apply($deaf, $wallCfg, ['frc' => 'off', 'amp' => 6, 'psm' => '1p'], 3210);
-check($deaf['conflicts'] === [] && count($deaf['ignored']) === 3 && str_contains((string) $deaf['paused'], 'mcr') && str_contains($deaf['log'][1]['text'] ?? '', 'nicht übernommen'), 'Eine Wallbox, die Befehle nicht übernimmt, pausiert mit dem Hinweis auf MQTT nur lesen');
+check($deaf['conflicts'] === [] && count($deaf['ignored']) === 3 && str_contains((string) $deaf['paused'], 'go-eCharger API v2') && str_contains($deaf['log'][1]['text'] ?? '', 'nicht übernommen'), 'Eine Wallbox, die Befehle nicht übernimmt, pausiert mit dem Hinweis auf MQTT nur lesen');
 $seen = Controller::observe(['written' => ['frc' => ['v' => 'on', 't' => 4000, 'before' => 'off', 'seen' => false]]] + Controller::initial(), ['frc' => 'on', 'amp' => 6, 'psm' => '1p']);
 $back = $wall->apply(['enabled' => true, 'amps' => 6, 'phases' => 1] + $seen, $wallCfg, ['frc' => 'off', 'amp' => 6, 'psm' => '1p'], 4070);
 check($seen['written']['frc']['seen'] === true && count($back['conflicts']) === 1 && $back['ignored'] === [], 'Hat die Wallbox den Wert gemeldet und springt dann zurück, war es ein anderer Regler');
@@ -642,7 +686,7 @@ $notifyCtx = Notify::context(
     ['energy_kwh' => 12.4, 'solar_kwh' => 9.3, 'grid_kwh' => 3.1, 'duration_s' => 7800]
 );
 check($notifyCtx['auto'] === 'ID.3' && $notifyCtx['pv'] === '5,2' . NNBSP . 'kW' && $notifyCtx['geladen'] === '12,4' . NNBSP . 'kWh' && $notifyCtx['dauer'] === '2:10 h' && $notifyCtx['sonnenanteil'] === '75' . NNBSP . '%'
-    && $notifyCtx['kosten'] === '1,67' . NNBSP . '€' && $notifyCtx['modus'] === 'Nur Solar' && $notifyCtx['uhrzeit'] === '14:05' && $notifyCtx['ladestand'] === '64' . NNBSP . '%' && $notifyCtx['grund'] === '—', 'Werte der Platzhalter wie auf den Seiten');
+    && $notifyCtx['kosten'] === '1,67' . NNBSP . '€' && $notifyCtx['modus'] === 'Solar' && $notifyCtx['uhrzeit'] === '14:05' && $notifyCtx['ladestand'] === '64' . NNBSP . '%' && $notifyCtx['grund'] === '—', 'Werte der Platzhalter wie auf den Seiten');
 $notifyState = [];
 $notifyIn = ['connected' => false, 'charging' => false, 'full' => false, 'open_id' => null, 'latest_id' => null, 'latest_at' => null, 'battery_soc' => 50.0, 'export_kw' => 0.0, 'missing' => [], 'faults' => [], 'stuck' => false, 'target_done' => null, 'tomorrow_kwh' => 30.0];
 $detect = static function (array $patch, int $now) use (&$notifyState, &$notifyIn, $notifyDefaults): array {
@@ -682,7 +726,7 @@ check($names($monthly) === ['daily', 'monthly'] && $monthly[1]['data']['month'] 
 $later = (int) strtotime('2026-11-02 10:00:00 Europe/Berlin');
 check($detect(['mode' => 'smart', 'control' => false], $later) === [], 'Modus und Hauptschalter aus einem alten Stand ohne Meldung übernommen');
 $modeChange = $detect(['mode' => 'schnell'], $later + 10);
-check($names($modeChange) === ['mode'] && $modeChange[0]['data']['vorher'] === 'Nur Solar' && $detect([], $later + 20) === [] && $names($detect(['control' => true], $later + 30)) === ['control'], 'Lademodus geändert und Regelung ein');
+check($names($modeChange) === ['mode'] && $modeChange[0]['data']['vorher'] === 'Solar' && $detect([], $later + 20) === [] && $names($detect(['control' => true], $later + 30)) === ['control'], 'Lademodus geändert und Regelung ein');
 $notifyHa = new class implements HaSource {
     public array $sent = [];
     public bool $fail = false;

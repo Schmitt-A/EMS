@@ -487,10 +487,31 @@ final class Heatmap
         if ($includes === $total) {
             return $house;
         }
-        $wall = $this->powerKwh((string) ($m['wallbox_power'] ?? ''), $period, $start, $end);
+        $wall = $this->wallbox($m, $period, $start, $end);
         $out = [];
         foreach ($house as $key => $kwh) {
             $out[$key] = max(0.0, $total ? $kwh + ($wall[$key] ?? 0.0) : $kwh - ($wall[$key] ?? 0.0));
+        }
+        return $out;
+    }
+
+    /**
+     * Wallbox in kWh je Abschnitt: aus der Langzeitstatistik ihrer Leistung (Monate tageweise abgefragt) und, wo Home
+     * Assistant keine hat (Entität ohne state_class, Zeit vor dem Wechsel auf eine neue Entität), aus den Ladevorgängen
+     * von EMS, über ihre Ladezeit verteilt. So stimmt das Haus ohne Auto auch über einen Wechsel der Entität hinweg.
+     */
+    private function wallbox(array $m, string $period, int $start, int $end): array
+    {
+        $fine = $period === 'month' ? 'day' : $period;
+        $notes = count($this->notes);
+        $stats = $this->powerKwh((string) ($m['wallbox_power'] ?? ''), $fine, $start, $end);
+        // Ohne Statistik springen die Ladevorgänge ein; der Hinweis auf die fehlende Statistik wäre irreführend.
+        array_splice($this->notes, $notes);
+        $sessions = array_map(static fn (array $s): float => $s['energy'], $this->charging([], $fine, $start, $end));
+        $out = [];
+        foreach ($stats + $sessions as $key => $kwh) {
+            $bucket = $fine === $period ? (string) $key : substr((string) $key, 0, 7);
+            $out[$bucket] = ($out[$bucket] ?? 0.0) + $kwh;
         }
         return $out;
     }

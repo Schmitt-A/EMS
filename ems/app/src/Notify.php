@@ -461,7 +461,7 @@ final class Notify
     public static function sampleData(string $event, int $now): array
     {
         return match ($event) {
-            'fault' => ['grund' => 'Ein anderer Regler schreibt ebenfalls an die Wallbox, etwa evcc. EMS hat die Regelung pausiert.'],
+            'fault' => ['grund' => 'Ein anderer Regler schreibt ebenfalls an die Wallbox. EMS hat die Regelung pausiert.'],
             'offline' => ['grund' => 'Wallbox', 'seit' => date('H:i', $now - self::OFFLINE_S)],
             'stuck' => ['seit' => date('H:i', $now - self::STUCK_S)],
             'mode' => ['vorher' => Energy::modeLabel('aus')],
@@ -686,9 +686,9 @@ final class Notify
         $open = $sessions->open();
         $latest = $sessions->latest();
         $power = isset($v['wallbox_kw']) ? (float) $v['wallbox_kw'] : null;
-        $raw = strtolower(str_replace([' ', '-'], '_', (string) ($v['wallbox_car_raw'] ?? '')));
-        $connected = Sessions::carConnected($v['wallbox_car_raw'] ?? null, $power);
-        $charging = ($power ?? 0.0) > 0.2 || $raw === 'charging';
+        $raw = isset($v['wallbox_car_raw']) ? (string) $v['wallbox_car_raw'] : null;
+        $connected = Sessions::carConnected($raw, $power);
+        $charging = ($power ?? 0.0) > 0.2 || Sessions::carState($raw) === 'charging';
         $soc = $snap['vehicle']['soc'] ?? null;
         $limit = $snap['vehicle']['limit'] ?? null;
         // Voll nur nach dem Ladestand des Autos; „complete“ meldet die go-e auch, wenn sie gesperrt ist.

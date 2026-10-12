@@ -36,9 +36,8 @@ $store->merge('tariffs', [
 ]);
 $zones = $data['speicher_grenzen'];
 $store->merge('battery_strategy', zone_thresholds((float) $zones['priority_soc'], (float) $zones['car_buffer_soc'], (float) $zones['car_auto_soc']) + [
-    // Backup-Puffer 10 %, Netzladen schont den Speicher, Entladeleistung wie im Modell.
+    // Backup-Puffer 10 % (Netzladen hebt ihn an), Entladeleistung wie im Modell.
     'backup_soc' => 10.0,
-    'grid_protect' => true,
     'discharge_kw' => (float) ($data['anlage']['speicher_max_kw'] ?? 5),
 ]);
 $store->merge('chargepoint', ['name' => (string) $data['ladepunkt']['name']]);

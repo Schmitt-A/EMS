@@ -38,7 +38,7 @@ $staticGraph = Energy::flowGraph(
 $vehicle = ['name' => 'ID.3', 'status' => 'Lädt …', 'soc' => 57.0, 'range_km' => 296.0, 'limit' => 80.0, 'range_at_limit' => 416.0];
 $cards = [
     'Lädt mit Ziel und Übersicht' => ['name' => 'Garage', 'mode' => 'smart', 'charging' => true, 'solar_only' => true, 'power_kw' => 7.36, 'phases' => 3, 'session_kwh' => 12.4, 'remaining_s' => 4300, 'vehicle' => $vehicle,
-        'target' => ['label' => 'Ziel 20,0' . NNBSP . 'kWh · ≈ 115' . NNBSP . 'km', 'text' => 'bisher 12,4' . NNBSP . 'kWh ≈ 71' . NNBSP . 'km, noch ca. 1:02 h', 'then_text' => 'Danach Nur Solar', 'progress' => 0.62],
+        'target' => ['label' => 'Ziel 20,0' . NNBSP . 'kWh · ≈ 115' . NNBSP . 'km', 'text' => 'bisher 12,4' . NNBSP . 'kWh ≈ 71' . NNBSP . 'km, noch ca. 1:02 h', 'then_text' => 'Danach Solar', 'progress' => 0.62],
         'session_view' => ['open' => true, 'since' => 'seit 10:12', 'duration' => '1:41 h', 'km' => '≈ 71' . NNBSP . 'km', 'avg' => '7,4' . NNBSP . 'kW', 'solar' => '92' . NNBSP . '%', 'cost' => '0,13' . NNBSP . '€']],
     'Verbunden, wartet' => ['name' => 'Garage', 'mode' => 'smart_dauerhaft', 'charging' => false, 'solar_only' => false, 'power_kw' => 0.0, 'phases' => 0, 'session_kwh' => 0.0, 'remaining_s' => null, 'vehicle' => ['status' => 'Verbunden'] + $vehicle],
     'Fahrzeugdaten fehlen (gesperrt)' => ['name' => 'Garage', 'mode' => 'aus', 'charging' => false, 'solar_only' => false, 'power_kw' => null, 'phases' => 0, 'session_kwh' => null, 'remaining_s' => null, 'vehicle' => ['name' => 'Auto', 'status' => 'Nicht verbunden', 'soc' => null, 'range_km' => null, 'limit' => null, 'range_at_limit' => null]],
@@ -86,11 +86,11 @@ $section('Buttons und Icon-Buttons', 'Kapseln für Aktionen, Primär in Tinte, S
     echo '</div>';
 });
 
-$section('Segment-Umschalter', 'Modi und Zeiträume als Kapsel-Segmente. Pfeiltasten wechseln, die aktive Kapsel gleitet. Bei wenig Platz wird „Min+Solar“ zu „Min+“ mit Sonne.', static function (string $s) use ($state): void {
-    echo $state('Modi', ui_segment('mode-' . $s, 'Lademodus', ui_mode_options(), 'smart', ['id' => 'g-mode-' . $s]));
-    echo '<div class="gallery-narrow">' . $state('Schmal (Kurzlabel)', ui_segment('mode-n-' . $s, 'Lademodus', ui_mode_options(), 'smart_dauerhaft', ['id' => 'g-moden-' . $s])) . '</div>';
+$section('Segment-Umschalter', 'Modi und Zeiträume als Kapsel-Segmente. Pfeiltasten wechseln, die aktive Kapsel gleitet. Bei wenig Platz wird „Min+Solar“ zu „Min+“ mit Sonne und „Netzladen“ zu „Netz“.', static function (string $s) use ($state): void {
+    echo $state('Modi', ui_segment('mode-' . $s, 'Lademodus', ui_mode_options(), 'smart', ['id' => 'g-mode-' . $s, 'tight' => true]));
+    echo '<div class="gallery-narrow">' . $state('Schmal (Kurzlabel)', ui_segment('mode-n-' . $s, 'Lademodus', ui_mode_options(), 'smart_dauerhaft', ['id' => 'g-moden-' . $s, 'tight' => true])) . '</div>';
     echo $state('Kompakt (Filter)', ui_segment('span-' . $s, 'Zeitraum', ['month' => 'Monat', 'year' => 'Jahr', 'all' => 'Gesamt'], 'year', ['compact' => true, 'id' => 'g-span-' . $s]));
-    echo $state('Deaktiviert', ui_segment('mode-x-' . $s, 'Lademodus', ui_mode_options(), 'aus', ['id' => 'g-modex-' . $s, 'attrs' => ['disabled' => true]]));
+    echo $state('Deaktiviert', ui_segment('mode-x-' . $s, 'Lademodus', ui_mode_options(), 'aus', ['id' => 'g-modex-' . $s, 'tight' => true, 'attrs' => ['disabled' => true]]));
 });
 
 $section('Kennzahlen und unterstrichene Werte', 'Zahlen groß und fett, Labels klein in Versalien. Unterstrichen heißt bedienbar.', static function (string $s) use ($state): void {

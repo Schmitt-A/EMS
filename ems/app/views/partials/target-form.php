@@ -74,7 +74,7 @@ $hint = static fn (string $panel): string => '<p class="caption target-km" data-
     <?= $hint('range') ?>
 <?php endif; ?>
   </div>
-  <div class="form-rows"><?= ui_form_row('Danach', ui_select('then', ['smart' => 'Nur Solar', 'smart_dauerhaft' => 'Min+Solar', 'aus' => 'Aus (Wallbox stoppt)'], $then), ['for' => 'f-then']) ?></div>
+  <div class="form-rows"><?= ui_form_row('Danach', ui_select('then', ['smart' => 'Solar', 'smart_dauerhaft' => 'Min+Solar', 'aus' => 'Aus (Wallbox stoppt)'], $then), ['for' => 'f-then']) ?></div>
   <div class="form-actions">
     <button class="btn btn-primary" type="submit"><?= icon('target', 'icon-16') ?>Ziel setzen</button>
 <?php if ($target !== null): ?>

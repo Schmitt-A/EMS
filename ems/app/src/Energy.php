@@ -411,8 +411,8 @@ final class Energy
         $wallboxRaw = $live['wallbox_kw'] ?? null;
         $importRaw = $live['grid_import_kw'] ?? null;
         $exportRaw = $live['grid_export_kw'] ?? null;
-        $running = (float) ($wallboxRaw ?? 0) > 0.05 || strtolower((string) ($live['wallbox_car_raw'] ?? '')) === 'charging';
-        if ($wallboxRaw === null && $importRaw === null && $exportRaw === null && $mode !== 'schnell' && $mode !== 'aus') {
+        $running = (float) ($wallboxRaw ?? 0) > 0.05 || Sessions::carState($live['wallbox_car_raw'] ?? null) === 'charging';
+        if ($wallboxRaw === null && $importRaw === null && $exportRaw === null && !self::fullPower($mode) && $mode !== 'aus') {
             return [
                 'mode' => $mode,
                 'zone' => $zone,
@@ -442,12 +442,12 @@ final class Energy
         if ($mode === 'aus') {
             $target = 0.0;
             $reason = 'Modus Aus.';
-        } elseif ($mode === 'schnell') {
+        } elseif (self::fullPower($mode)) {
             $phases = $phaseMode === '1p' ? 1 : 3;
             $target = self::KW_PER_AMP * $maxA * $phases;
-            $reason = 'Netzladen mit voller Leistung.';
+            $reason = self::modeLabel($mode) . ' mit voller Leistung.';
         } else {
-            // Sonnenanteil wie evcc: Er senkt nur die Schwelle zum Start mit dem Mindeststrom, darüber zählt die Sonne.
+            // Sonnenanteil: Er senkt nur die Schwelle zum Start mit dem Mindeststrom, darüber zählt die Sonne.
             $target = $solar;
             if ($target < self::KW_PER_AMP * $minA && $share < 0.999 && $solar >= $share * self::KW_PER_AMP * $minA) {
                 $target = self::KW_PER_AMP * $minA;
@@ -502,14 +502,15 @@ final class Energy
     }
 
     /**
-     * Speicher-Angaben für einen Modus: geschont wird nur beim Netzladen. Ein Wechsel in einen anderen Modus
-     * setzt den Puffer zurück, darum rechnen die anderen Modi mit dem Standardwert.
+     * Speicher-Angaben für einen Modus: geschont wird nur beim Netzladen, und nur, wenn sich der Backup-Puffer
+     * anheben lässt ($battery['protect'] aus Reserve::battery()). Ein Wechsel in einen anderen Modus setzt den Puffer
+     * zurück, darum rechnen die anderen Modi mit dem Standardwert.
      *
      * @param array{reserve_soc?: ?float, protect?: bool, max_discharge_kw?: ?float} $battery
      */
     public static function batteryFor(string $mode, array $battery): array
     {
-        $battery['protect'] = $mode === 'schnell' && !empty($battery['protect']);
+        $battery['protect'] = $mode === 'netz' && !empty($battery['protect']);
         return $battery;
     }
 
@@ -518,7 +519,7 @@ final class Energy
      * in den Speicher und ins Netz. Was dem Auto fehlt, deckt der Speicher, solange er über dem Backup-Puffer
      * liegt und nicht geschont wird (Netzladen mit angehobenem Puffer), höchstens mit seiner Entladeleistung
      * abzüglich dessen, was er schon fürs Haus liefert; den Rest das Netz. Ohne bekannte Entladeleistung bleibt
-     * beim Netzladen offen, wie viel der Speicher schafft (mixed: erst Speicher, dann Netz).
+     * bei voller Leistung offen, wie viel der Speicher schafft (mixed: erst Speicher, dann Netz).
      * spare ist der Überschuss über dem Haus, ohne Auto und Speicher.
      *
      * @param array{reserve_soc?: ?float, protect?: bool, max_discharge_kw?: ?float} $battery
@@ -551,7 +552,7 @@ final class Energy
             } elseif ($max !== null) {
                 $fromBattery = min($short, max(0.0, $max - $deficit));
                 $fromGrid = $short - $fromBattery;
-            } elseif ($mode === 'schnell') {
+            } elseif (self::fullPower($mode)) {
                 $mixed = $short;
             } else {
                 $fromBattery = $short;
@@ -572,7 +573,7 @@ final class Energy
 
     private static function autoPhases(float $target, ?int $reported, string $mode): int
     {
-        if ($mode === 'schnell') {
+        if (self::fullPower($mode)) {
             return 3;
         }
         if ($target >= self::PHASE_DOWN_KW && $target < self::PHASE_UP_KW) {
@@ -653,13 +654,38 @@ final class Energy
         return 'Ruhe';
     }
 
+    /** Die Lademodi in der Reihenfolge der Auswahl: Aus, Solar, Min+Solar, Schnell und Netzladen. */
+    public const MODES = ['aus', 'smart', 'smart_dauerhaft', 'schnell', 'netz'];
+
+    /** Ein gespeicherter oder gesendeter Modus; unbekannte werden zu Solar. */
+    public static function mode(mixed $mode): string
+    {
+        return in_array($mode, self::MODES, true) ? (string) $mode : 'smart';
+    }
+
+    /** Volle Leistung sofort: Schnell (Sonne, Speicher bis zum Backup-Puffer, Netz) und Netzladen (Sonne und Netz). */
+    public static function fullPower(string $mode): bool
+    {
+        return $mode === 'schnell' || $mode === 'netz';
+    }
+
+    /**
+     * Bis 1.9 hieß Netzladen intern „schnell“ und schonte den Speicher nur mit battery_strategy.grid_protect. Mit
+     * Schonen wird daraus „netz“, ohne bleibt es „schnell“, das jetzt Schnell heißt und genauso lädt.
+     */
+    public static function migratedMode(mixed $mode, bool $protect): mixed
+    {
+        return $mode === 'schnell' && $protect ? 'netz' : $mode;
+    }
+
     public static function modeLabel(string $mode): string
     {
         return match ($mode) {
             'aus' => 'Aus',
-            'schnell' => 'Netzladen',
             'smart_dauerhaft' => 'Min+Solar',
-            default => 'Nur Solar',
+            'schnell' => 'Schnell',
+            'netz' => 'Netzladen',
+            default => 'Solar',
         };
     }
 
@@ -667,8 +693,9 @@ final class Energy
     {
         return match ($mode) {
             'aus' => 'Ladestrom 0 A. Die Wallbox bliebe aus.',
-            'schnell' => 'Volle Ladeleistung, was die Sonne nicht schafft, kommt aus dem Netz. Mit „Speicher schonen“ hebt die App den Backup-Puffer, solange das Auto lädt; sonst deckt der Speicher zuerst mit.',
             'smart_dauerhaft' => 'Lädt immer mit dem Mindeststrom. Sonnenüberschuss hebt die Leistung an, was fehlt, deckt der Speicher bis zum Backup-Puffer, danach das Netz.',
+            'schnell' => 'Volle Ladeleistung sofort. Was die Sonne nicht schafft, deckt der Speicher bis zum Backup-Puffer, danach das Netz.',
+            'netz' => 'Volle Ladeleistung, was die Sonne nicht schafft, kommt aus dem Netz. Solange das Auto lädt, hebt die App den Backup-Puffer auf den Ladestand, der Speicher gibt nichts ab; danach gilt wieder der Standardwert.',
             default => 'Nur Sonnenüberschuss, Ziel nahe 0 W am Zähler. Unter 1,38 kW setzt der Vorschlag aus, außer der Speicher stützt die Ladung.',
         };
     }

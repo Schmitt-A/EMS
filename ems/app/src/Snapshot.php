@@ -196,9 +196,9 @@ final class Snapshot
         // Backup-Puffer, Schonen beim Netzladen und Entladeleistung: woher dem Auto fehlende Leistung käme.
         $battery = Reserve::battery($cfg);
         $suggestion = Energy::suggest($live, $cfg['charge'], $reported, $strategy, $battery);
-        // Was die drei Modi jetzt täten, für die Regelung unter der Ladepunkt-Karte.
+        // Was die Modi jetzt täten, für die Regelung unter der Ladepunkt-Karte.
         $modes = [];
-        foreach (['smart', 'smart_dauerhaft', 'schnell'] as $mode) {
+        foreach (['smart', 'smart_dauerhaft', 'schnell', 'netz'] as $mode) {
             $modes[$mode] = $mode === $suggestion['mode'] ? $suggestion : Energy::suggest($live, ['mode' => $mode] + $cfg['charge'], $reported, $strategy, $battery);
         }
         // Regelung: der Zustand, den der Recorder alle 30 s fortschreibt. Ist er nicht frisch oder gilt schon ein
@@ -281,7 +281,7 @@ final class Snapshot
             }
         }
         $charging = ((float) ($values['wallbox_kw'] ?? 0) > 0.05)
-            || strtolower((string) ($values['wallbox_car_raw'] ?? '')) === 'charging';
+            || Sessions::carState($values['wallbox_car_raw'] ?? null) === 'charging';
         $actualToday = null;
         try {
             $actualToday = (new Series($this->store, $this->ha))->yieldToday($cfg['mapping']);
@@ -431,7 +431,7 @@ final class Snapshot
 
     public static function vehicleStatus(string $raw, bool $charging): string
     {
-        if ($charging || $raw === 'charging') {
+        if ($charging || Sessions::carState($raw) === 'charging') {
             return 'Lädt …';
         }
         return match (Sessions::carState($raw)) {
@@ -517,13 +517,13 @@ final class Snapshot
 
     /**
      * Regelung unter der Ladepunkt-Karte: mit welcher Stufe die Wallbox jetzt laden würde (verriegelt, mit
-     * anstehendem Wechsel), woher die Leistung käme und wohin der übrige Überschuss ginge, was die drei Modi
+     * anstehendem Wechsel), woher die Leistung käme und wohin der übrige Überschuss ginge, was die Modi
      * täten, die Phasen-Leiter und der Rechenweg. Geschrieben wird nichts.
      *
      * @param array $live Messwerte und Bilanz
      * @param array $strategy geordnete Grenzen aus zone_thresholds()
      * @param array $setpoint Stand der Regelung aus Controller::decision() mit Zielwerten von Energy::suggest()
-     * @param array<string, array> $modes Vorschläge für smart, smart_dauerhaft und schnell
+     * @param array<string, array> $modes Vorschläge für smart, smart_dauerhaft, schnell und netz
      * @param array $battery Backup-Puffer, Schonen und Entladeleistung aus Reserve::battery()
      * @param array $reserve Stand des Puffers aus Reserve::view()
      * @param array $ems Hauptschalter: active, paused, stale, log
@@ -628,10 +628,13 @@ final class Snapshot
             return 'Die Wallbox bliebe aus, der Überschuss ginge in den Speicher und danach ins Netz.';
         }
         if ($mode === 'schnell') {
+            return 'Volle Leistung. Was die Sonne nicht schafft, deckt zuerst der Speicher bis zu seinem Backup-Puffer, dann das Netz.';
+        }
+        if ($mode === 'netz') {
             return match (true) {
                 !empty($reserve['raised']) => 'Volle Leistung aus Sonne und Netz. ' . (string) $reserve['text'],
-                !empty($reserve['active']) => 'Volle Leistung aus Sonne und Netz. Lädt das Auto, hebt die App den Backup-Puffer auf den Ladestand, damit der Speicher geschont bleibt.',
-                default => 'Volle Leistung. Was die Sonne nicht schafft, deckt zuerst der Speicher bis zu seinem Backup-Puffer, dann das Netz. Schonen lässt er sich unter Einstellungen → Speicher.',
+                !empty($reserve['active']) => 'Volle Leistung aus Sonne und Netz. Lädt das Auto, hebt die App den Backup-Puffer auf den Ladestand, damit der Speicher nichts abgibt.',
+                default => 'Volle Leistung. Ohne Backup-Puffer unter Einstellungen → Speicher deckt der Speicher mit, bis er seinen Puffer erreicht, dann das Netz.',
             };
         }
         $p = pct((float) $strategy['priority_soc']);

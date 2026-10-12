@@ -62,10 +62,10 @@ final class Controller
         $minA = min(16, max(6, (int) ($c['min_a'] ?? 6)));
         $available = $suggestion['p_soll_kw'] ?? null;
         return [
-            'mode' => (string) ($c['mode'] ?? 'smart'),
+            'mode' => Energy::mode($c['mode'] ?? 'smart'),
             // Ohne Fahrzeugstatus gilt das Auto als angesteckt, sonst könnte nie geladen werden.
             'connected' => Sessions::carConnected($raw, $power) !== false,
-            'charging' => ($power ?? 0.0) > 0.2 || strtolower((string) $raw) === 'charging',
+            'charging' => ($power ?? 0.0) > 0.2 || Sessions::carState($raw) === 'charging',
             'complete' => Sessions::carState($raw) === 'complete',
             'available_kw' => $available === null ? null : (float) $available,
             'zone' => (string) ($suggestion['zone'] ?? 'none'),
@@ -147,14 +147,14 @@ final class Controller
             };
         }
 
-        // Moduswechsel setzt die Timer zurück wie evcc; nach Netzladen darf Nur Solar sofort stoppen.
+        // Moduswechsel setzt die Timer zurück wie evcc; nach voller Leistung darf Solar sofort stoppen.
         if ($s['mode'] !== null && $s['mode'] !== $mode) {
-            if ($mode === 'aus' || $mode === 'schnell') {
+            if ($mode === 'aus' || Energy::fullPower($mode)) {
                 self::reset($s, 'pv');
                 self::reset($s, 'phase');
             } elseif ($mode === 'smart_dauerhaft') {
                 self::reset($s, 'pv');
-            } elseif ($s['mode'] === 'schnell') {
+            } elseif (Energy::fullPower((string) $s['mode'])) {
                 $s['pv_timer'] = self::ELAPSED;
                 $s['pv_action'] = null;
             }
@@ -204,7 +204,7 @@ final class Controller
                 $s['switched_at'] = $now;
                 $events[] = 'Modus Aus, Wallbox gesperrt.';
             }
-        } elseif ($mode === 'schnell') {
+        } elseif (Energy::fullPower($mode)) {
             self::fast($s, $in, $now, $fixed, $events);
         } elseif ($in['available_kw'] === null) {
             // Ohne Zählerwerte nichts schalten, den Stand halten.
@@ -216,10 +216,14 @@ final class Controller
         return ['state' => $s, 'events' => $events];
     }
 
-    /** Netzladen: sofort frei, Höchststrom; dreiphasig, beim Laden nach der Einschaltverzögerung (evcc fastChargingPhases). */
+    /**
+     * Schnell und Netzladen: sofort frei, Höchststrom; dreiphasig, beim Laden nach der Einschaltverzögerung (evcc
+     * fastChargingPhases). Woher die Leistung kommt, regelt beim Netzladen der Backup-Puffer (Reserve).
+     */
     private static function fast(array &$s, array $in, int $now, ?int $fixed, array &$events): void
     {
         $minA = (int) $in['min_a'];
+        $label = Energy::modeLabel((string) $in['mode']);
         if ($fixed === null && $s['phases'] === 1) {
             if (self::due($s, 'phase', 'scale3p', (int) $in['on_s'], !empty($in['charging']), $now)) {
                 if (self::guardLeft($s, $in, $now) === 0) {
@@ -227,7 +231,7 @@ final class Controller
                     $s['amps'] = $minA;
                     $s['switched_at'] = $now;
                     self::reset($s, 'phase');
-                    $events[] = 'Netzladen: dreiphasig.';
+                    $events[] = $label . ': dreiphasig.';
                 } else {
                     $s['note'] = 'guard';
                 }
@@ -240,11 +244,11 @@ final class Controller
         if (!$s['enabled']) {
             $s['enabled'] = true;
             $s['switched_at'] = $now;
-            $events[] = 'Netzladen: frei mit ' . Snapshot::levelText($s['amps'], $s['phases']) . '.';
+            $events[] = $label . ': frei mit ' . Snapshot::levelText($s['amps'], $s['phases']) . '.';
         }
     }
 
-    /** Nur Solar und Min+Solar wie evcc pvMaxCurrent und pvScalePhases. */
+    /** Solar und Min+Solar wie evcc pvMaxCurrent und pvScalePhases. */
     private static function pv(array &$s, array $in, int $now, ?int $fixed, array &$events): void
     {
         $available = (float) $in['available_kw'];
@@ -477,10 +481,10 @@ final class Controller
         // Drei Fälle in zehn Minuten, gleich welcher Art, pausieren; der Hinweis folgt dem häufigeren.
         if (count($s['conflicts']) + count($s['ignored']) >= self::CONFLICTS) {
             if (count($s['ignored']) > count($s['conflicts'])) {
-                $s['paused'] = 'Die Wallbox übernimmt die Befehle von EMS nicht: Home Assistant nimmt sie an, die Wallbox bleibt aber beim alten Wert. Bei der go-e über MQTT muss Schreiben erlaubt sein (in der go-e-App bei MQTT „nur lesen“ ausschalten, API-Schlüssel mcr). Stellt ein anderer Regler wie evcc sofort zurück, sieht es genauso aus. Danach EMS aus- und wieder einschalten.';
+                $s['paused'] = 'Die Wallbox übernimmt die Befehle von EMS nicht: Home Assistant nimmt sie an, die Wallbox bleibt aber beim alten Wert. Bei der go-e Zwangszustand, Ladestrom und Phasen am besten über die Integration „go-eCharger API v2“ (lokale HTTP-API) zuordnen. Über MQTT muss in der go-e-App „MQTT readonly“ aus sein, und manche go-e nehmen auch dann keine Befehle an. Stellt ein anderer Regler sofort zurück, sieht es genauso aus. Danach EMS aus- und wieder einschalten.';
                 $s['log'] = self::log($s['log'], $now, 'Regelung pausiert, die Wallbox übernimmt keine Befehle.');
             } else {
-                $s['paused'] = 'Ein anderer Regler schreibt ebenfalls an die Wallbox, etwa evcc. EMS hat die Regelung pausiert. evcc vom Ladepunkt lösen und EMS neu einschalten.';
+                $s['paused'] = 'Ein anderer Regler schreibt ebenfalls an die Wallbox. EMS hat die Regelung pausiert. Den anderen Regler von der Wallbox lösen und EMS neu einschalten.';
                 $s['log'] = self::log($s['log'], $now, 'Regelung pausiert, Fremdzugriffe an der Wallbox.');
             }
             return $s;

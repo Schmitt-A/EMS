@@ -119,6 +119,21 @@
   }
 }
 
+/* Viele Optionen mit Kurzformen, etwa die fünf Lademodi: weniger Innenabstand, Kurzformen schon unter 27rem. */
+.seg-tight label {
+  padding: 0 var(--s-1);
+}
+
+@container (max-width: 27rem) {
+  .seg-tight .seg-long {
+    display: none;
+  }
+
+  .seg-tight .seg-short {
+    display: inline-flex;
+  }
+}
+
 /* Anzahl und Position der Optionen ohne Inline-Styles */
 .seg:has(> input:nth-of-type(3)) { --seg-count: 3; }
 .seg:has(> input:nth-of-type(4)) { --seg-count: 4; }

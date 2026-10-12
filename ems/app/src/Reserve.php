@@ -17,20 +17,22 @@ final class Reserve
 
     public function __construct(private ConfigStore $store, private HaSource $ha) {}
 
-    /** @return array{entity:string, default:?int, protect:bool, discharge_kw:?float, active:bool} */
+    /**
+     * active: Netzladen kann den Puffer anheben, weil Entität und Standardwert da sind.
+     *
+     * @return array{entity:string, default:?int, discharge_kw:?float, active:bool}
+     */
     public static function settings(array $cfg): array
     {
         $b = is_array($cfg['battery_strategy'] ?? null) ? $cfg['battery_strategy'] : [];
         $default = is_numeric($b['backup_soc'] ?? null) ? (int) round(clamp_float((float) $b['backup_soc'], 0, 100)) : null;
         $discharge = is_numeric($b['discharge_kw'] ?? null) && (float) $b['discharge_kw'] > 0 ? (float) $b['discharge_kw'] : null;
         $entity = (string) ($cfg['mapping']['battery_reserve'] ?? '');
-        $protect = !empty($b['grid_protect']);
         return [
             'entity' => $entity,
             'default' => $default,
-            'protect' => $protect,
             'discharge_kw' => $discharge,
-            'active' => $protect && $entity !== '' && $default !== null,
+            'active' => $entity !== '' && $default !== null,
         ];
     }
 
@@ -54,7 +56,7 @@ final class Reserve
      * Was jetzt zu tun wäre, ohne zu schreiben. Angehoben wird beim Netzladen, sobald das Auto lädt und der
      * Speicher über dem Standardwert steht. Gehalten wird, solange der Ladevorgang offen ist (Pausen bis zur
      * Ausschaltverzögerung). Zurückgesetzt wird nach dem Moduswechsel, dem Ende des Ladevorgangs, dem Abstecken
-     * oder wenn das Schonen abgeschaltet wird.
+     * oder wenn EMS ausgeschaltet wird.
      *
      * @param array{entity:string, default:?int, active:bool} $settings
      * @return array{action:string, value?:int, entity?:string}
@@ -62,7 +64,7 @@ final class Reserve
     public static function decide(array $settings, array $state, string $mode, ?float $soc, bool $charging, bool $open, ?bool $connected): array
     {
         $raised = !empty($state['raised']);
-        $keep = $settings['active'] && $mode === 'schnell' && $connected !== false && ($charging || ($raised && $open));
+        $keep = $settings['active'] && $mode === 'netz' && $connected !== false && ($charging || ($raised && $open));
         if ($raised && !$keep) {
             $value = $settings['default'] ?? (is_numeric($state['restore'] ?? null) ? (int) $state['restore'] : null);
             $entity = (string) (($state['entity'] ?? '') ?: $settings['entity']);
@@ -90,7 +92,7 @@ final class Reserve
         $state = $this->state();
         $power = isset($values['wallbox_kw']) ? (float) $values['wallbox_kw'] : null;
         $raw = isset($values['wallbox_car_raw']) ? (string) $values['wallbox_car_raw'] : null;
-        $charging = ($power ?? 0.0) > 0.2 || strtolower((string) $raw) === 'charging';
+        $charging = ($power ?? 0.0) > 0.2 || Sessions::carState($raw) === 'charging';
         $soc = isset($values['battery_soc']) ? (float) $values['battery_soc'] : null;
         $plan = self::decide($settings, $state, (string) ($cfg['charge']['mode'] ?? 'smart'), $soc, $charging, $open, Sessions::carConnected($raw, $power));
         if ($plan['action'] === 'none') {
@@ -157,10 +159,9 @@ final class Reserve
         $raised = !empty($state['raised']);
         $default = $s['default'] === null ? '' : pct((float) $s['default']);
         $text = match (true) {
-            $s['entity'] === '' => 'Kein Backup-Puffer zugeordnet. Beim Netzladen deckt der Speicher mit, bis er seinen Puffer erreicht.',
+            $s['entity'] === '' => 'Kein Backup-Puffer zugeordnet. Beim Netzladen deckt der Speicher dann mit, bis er seinen Puffer erreicht.',
             $raised => 'Netzladen: Puffer seit ' . date('H:i', (int) $state['since']) . ' auf ' . pct((float) $state['value']) . ' angehoben, der Speicher gibt nichts ab. Danach zurück auf ' . ($default ?: pct((float) $state['restore'])) . '.',
             $s['default'] === null => 'Der Standardwert fehlt. Ohne ihn hebt die App den Puffer beim Netzladen nicht an.',
-            !$s['protect'] => 'Backup-Puffer ' . $default . '. Beim Netzladen deckt der Speicher mit.',
             !Controller::active($cfg) => 'Backup-Puffer ' . $default . '. Netzladen hebt ihn erst an, wenn EMS die Wallbox regelt.',
             default => 'Backup-Puffer ' . $default . '. Lädt das Auto im Modus Netzladen, hebt die App ihn auf den Ladestand.',
         };

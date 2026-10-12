@@ -1,8 +1,8 @@
 <?php
 declare(strict_types=1);
 /**
- * Einstellungen → Speicher: Grenzen fürs Auto (wie auf der Seite Speicher), der Backup-Puffer mit Standardwert und
- * Schonen beim Netzladen, und die Entladeleistung für die Aufteilung. Jede Karte speichert nur ihre Felder.
+ * Einstellungen → Speicher: Grenzen fürs Auto (wie auf der Seite Speicher), der Backup-Puffer mit Standardwert (beim
+ * Netzladen angehoben) und die Entladeleistung für die Aufteilung. Jede Karte speichert nur ihre Felder.
  * @var array $cfg
  * @var array $snap
  * @var array $suggest
@@ -28,7 +28,7 @@ $numberField = static fn (string $name, ?float $value, int $decimals, array $att
 </section>
 <section class="card stack" aria-labelledby="reserve-title">
   <h3 class="card-title" id="reserve-title">Backup-Puffer</h3>
-  <p class="body-sm muted">Unter dem Backup-Puffer gibt der Speicher nichts ab, die Energie bleibt für einen Stromausfall. Den Standardwert setzt die App beim Speichern. Ist „Speicher schonen“ an, hebt sie den Puffer beim Netzladen auf den Ladestand, solange das Auto lädt, und setzt ihn danach zurück. In der Zeit versorgt der Speicher auch das Haus nicht.</p>
+  <p class="body-sm muted">Unter dem Backup-Puffer gibt der Speicher nichts ab, die Energie bleibt für einen Stromausfall. Den Standardwert setzt die App beim Speichern. Im Modus Netzladen hebt sie den Puffer auf den Ladestand, solange das Auto lädt, und setzt ihn danach zurück; in der Zeit versorgt der Speicher auch das Haus nicht. Im Modus Schnell gibt der Speicher bis zum Standardwert mit ab.</p>
 <?php if ($reserve['error']): ?>
   <?= ui_notice('triangle-alert', e((string) $reserve['error']), 'warn') ?>
 <?php endif; ?>
@@ -36,7 +36,6 @@ $numberField = static fn (string $name, ?float $value, int $decimals, array $att
   <?= ui_entity_field('battery_reserve', 'Entität des Puffers', (string) ($cfg['mapping']['battery_reserve'] ?? ''), 'Eine number-Entität in Prozent. Bei der sonnenBatterie heißt sie number.sonnenbatterie_…_battery_reserve und erscheint erst, wenn im Speicher der Schreibzugriff der JSON-API an ist; eine eigene Template-Number mit rest_command, etwa number.sonnenbatterie_backup_puffer, geht genauso.', $suggest['battery_reserve'] ?? '') ?>
   <div class="form-rows">
     <?= ui_form_row('Standardwert', $numberField('backup_soc', $settings['default'] === null ? null : (float) $settings['default'], 0, ['inputmode' => 'numeric', 'data-warn-below' => Reserve::SAFE_SOC, 'data-warn-note' => 'backup-warn']), ['for' => 'f-backup_soc', 'hint' => 'Prozent. Darauf setzt die App den Puffer nach dem Netzladen zurück.']) ?>
-    <?= ui_form_row('Speicher schonen', ui_toggle('grid_protect', $settings['protect'], 'Beim Netzladen den Backup-Puffer anheben'), ['hint' => 'Beim Netzladen kommt dann alles, was die Sonne nicht schafft, aus dem Netz.']) ?>
   </div>
   <div id="backup-warn"<?= $settings['default'] !== null && $settings['default'] < Reserve::SAFE_SOC ? '' : ' hidden' ?>>
     <?= ui_notice('triangle-alert', 'Unter ' . e(pct(Reserve::SAFE_SOC)) . ' bleibt bei einem Stromausfall kaum Reserve im Speicher. Zur Sicherheit mindestens ' . e(pct(Reserve::SAFE_SOC)) . ' einstellen.', 'warn') ?>
@@ -60,7 +59,7 @@ $numberField = static fn (string $name, ?float $value, int $decimals, array $att
 </section>
 <section class="card stack" aria-labelledby="discharge-title">
   <h3 class="card-title" id="discharge-title">Entladeleistung</h3>
-  <p class="body-sm muted">Mit der höchsten Entladeleistung teilt die Regelung genau auf, was beim Laden der Speicher und was das Netz liefert. Leer heißt unbekannt; dann steht beim Netzladen „erst Speicher, dann Netz“.</p>
+  <p class="body-sm muted">Mit der höchsten Entladeleistung teilt die Regelung genau auf, was beim Laden der Speicher und was das Netz liefert. Leer heißt unbekannt; dann steht bei Schnell „erst Speicher, dann Netz“.</p>
   <?= $open('battery') ?>
   <div class="form-rows">
     <?= ui_form_row('Höchstens', $numberField('discharge_kw', $settings['discharge_kw'], 2), ['for' => 'f-discharge_kw', 'hint' => 'kW, laut Datenblatt des Speichers.']) ?>
