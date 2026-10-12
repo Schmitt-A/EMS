@@ -5,8 +5,8 @@ declare(strict_types=1);
  * Stromtarif mit Verlauf. Statisch: Arbeitspreis und Grundpreis brutto. Dynamisch: Börsenpreis plus Netzentgelt,
  * Steuern und Umlagen und Anbieteraufschlag (netto), darauf die MwSt, dazu ein Grundpreis; mit §14a Modul 3 gilt das
  * Netzentgelt in bis zu drei Zeitfenstern anders. Dazu die Einspeisevergütung nach EEG. Ein Satz enthält immer beide
- * Tarife und welcher aktiv ist, damit der Vergleich jede Zeit in beiden rechnen kann. Jede Änderung gilt ab einem
- * Datum (kv.tariff_history); Ladevorgänge, Statistik und Vergleich nehmen für jede Zeit den Satz, der damals galt.
+ * Tarife und welcher aktiv ist, damit die Statistik jede Zeit in beiden rechnen kann. Jede Änderung gilt ab einem
+ * Datum (kv.tariff_history); Ladevorgänge und Statistik nehmen für jede Zeit den Satz, der damals galt.
  * Hat Home Assistant eine Preis-Entität des Anbieters (mapping.price_import, etwa Tibber oder Octopus), zeichnet der
  * Recorder ihre Preise auf (provider_prices); im dynamischen Tarif gelten sie vor Börse plus Aufschlägen.
  */
@@ -263,129 +263,6 @@ final class Tariff
             'export_ct' => (float) $t['export_ct'],
             'surcharge_ct' => self::surchargeCt($t, $now),
         ];
-    }
-
-    /**
-     * Was der Netzbezug zwischen $from und $to statisch und dynamisch gekostet hätte, aufgeschlüsselt. $energy: Netzbezug
-     * [Beginn => [kWh, Länge in s]], Viertelstunden von EMS oder Stunden aus Home Assistant. Jede Zeit rechnet mit dem
-     * Satz, der damals galt; der dynamische Preis mit Börse plus Aufschlägen, der Anbieterpreis nur, wenn er wirklich
-     * gezahlt wurde. Grundpreise anteilig nach Tagen. $car: Netzstrom des Autos je Viertelstunde, $carKw seine
-     * Ladeleistung: was es gekostet hätte, am selben Tag in den günstigsten Viertelstunden zu laden.
-     *
-     * @param array<int, array{0: float, 1: int}> $energy
-     * @param array<int, float> $car
-     */
-    public function compare(int $from, int $to, array $energy, array $car = [], float $carKw = 11.0): array
-    {
-        $static = ['energy' => 0.0, 'base' => 0.0];
-        $dynamic = ['spot' => 0.0, 'grid' => 0.0, 'levies' => 0.0, 'supplier' => 0.0, 'vat' => 0.0, 'base' => 0.0];
-        $kwh = $missing = 0.0;
-        $quarterly = 0.0;
-        $baseMissing = ['static' => false, 'dynamic' => false];
-        ksort($energy);
-        foreach ($energy as $start => [$e, $len]) {
-            if ($start < $from || $start >= $to || $e <= 0) {
-                continue;
-            }
-            $kwh += $e;
-            if ($len <= 900) {
-                $quarterly += $e;
-            }
-            $t = $this->tariffAt($start);
-            $static['energy'] += $e * (float) $t['import_ct'] / 100;
-            $quarters = max(1, intdiv($len, 900));
-            $share = $e / $quarters;
-            for ($q = $start; $q < $start + $quarters * 900; $q += 900) {
-                $spot = $this->market()->ctAt($q);
-                if ($spot === null) {
-                    $missing += $share;
-                    continue;
-                }
-                foreach (self::parts($spot, $t, $q) as $part => $ct) {
-                    if ($part !== 'total') {
-                        $dynamic[$part] += $share * $ct / 100;
-                    }
-                }
-            }
-        }
-        // Grundpreise je Tag: Monatspreis durch die Tage des Monats.
-        $tz = new DateTimeZone('Europe/Berlin');
-        $day = (new DateTimeImmutable('@' . $from))->setTimezone($tz)->setTime(0, 0);
-        $last = (new DateTimeImmutable('@' . $to))->setTimezone($tz);
-        for (; $day < $last; $day = $day->modify('+1 day')) {
-            $t = $this->tariffAt($day->getTimestamp() + 43200);
-            $daysInMonth = (int) $day->format('t');
-            $baseMissing['static'] = $baseMissing['static'] || $t['base_eur'] === null;
-            $baseMissing['dynamic'] = $baseMissing['dynamic'] || $t['dyn_base_eur'] === null;
-            $static['base'] += (float) ($t['base_eur'] ?? 0) / $daysInMonth;
-            $dynamic['base'] += (float) ($t['dyn_base_eur'] ?? 0) / $daysInMonth;
-        }
-        $static['total'] = $static['energy'] + $static['base'];
-        $dynamic['total'] = array_sum($dynamic);
-        $priced = max(0.0, $kwh - $missing);
-        return [
-            'from' => $from,
-            'to' => $to,
-            'kwh' => $kwh,
-            'missing_kwh' => $missing,
-            'quarter_share' => $kwh > 0 ? $quarterly / $kwh : 0.0,
-            'static' => $static + ['avg_ct' => $kwh > 0 ? $static['energy'] * 100 / $kwh : null],
-            'dynamic' => $dynamic + ['avg_ct' => $priced > 0 ? ($dynamic['total'] - $dynamic['base']) * 100 / $priced : null],
-            'difference' => $static['total'] - $dynamic['total'],
-            'base_missing' => $baseMissing,
-            'shift' => $this->shift($car, $carKw),
-        ];
-    }
-
-    /**
-     * Netzstrom des Autos je Tag zu den echten Ladezeiten gegen dieselbe Menge in den günstigsten Viertelstunden des
-     * Tages, mit der Ladeleistung des Autos. Beides dynamisch gerechnet.
-     *
-     * @param array<int, float> $car Viertelstunde => kWh aus dem Netz
-     */
-    public function shift(array $car, float $carKw): array
-    {
-        $tz = new DateTimeZone('Europe/Berlin');
-        $days = [];
-        foreach ($car as $q => $e) {
-            if ($e <= 0) {
-                continue;
-            }
-            $key = self::day($q);
-            $days[$key][$q] = $e;
-        }
-        $kwh = $actual = $best = 0.0;
-        $counted = 0;
-        $perQuarter = max(0.5, $carKw) * 0.25;
-        foreach ($days as $key => $quarters) {
-            $dayStart = (new DateTimeImmutable($key . ' 00:00:00', $tz))->getTimestamp();
-            $dayEnd = (new DateTimeImmutable($key . ' 00:00:00', $tz))->modify('+1 day')->getTimestamp();
-            $prices = [];
-            for ($q = $dayStart; $q < $dayEnd; $q += 900) {
-                $ct = $this->dynamicAt($q, null, false);
-                if ($ct !== null) {
-                    $prices[$q] = $ct;
-                }
-            }
-            $paid = 0.0;
-            $energy = 0.0;
-            foreach ($quarters as $q => $e) {
-                if (!isset($prices[$q])) {
-                    continue 2;
-                }
-                $paid += $e * $prices[$q] / 100;
-                $energy += $e;
-            }
-            asort($prices);
-            $need = (int) ceil($energy / $perQuarter - 1e-9);
-            $cheapest = array_slice($prices, 0, max(1, $need), true);
-            $bestCost = $energy * (array_sum($cheapest) / count($cheapest)) / 100;
-            $kwh += $energy;
-            $actual += $paid;
-            $best += min($paid, $bestCost);
-            $counted++;
-        }
-        return ['kwh' => $kwh, 'days' => $counted, 'actual' => $actual, 'best' => $best, 'saving' => max(0.0, $actual - $best)];
     }
 
     /**

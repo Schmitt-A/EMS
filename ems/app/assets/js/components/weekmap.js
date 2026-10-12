@@ -1,6 +1,8 @@
-// „Lohnt sich dynamisch?“: Heatmap nach Kalenderwochen. Der Filter wählt die Kennzahl; je Feld stehen Farbstärke
-// (data-v-*), kurze Zahl (data-n-*) und Text für Screenreader (data-t-*) schon im HTML. Farbe und Schrift wie in der
-// Statistik-Heatmap: --v über CSSOM, schwarz oder weiß nach der Helligkeit des Felds.
+// „Lohnt sich dynamisch?“: Heatmap nach Kalenderwochen, je Quartal eine Gruppe. Der Filter wählt die Kennzahl; je Feld
+// stehen Farbstärke (data-v-*), kurze Zahl (data-n-*) und Text für Screenreader (data-t-*) schon im HTML, Farbe,
+// Erklärung und kleinster und größter Wert für die Legende in data-metrics. Farbe und Schrift wie in der
+// Statistik-Heatmap: --v über CSSOM, schwarz oder weiß nach der Helligkeit des Felds. Die Radios gehören zum Formular
+// „Neu rechnen“ (form-Attribut), so bleibt die Kennzahl nach dem Rechnen stehen.
 import { $, $$ } from '../core/dom.js';
 import { ink } from './heatmap.js';
 
@@ -21,6 +23,10 @@ function paint(map, metric) {
   }
   const caption = $('[data-wk-caption]', map);
   if (caption && meta.caption) caption.textContent = meta.caption;
+  const lo = $('[data-wk-lo]', map);
+  if (lo && meta.lo) lo.textContent = meta.lo;
+  const hi = $('[data-wk-hi]', map);
+  if (hi && meta.hi) hi.textContent = meta.hi;
   ink(cells);
 }
 

@@ -5,7 +5,7 @@ declare(strict_types=1);
  * Netzbezug und Einspeisung in Viertelstunden, wie ein Smart Meter abrechnet. Home Assistant hebt Leistungen nur als
  * Stundenmittel auf; der Recorder liest den Zähler alle 10 s und schreibt hier, was seit dem letzten Wert floss
  * (die Leistung des letzten Werts mal die Zeit). Liegen mehr als zwei Minuten dazwischen, etwa nach einem Neustart,
- * bleibt die Lücke leer statt geschätzt. Der Vergleich der Tarife nimmt diese Viertelstunden, wo es sie gibt.
+ * bleibt die Lücke leer statt geschätzt. Kosten und Preise der Statistik nehmen diese Viertelstunden, wo es sie gibt.
  */
 final class GridMeter
 {
@@ -71,15 +71,8 @@ final class GridMeter
         return $out;
     }
 
-    /** Seit wann EMS selbst misst (null, solange nichts da ist). */
-    public function since(): ?int
-    {
-        $first = $this->store->pdo()->query('SELECT MIN(start) FROM grid_quarters')->fetchColumn();
-        return $first === null || $first === false ? null : (int) $first;
-    }
-
     /**
-     * Netzbezug für den Tarifvergleich: Stunden, die EMS fast ganz gemessen hat (mindestens 50 min), als Viertelstunden,
+     * Netzbezug für Kosten und Preise der Statistik: Stunden, die EMS fast ganz gemessen hat (mindestens 50 min), als Viertelstunden,
      * die übrigen aus den Stundenwerten von Home Assistant.
      *
      * @param array<int, float> $hours Stunde => kWh aus Home Assistant

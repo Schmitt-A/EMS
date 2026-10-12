@@ -350,10 +350,36 @@
   overflow-y: auto;
 }
 
-/* „Lohnt sich dynamisch?“ unter Strompreis: Kalenderwochen als Felder, ab 36rem in vier Reihen zu 13 Wochen. */
+/*
+ * „Lohnt sich dynamisch?“ unter Strompreis: Kalenderwochen als Felder, je Quartal eine Gruppe mit Überschrift.
+ * Schmal sieben Spalten, ab 36rem eine Reihe zu 13 Wochen mit dem Quartal links.
+ */
+.wk-quarters {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.wk-q {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.wk-q-title {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 700;
+}
+
+.wk-q-title span {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
 .wk-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(2.25rem, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 3px;
   margin: 0;
   padding: 0;
@@ -361,6 +387,16 @@
 }
 
 @container hm (min-width: 36rem) {
+  .wk-q {
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    align-items: center;
+    gap: var(--s-2);
+  }
+
+  .wk-q-title {
+    display: grid;
+  }
+
   .wk-grid {
     grid-template-columns: repeat(13, minmax(0, 1fr));
   }
@@ -368,4 +404,9 @@
 
 .wk-cell {
   cursor: default;
+}
+
+.wk-caption {
+  display: grid;
+  gap: var(--s-2);
 }

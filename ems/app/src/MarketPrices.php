@@ -7,7 +7,7 @@ declare(strict_types=1);
  * CC BY 4.0, die Quelle steht darum unter jedem Diagramm. Fällt sie aus, springt aWATTar ein (stündlich, Fair Use
  * mit etwa 100 Abrufen am Tag). Die Auktion für morgen endet gegen 13 Uhr; bis dahin reichen die Preise bis
  * Mitternacht. Alles bleibt in market_prices, auch die Vergangenheit: einmalig lädt der Recorder zwei Jahre nach,
- * einen Monat je Schritt, damit Vergleich und Statistik sofort rechnen können. Im Demo-Modus rechnet DemoModel die
+ * einen Monat je Schritt, damit „Lohnt sich dynamisch?“ und Statistik sofort rechnen können. Im Demo-Modus rechnet DemoModel die
  * Preise, ohne Netz.
  */
 final class MarketPrices

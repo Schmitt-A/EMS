@@ -548,7 +548,7 @@ final class Heatmap
     }
 
     /**
-     * Netzbezug je Stunde (Beginn in Sekunden) aus der Langzeitstatistik, für Tarifvergleich und Preise. Monatsweise
+     * Netzbezug je Stunde (Beginn in Sekunden) aus der Langzeitstatistik, für Kosten und Preise. Monatsweise
      * abgefragt, damit abgeschlossene Monate im Zwischenspeicher bleiben.
      *
      * @return array<int, float>

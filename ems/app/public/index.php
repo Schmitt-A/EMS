@@ -250,12 +250,13 @@ if ($path === '/ladevorgaenge') {
     page('ladevorgaenge', compact('live', 'params', 'rows', 'summary', 'years', 'detail', 'tariffs', 'hasAny', 'overview') + ['title' => 'Ladevorgänge']);
 }
 if ($path === '/prognose/strompreis') {
-    // Strompreis: Preis jetzt, Diagramm (über /api/series?chart=price), Ladefenster, Entscheidungshilfe und Vergleich.
-    $price = (new PriceView(store(), ha()))->build((string) ($_GET['vergleich'] ?? 'jahr'), time());
-    // „Lohnt sich dynamisch?“: ein Jahr Tag für Tag, Haus, Kilometer und Verbrauch aus der Adresse, sonst Vorschläge.
+    // Strompreis: Preis jetzt, Diagramm (über /api/series?chart=price), Ladefenster und „Lohnt sich dynamisch?“.
+    $price = (new PriceView(store()))->build(time());
+    // „Lohnt sich dynamisch?“: ein Jahr Tag für Tag, Haus, Kilometer, Verbrauch und wie das Auto lädt aus der Adresse,
+    // sonst Vorschläge; die Kennzahl der Heatmap kommt mit „Neu rechnen“ zurück.
     $year = (new YearCheck(store(), ha()))->build($snap, $_GET, time());
     $overview = energy_overview();
-    page('strompreis', ['price' => $price, 'year' => $year, 'overview' => $overview, 'title' => 'Strompreis']);
+    page('strompreis', ['price' => $price, 'year' => $year, 'metric' => (string) ($_GET['kennzahl'] ?? ''), 'overview' => $overview, 'title' => 'Strompreis']);
 }
 if ($path === '/prognose') {
     $yield = safe_yield();

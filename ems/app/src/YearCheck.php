@@ -5,12 +5,12 @@ declare(strict_types=1);
  * „Lohnt sich dynamisch?“ unter Prognose → Strompreis: ein Jahr Tag für Tag. Preise: die Börse der letzten 365 Tage
  * mit deinen Aufschlägen von heute (Einstellungen → Tarif). Sonne: der Ertrag deiner Anlage in einem üblichen Jahr am
  * Standort (PVGIS der EU-Kommission: stündlich aus einem echten Wetterjahr, sonst Monatsmittel). Haus und Auto
- * verbrauchen gleichmäßig über das Jahr, das Haus nach seinem
- * üblichen Tagesverlauf. Stunde für Stunde nimmt das Auto zuerst Sonnenüberschuss, der Speicher den Rest bis voll und
- * gibt ihn abends und nachts ab; Überschuss trägt er nie über Wochen. Was dem Auto danach fehlt, kommt aus dem Netz,
- * dynamisch im günstigsten Fenster des Tages; den Netzbezug des Hauses lädt der Speicher dynamisch an Tagen, an denen
- * es lohnt, im Fenster vor. Je Kalenderwoche für die Heatmap: Ø Preis des Tages, Ø Preis im Fenster, Ersparnis im
- * Fenster gegenüber statisch, Sonne und Deckung von Haus und Auto.
+ * verbrauchen gleichmäßig über das Jahr, das Haus nach seinem üblichen Tagesverlauf. Stunde für Stunde nimmt das Auto
+ * zuerst Sonnenüberschuss (oder keinen, wenn es nur im Fenster lädt), der Speicher den Rest bis voll und gibt ihn abends
+ * und nachts ab; Überschuss trägt er nie über Wochen. Was dem Auto danach fehlt, kommt aus dem Netz, dynamisch im
+ * günstigsten Fenster des Tages, so weit es in dessen Länge passt; den Netzbezug des Hauses lädt der Speicher dynamisch
+ * an Tagen, an denen es lohnt, im Fenster vor. Je Kalenderwoche für die Heatmap: Ø Preis des Tages, Ø Preis im Fenster,
+ * Ersparnis im Fenster gegenüber statisch, Sonne und Deckung von Haus und Auto.
  */
 final class YearCheck
 {
@@ -18,6 +18,8 @@ final class YearCheck
     /** Stündlicher Ertrag eines Wetterjahres; das neueste, das die Version kennt. */
     private const SERIES = [['https://re.jrc.ec.europa.eu/api/v5_3/seriescalc', 2023], ['https://re.jrc.ec.europa.eu/api/v5_2/seriescalc', 2020]];
     private const PVGIS = ['https://re.jrc.ec.europa.eu/api/v5_3/PVcalc', 'https://re.jrc.ec.europa.eu/api/v5_2/PVcalc'];
+    /** Wie das Auto lädt: Sonnenüberschuss zuerst, den Rest im Fenster; oder nur im Fenster (tagsüber unterwegs). */
+    public const CAR_MODES = ['sonne' => 'Sonne zuerst', 'fenster' => 'Nur im Fenster'];
     /** Anteil der Monate an einem Jahresertrag in Mitteldeutschland, wenn PVGIS nicht erreichbar ist. */
     private const SHARE = [1 => 0.025, 0.045, 0.08, 0.11, 0.13, 0.135, 0.135, 0.12, 0.09, 0.06, 0.03, 0.02];
     private const SPECIFIC_KWH = 950.0;
@@ -26,7 +28,7 @@ final class YearCheck
 
     /**
      * Alles für die Karte: Wochen der Heatmap, das Jahr, Sonne, Vorschläge und die Annahmen. $query: haus (kWh im
-     * Jahr), km (im Jahr) und verbrauch (kWh/100 km) aus der Adresse, sonst die Vorschläge.
+     * Jahr), km (im Jahr), verbrauch (kWh/100 km) und auto (CAR_MODES) aus der Adresse, sonst die Vorschläge.
      */
     public function build(array $snap, array $query, int $now): array
     {
@@ -45,6 +47,7 @@ final class YearCheck
             'house_kwh' => $number('haus', $suggest['house_kwh'], 0, 100000),
             'car_km' => $number('km', $suggest['car_km'], 0, 200000),
             'car_kwh100' => $number('verbrauch', $suggest['car_kwh100'], 5, 60),
+            'car_mode' => isset(self::CAR_MODES[$query['auto'] ?? '']) ? (string) $query['auto'] : 'sonne',
         ];
         $carKwh = $inputs['car_km'] * $inputs['car_kwh100'] / 100 / Energy::CHARGE_EFFICIENCY;
         $values = $snap['values'];
@@ -60,6 +63,8 @@ final class YearCheck
             'efficiency' => $battery['efficiency'],
             'wear_ct' => $battery['wear_ct'],
             'car_kw' => ChargePlan::powerKw((array) $cfg['charge']),
+            'car_mode' => $inputs['car_mode'],
+            'length_h' => $length,
             'static_ct' => (float) $t['import_ct'],
             'base_eur' => (float) ($t['base_eur'] ?? 0),
             'dyn_base_eur' => (float) ($t['dyn_base_eur'] ?? 0),
@@ -72,8 +77,11 @@ final class YearCheck
             'suggest' => $suggest,
             'inputs' => $inputs + ['car_kwh' => round($carKwh)],
             'static_ct' => (float) $t['import_ct'],
+            'base_eur' => (float) ($t['base_eur'] ?? 0),
+            'dyn_base_eur' => (float) ($t['dyn_base_eur'] ?? 0),
             'base_missing' => $t['base_eur'] === null || $t['dyn_base_eur'] === null,
             'length_h' => $length,
+            'car_kw' => ChargePlan::powerKw((array) $cfg['charge']),
             'battery_kwh' => $capacity,
         ];
     }
@@ -328,8 +336,9 @@ final class YearCheck
 
     /**
      * Das Jahr Tag für Tag, ohne Seiteneffekte. $in: house_kwh, car_kwh (an der Wallbox, mit Ladeverlust), profile (24
-     * Gewichte des Hauses, Summe 1), battery_kwh, battery_kw, efficiency, wear_ct, car_kw, static_ct, base_eur und
-     * dyn_base_eur (je Monat), lat und lon (für Sonnenauf- und -untergang), azimuth. Kosten nur für den Netzbezug.
+     * Gewichte des Hauses, Summe 1), battery_kwh, battery_kw, efficiency, wear_ct, car_kw, car_mode (CAR_MODES),
+     * length_h (Länge des Fensters), static_ct, base_eur und dyn_base_eur (je Monat), lat und lon (für Sonnenauf- und
+     * -untergang), azimuth. Kosten nur für den Netzbezug; Arbeits- und Grundpreis stehen getrennt.
      *
      * @param list<array{date: string, week: int, month: int, hours: list<?float>, avg: ?float, window: ?float}> $days
      * @param array{daily: array<int, float>, hours?: ?array<string, list<float>>} $pv Sonne: Stunden je Tag „m-d“ in kWh,
@@ -345,14 +354,19 @@ final class YearCheck
         $profile = $sum > 0 ? array_map(static fn (float $w): float => $w / $sum, $profile) : array_fill(0, 24, 1 / 24);
         $houseDay = max(0.0, (float) $in['house_kwh']) / 365;
         $carDay = max(0.0, (float) $in['car_kwh']) / 365;
+        $carKw = max(1.0, (float) $in['car_kw']);
+        $carSun = ($in['car_mode'] ?? 'sonne') !== 'fenster';
+        $lengthH = max(1, (int) ($in['length_h'] ?? 3));
         $capacity = max(0.0, (float) $in['battery_kwh']);
         $batteryKw = max(0.1, (float) $in['battery_kw']);
         $eta = max(0.5, min(1.0, (float) $in['efficiency']));
         $static = (float) $in['static_ct'];
         $wear = (float) $in['wear_ct'];
         $soc = $capacity / 2;
+        $typical = self::typicalDay($days);
         $weeks = [];
-        $year = ['pv' => 0.0, 'house' => 0.0, 'car' => 0.0, 'grid_house' => 0.0, 'grid_car' => 0.0, 'export' => 0.0, 'cost_static' => 0.0, 'cost_dynamic' => 0.0, 'shift_kwh' => 0.0, 'shift_eur' => 0.0, 'days' => 0, 'priced' => 0];
+        $year = ['pv' => 0.0, 'house' => 0.0, 'car' => 0.0, 'grid_house' => 0.0, 'grid_car' => 0.0, 'export' => 0.0, 'cost_static' => 0.0, 'cost_dynamic' => 0.0,
+            'grid_counted' => 0.0, 'car_window' => 0.0, 'car_rest' => 0.0, 'shift_kwh' => 0.0, 'shift_eur' => 0.0, 'shift_days' => 0, 'days' => 0, 'priced' => 0, 'counted' => 0];
         foreach ($days as $day) {
             $date = new DateTimeImmutable($day['date'] . ' 12:00:00', $tz);
             $md = substr($day['date'], 5);
@@ -365,14 +379,14 @@ final class YearCheck
                 $shape = self::sunShape($date, (float) $in['lat'], (float) $in['lon'], (float) $in['azimuth']);
             }
             $carNeed = $carDay;
-            $gridHouse = $houseCost = $exported = 0.0;
+            $gridHouse = $exported = 0.0;
             $importAt = [];
             for ($h = 0; $h < 24; $h++) {
                 $pv = $pvDay * $shape[$h];
                 $use = $houseDay * $profile[$h];
                 $net = $pv - $use;
                 if ($net > 0) {
-                    $toCar = min($net, $carNeed, (float) $in['car_kw']);
+                    $toCar = $carSun ? min($net, $carNeed, $carKw) : 0.0;
                     $carNeed -= $toCar;
                     $net -= $toCar;
                     $toBattery = min($net, ($capacity - $soc) / $eta, $batteryKw);
@@ -389,24 +403,29 @@ final class YearCheck
                 }
             }
             $priced = $day['window'] !== null && $day['avg'] !== null;
+            // Ein Tag ohne Börsenpreis rechnet mit dem Ø Tagesverlauf der Tage mit Preis.
+            $prices = $priced ? $day : $typical;
             // Kosten nur für den Netzbezug; die Einspeisung ist in beiden Tarifen gleich und zählt nicht mit.
             $staticCost = ($gridHouse + $carNeed) * $static;
             $dynamicCost = null;
-            $shift = $shiftEur = 0.0;
-            if ($priced) {
+            $shift = $shiftEur = $carWindow = $carRest = 0.0;
+            if ($prices !== null) {
                 $houseDyn = 0.0;
                 foreach ($importAt as $h => $kwh) {
-                    $houseDyn += $kwh * (float) ($day['hours'][$h] ?? $day['avg']);
+                    $houseDyn += $kwh * (float) ($prices['hours'][$h] ?? $prices['avg']);
                 }
-                // Lohnt es, lädt der Speicher den Netzbezug des Hauses im Fenster vor, so weit er reicht.
-                $window = (float) $day['window'];
+                // Lohnt es, lädt der Speicher den Netzbezug des Hauses im Fenster vor, so weit er und seine Leistung reichen.
+                $window = (float) $prices['window'];
                 $cost = $window / $eta + $wear;
                 $avgImport = $gridHouse > 0 ? $houseDyn / $gridHouse : 0.0;
                 if ($gridHouse > 0 && $avgImport > $cost) {
-                    $shift = min($gridHouse, $capacity * $eta);
+                    $shift = min($gridHouse, $capacity * $eta, $batteryKw * $lengthH * $eta);
                     $shiftEur = $shift * ($avgImport - $cost) / 100;
                 }
-                $dynamicCost = $houseDyn + $carNeed * $window - $shiftEur * 100;
+                // Das Auto lädt im Fenster, so viel in dessen Länge passt; der Rest zum Ø Preis des Tages.
+                $carWindow = min($carNeed, $carKw * $lengthH);
+                $carRest = $carNeed - $carWindow;
+                $dynamicCost = $houseDyn + $carWindow * $window + $carRest * (float) $prices['avg'] - $shiftEur * 100;
             }
             $w = $day['week'];
             $weeks[$w] ??= ['days' => 0, 'pv' => 0.0, 'demand' => 0.0, 'grid' => 0.0, 'avg' => [], 'window' => []];
@@ -425,16 +444,21 @@ final class YearCheck
             $year['grid_house'] += $gridHouse;
             $year['grid_car'] += $carNeed;
             $year['export'] += $exported;
-            if ($priced) {
-                $year['priced']++;
+            $year['priced'] += $priced ? 1 : 0;
+            if ($dynamicCost !== null) {
+                $year['counted']++;
+                $year['grid_counted'] += $gridHouse + $carNeed;
                 $year['cost_static'] += $staticCost / 100;
                 $year['cost_dynamic'] += (float) $dynamicCost / 100;
+                $year['car_window'] += $carWindow;
+                $year['car_rest'] += $carRest;
                 $year['shift_kwh'] += $shift;
                 $year['shift_eur'] += $shiftEur;
+                $year['shift_days'] += $shift > 0 ? 1 : 0;
             }
         }
-        // Tage ohne Preis zählen anteilig, Grundpreise kommen für das ganze Jahr dazu.
-        $scale = $year['priced'] > 0 ? 365 / $year['priced'] : 0.0;
+        // Aufs Jahr gerechnet (fehlt ein Tag ganz, zählen die übrigen anteilig); Grundpreise kommen für das ganze Jahr dazu.
+        $scale = $year['counted'] > 0 ? 365 / $year['counted'] : 0.0;
         $out = [];
         ksort($weeks);
         foreach ($weeks as $w => $week) {
@@ -450,8 +474,10 @@ final class YearCheck
             ];
         }
         $demand = $year['house'] + $year['car'];
-        $static12 = $year['cost_static'] * $scale + 12 * (float) $in['base_eur'];
-        $dynamic12 = $year['cost_dynamic'] * $scale + 12 * (float) $in['dyn_base_eur'];
+        $staticEnergy = $year['cost_static'] * $scale;
+        $dynamicEnergy = $year['cost_dynamic'] * $scale;
+        $staticBase = 12 * (float) $in['base_eur'];
+        $dynamicBase = 12 * (float) $in['dyn_base_eur'];
         return [
             'weeks' => $out,
             'year' => [
@@ -459,18 +485,53 @@ final class YearCheck
                 'demand_kwh' => round($demand),
                 'house_kwh' => round($year['house']),
                 'car_kwh' => round($year['car']),
+                'car_sun_kwh' => round($year['car'] - $year['grid_car']),
                 'grid_kwh' => round($year['grid_house'] + $year['grid_car']),
                 'grid_house_kwh' => round($year['grid_house']),
                 'grid_car_kwh' => round($year['grid_car']),
                 'export_kwh' => round($year['export']),
                 'cover_pct' => $demand > 0 ? round(max(0.0, 1 - ($year['grid_house'] + $year['grid_car']) / $demand) * 100) : null,
+                'car_window_kwh' => round($year['car_window'] * $scale),
+                'car_rest_kwh' => round($year['car_rest'] * $scale),
                 'shift_kwh' => round($year['shift_kwh'] * $scale),
                 'shift_eur' => round($year['shift_eur'] * $scale, 2),
-                'static_eur' => round($static12, 2),
-                'dynamic_eur' => round($dynamic12, 2),
-                'difference' => round($static12 - $dynamic12, 2),
+                'shift_days' => (int) round($year['shift_days'] * $scale),
+                'static_energy_eur' => round($staticEnergy, 2),
+                'dynamic_energy_eur' => round($dynamicEnergy, 2),
+                'static_base_eur' => round($staticBase, 2),
+                'dynamic_base_eur' => round($dynamicBase, 2),
+                'static_avg_ct' => $year['grid_counted'] > 0 ? round($year['cost_static'] * 100 / $year['grid_counted'], 2) : null,
+                'dynamic_avg_ct' => $year['grid_counted'] > 0 ? round($year['cost_dynamic'] * 100 / $year['grid_counted'], 2) : null,
+                'static_eur' => round($staticEnergy + $staticBase, 2),
+                'dynamic_eur' => round($dynamicEnergy + $dynamicBase, 2),
+                'difference' => round($staticEnergy + $staticBase - $dynamicEnergy - $dynamicBase, 2),
                 'priced_days' => $year['priced'],
             ],
+        ];
+    }
+
+    /**
+     * Ø Tagesverlauf der Tage mit Börsenpreis (24 Stundenpreise, Tagesmittel, Fenster) für die Tage ohne; null ohne
+     * einen Tag mit Preis. Rechnete das Jahr nur die bekannten Tage hoch, zählte bei fehlenden Wintertagen nur der Sommer.
+     *
+     * @param list<array{hours: list<?float>, avg: ?float, window: ?float}> $days
+     * @return ?array{hours: list<?float>, avg: float, window: float}
+     */
+    public static function typicalDay(array $days): ?array
+    {
+        $known = array_values(array_filter($days, static fn (array $d): bool => $d['window'] !== null && $d['avg'] !== null));
+        if (!$known) {
+            return null;
+        }
+        $hours = [];
+        for ($h = 0; $h < 24; $h++) {
+            $values = array_values(array_filter(array_map(static fn (array $d): ?float => $d['hours'][$h] ?? null, $known), static fn (?float $v): bool => $v !== null));
+            $hours[$h] = $values ? array_sum($values) / count($values) : null;
+        }
+        return [
+            'hours' => $hours,
+            'avg' => array_sum(array_column($known, 'avg')) / count($known),
+            'window' => array_sum(array_column($known, 'window')) / count($known),
         ];
     }
 

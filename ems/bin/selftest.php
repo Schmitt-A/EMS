@@ -936,11 +936,6 @@ $tariff->saveHistory([['from' => Tariff::ORIGIN, 'tariffs' => ['mode' => 'static
 (new MarketPrices($tariffStore))->save([['start' => $noon, 'end' => $noon + 900, 'eur_mwh' => 80.0], ['start' => $noon + 900, 'end' => $noon + 1800, 'eur_mwh' => 120.0]], 'energy-charts');
 $tariff = new Tariff($tariffStore);
 check($tariff->importCt($noon) === 30.0 && abs($tariff->dynamicAt($noon) - 26 * 1.19) < 1e-9 && (float) $tariffStore->get('tariffs')['import_ct'] === 30.0, 'Aktiv statisch: Bezug zum Arbeitspreis, dynamisch rechnet trotzdem mit');
-$cmp = $tariff->compare($noon, $noon + 1800, [$noon => [1.0, 900], $noon + 900 => [2.0, 900]]);
-check(abs($cmp['static']['energy'] - 0.9) < 1e-9 && abs($cmp['dynamic']['spot'] - (1 * 8 + 2 * 12) / 100) < 1e-9 && abs($cmp['dynamic']['total'] - $cmp['dynamic']['base'] - (1 * 26 + 2 * 30) * 1.19 / 100) < 1e-9 && $cmp['quarter_share'] === 1.0, 'Vergleich: Viertelstunden einzeln, Bestandteile summieren sich zum Endpreis');
-check(abs($cmp['static']['base'] - 10 / 31) < 1e-9 && abs($cmp['dynamic']['base'] - 15 / 31) < 1e-9, 'Grundpreis anteilig für den einen Tag im Oktober');
-$shift = $tariff->shift([$noon + 900 => 1.0], 11.0);
-check($shift['days'] === 1 && abs($shift['actual'] - 30 * 1.19 / 100) < 1e-9 && abs($shift['best'] - 26 * 1.19 / 100) < 1e-9 && $shift['saving'] > 0, 'Verschieben: dieselbe Menge in der günstigsten Viertelstunde des Tages');
 $row = ['started_at' => date('c', $noon), 'duration_s' => 1800, 'energy_kwh' => 5, 'solar_kwh' => 0, 'grid_kwh' => 5];
 $tariff->saveHistory([['from' => Tariff::ORIGIN, 'tariffs' => ['mode' => 'dynamic'] + $dyn]], $noon);
 check(abs((new Tariff($tariffStore))->forRow($row)['import_ct'] - (26 + 30) / 2 * 1.19) < 1e-9, 'Ladevorgang im dynamischen Tarif: Mittel der Viertelstunden der Ladezeit');
@@ -1125,6 +1120,20 @@ $stored = YearCheck::simulate($yearDays, ['daily' => array_fill(1, 12, 0.0)], ['
 check($stored['year']['shift_kwh'] > 0 && $stored['year']['dynamic_eur'] < $dark['year']['dynamic_eur'], 'Mit Speicher lädt er im Fenster vor, wenn der Netzbezug des Hauses teurer ist als Fenster, Verlust und Verschleiß');
 $sunny = YearCheck::simulate($yearDays, ['daily' => array_fill(1, 12, 40.0)], ['battery_kwh' => 10.0] + $yearIn);
 check($sunny['weeks'][2]['cover'] > 60 && $sunny['year']['grid_car_kwh'] === 0.0 && $sunny['year']['export_kwh'] > 0, 'Viel Sonne: das Auto lädt aus dem Überschuss, der Speicher hilft über die Nacht, der Rest geht ins Netz');
+$away = YearCheck::simulate($yearDays, ['daily' => array_fill(1, 12, 40.0)], ['battery_kwh' => 10.0, 'car_mode' => 'fenster'] + $yearIn);
+check($away['year']['grid_car_kwh'] === 35.0 && $away['year']['car_sun_kwh'] === 0.0 && $away['weeks'][2]['cover'] < $sunny['weeks'][2]['cover'] && $away['year']['car_window_kwh'] === round(5.0 * 365), 'Auto nur im Fenster: keine Sonne fürs Auto, alles im Ladefenster');
+// 2 kW und 2 h Fenster: 4 kWh passen hinein, 1 kWh kostet den Ø Preis des Tages (27,5 ct).
+$tight = YearCheck::simulate($yearDays, ['daily' => array_fill(1, 12, 0.0)], ['car_kw' => 2.0, 'length_h' => 2] + $yearIn);
+check(abs($tight['year']['dynamic_eur'] - ($houseCt + 4 * 20 + 1 * 27.5) / 100 * 365) < 0.01 && $tight['year']['car_rest_kwh'] === 365.0, 'Ladefenster zu kurz: der Rest des Autos zum Ø Preis des Tages');
+$partDays = $yearDays;
+foreach ([0, 2, 4] as $i) {
+    $partDays[$i] = ['hours' => array_fill(0, 24, null), 'avg' => null, 'window' => null] + $partDays[$i];
+}
+$part = YearCheck::simulate($partDays, ['daily' => array_fill(1, 12, 0.0)], $yearIn);
+check($part['year']['priced_days'] === 4 && abs($part['year']['dynamic_eur'] - $dark['year']['dynamic_eur']) < 0.01 && $part['weeks'][2]['day'] === 27.5, 'Tage ohne Börsenpreis rechnen mit dem Ø Tagesverlauf der Tage mit Preis');
+$fees = YearCheck::simulate($yearDays, ['daily' => array_fill(1, 12, 0.0)], ['base_eur' => 12.5, 'dyn_base_eur' => 15.0] + $yearIn);
+check($fees['year']['static_base_eur'] === 150.0 && $fees['year']['dynamic_base_eur'] === 180.0 && abs($fees['year']['static_eur'] - $dark['year']['static_eur'] - 150) < 0.01
+    && abs($fees['year']['difference'] - ($dark['year']['difference'] - 30)) < 0.01 && $fees['year']['static_avg_ct'] === 35.0, 'Grundpreise: zwölf Monate dazu, getrennt vom Arbeitspreis');
 
 // Einmal umstellen: Netzladen als Modus wird zu Intelligent mit Netzladen „Jetzt“.
 $migrateFile = tempnam(sys_get_temp_dir(), 'ems-test');
