@@ -1,5 +1,5 @@
-// 7.3 Ladepunkt-Karte und 7.4 Ladebalken: Schalter „Laden“, Modus und Netzladen optimistisch, die nächsten
-// Ladefenster live, Limit-Marke ziehbar und per Tastatur.
+// 7.3 Ladepunkt-Karte und 7.4 Ladebalken: Schalter „Laden“, Modus und Netzladen optimistisch, Teile nur für eine
+// Auswahl von Netzladen (data-grid-show) ein- und ausblenden, beide Ladeziele live, Limit-Marke ziehbar und per Tastatur.
 import { $, $$, postJson } from '../core/dom.js';
 import { fmt, NNBSP } from '../core/format.js';
 import { applyLive, onLive } from '../core/live.js';
@@ -104,6 +104,7 @@ function bindChoice(card, selector, field, error) {
     if (!input) return;
     const wasOn = card.dataset.on === 'true';
     if (field === 'mode') paintOn(card, true);
+    if (field === 'grid') paintGrid(card, input.value);
     try {
       applyLive(await postJson('/api/modus', { [field]: input.value }));
       previous = input.value;
@@ -111,34 +112,21 @@ function bindChoice(card, selector, field, error) {
       const back = $(`input[value="${previous}"]`, fieldset);
       if (back) back.checked = true;
       if (field === 'mode') paintOn(card, wasOn);
+      if (field === 'grid') paintGrid(card, previous);
       fail(card, error);
     }
   });
 }
 
-// Die nächsten Ladefenster unter Netzladen, nur bei „In Ladefenstern“.
-function paintWindows(card, cp) {
-  const list = $('[data-grid-windows]', card);
-  if (!list || !cp) return;
-  const items = Array.isArray(cp.grid_windows) ? cp.grid_windows : [];
-  list.replaceChildren(...items.map((w) => {
-    const li = document.createElement('li');
-    li.toggleAttribute('data-running', Boolean(w.running));
-    const label = document.createElement('span');
-    label.textContent = w.label;
-    const ct = document.createElement('span');
-    ct.className = 'num';
-    ct.textContent = w.ct;
-    li.append(label, ct);
-    return li;
-  }));
-  list.hidden = cp.grid !== 'windows' || items.length === 0;
+// Ziel fürs Netzladen und die Wahl der Fenster gelten nur bei „Jetzt“ oder „In Ladefenstern“.
+function paintGrid(card, grid) {
+  for (const node of $$('[data-grid-show]', card)) node.hidden = !node.dataset.gridShow.split(' ').includes(grid);
 }
 
-// Ladeziel: Zeile oder „Ladeziel setzen“, Fortschritt als Breite; Übersicht nur bei offenem Ladevorgang.
-function paintTarget(card, target, session) {
-  const row = $('[data-target]', card);
-  const none = $('[data-target-none]', card);
+// Ladeziele für Sonne und Speicher und fürs Netzladen: Zeile oder „… setzen“, Fortschritt als Breite.
+function paintTarget(card, scope, target) {
+  const row = $(`[data-target="${scope}"]`, card);
+  const none = $(`[data-target-none="${scope}"]`, card);
   if (row && target) {
     row.hidden = !target.active;
     if (none) none.hidden = Boolean(target.active);
@@ -148,6 +136,10 @@ function paintTarget(card, target, session) {
     const fill = $('.cp-target-fill', row);
     if (fill) fill.style.setProperty('--progress', String(Math.max(0, Math.min(1, Number(row.dataset.progress) || 0))));
   }
+}
+
+// Übersicht nur bei offenem Ladevorgang.
+function paintSession(card, session) {
   const box = $('[data-session]', card);
   if (box && session) box.hidden = !session.open;
 }
@@ -162,9 +154,12 @@ export function initChargepoints(root = document) {
     bindChoice(card, '[data-mode-switch]', 'mode', 'Der Modus wurde nicht gespeichert. Bitte noch einmal versuchen.');
     bindChoice(card, '[data-grid-switch]', 'grid', 'Netzladen wurde nicht umgestellt. Bitte noch einmal versuchen.');
     if (bar) bindLimit(card, bar);
-    paintTarget(card, null, null);
+    paintTarget(card, 'sun', null);
+    paintTarget(card, 'grid', null);
     onLive((data) => {
-      paintTarget(card, data.target, data.session_view);
+      paintTarget(card, 'sun', data.target);
+      paintTarget(card, 'grid', data.grid_target);
+      paintSession(card, data.session_view);
       const cp = data.chargepoint;
       const vehicle = data.vehicle;
       if (cp) {
@@ -176,7 +171,7 @@ export function initChargepoints(root = document) {
           const input = fieldset && $(`input[value="${value}"]`, fieldset);
           if (input && !input.checked && !fieldset.contains(document.activeElement)) input.checked = true;
         }
-        paintWindows(card, cp);
+        paintGrid(card, cp.grid);
       }
       if (bar && vehicle) {
         bar.dataset.charging = String(Boolean(cp?.charging));

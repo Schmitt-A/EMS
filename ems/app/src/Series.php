@@ -161,27 +161,46 @@ final class Series
         return $mapping;
     }
 
-    /** @param array<string, mixed> $mapping */
+    /**
+     * Üblicher Hausverbrauch ohne Wallbox in kW: das Mittel des Tagesprofils aus houseProfile(), also ein üblicher
+     * Tag durch 24.
+     *
+     * @param array<string, mixed> $mapping
+     */
     public function houseMean(array $mapping): ?float
+    {
+        $profile = $this->houseProfile($mapping);
+        return $profile === null ? null : (float) $profile['mean'];
+    }
+
+    /**
+     * Üblicher Hausverbrauch ohne Wallbox je Stunde des Tages aus den letzten 30 Tagen (Energy::houseProfile()),
+     * gecacht je Tag, längstens 6 Stunden.
+     *
+     * @param array<string, mixed> $mapping
+     * @return ?array{profile: array<int, float>, mean: float}
+     */
+    public function houseProfile(array $mapping): ?array
     {
         $tz = new DateTimeZone('Europe/Berlin');
         $day = (new DateTimeImmutable('now', $tz))->format('Y-m-d');
         $houseId = trim((string) ($mapping['house_power'] ?? ''));
         $wallId = trim((string) ($mapping['wallbox_power'] ?? ''));
         $includes = (bool) ($mapping['house_includes_wallbox'] ?? true);
-        // „|s“: seit 1.10 mit den Ladevorgängen, wo die Statistik der Wallbox fehlt; ein alter Wert gilt dann nicht mehr.
-        $key = $day . '|' . $houseId . '|' . $wallId . '|' . ($includes ? '1' : '0') . '|s';
+        // „|p“: seit 1.14 ein Tagesprofil aus Medianen statt eines Mittels; ein alter Wert gilt dann nicht mehr.
+        $key = $day . '|' . $houseId . '|' . $wallId . '|' . ($includes ? '1' : '0') . '|p';
         $cache = $this->store->get('house_mean', []);
-        if (is_array($cache) && ($cache['key'] ?? '') === $key && (int) ($cache['until'] ?? 0) > time() && array_key_exists('mean', $cache)) {
-            return $cache['mean'] === null ? null : (float) $cache['mean'];
+        if (is_array($cache) && ($cache['key'] ?? '') === $key && (int) ($cache['until'] ?? 0) > time() && array_key_exists('profile', $cache)) {
+            return is_array($cache['profile']) ? ['profile' => array_map('floatval', $cache['profile']), 'mean' => (float) $cache['mean']] : null;
         }
-        $mean = $this->computeHouseMean($houseId, $wallId, $includes);
+        $profile = $this->computeHouseProfile($houseId, $wallId, $includes);
         $this->store->put('house_mean', [
             'key' => $key,
-            'mean' => $mean,
-            'until' => time() + ($mean === null ? 900 : 6 * 3600),
+            'mean' => $profile['mean'] ?? null,
+            'profile' => $profile['profile'] ?? null,
+            'until' => time() + ($profile === null ? 900 : 6 * 3600),
         ]);
-        return $mean;
+        return $profile;
     }
 
     /** @return array{yTitle:string, yMax:float, yStep:float, yDataMax:float, yDecimals:int} */
@@ -349,14 +368,20 @@ final class Series
         $from = $today->modify('-14 days')->getTimestamp();
         $tariff = new Tariff($this->store);
         $market = $tariff->market();
-        $last = $market->lastEnd();
+        // Bis zum Ende der bekannten Preise: Börse oder Preis-Entität des Anbieters, je nachdem, was weiter reicht.
+        $last = $tariff->horizon();
         $spots = $market->quarters($from, max($last, $now));
+        $quarters = $spots;
+        foreach ($tariff->providerQuarters($from, max($last, $now)) as $q) {
+            $quarters[$q] ??= null;
+        }
+        ksort($quarters);
         $series = ['dynamic' => [], 'static' => [], 'spot' => [], 'export' => []];
         $days = [];
         $prev = null;
         $lo = 0.0;
         $hi = 1.0;
-        foreach ($spots as $q => $spot) {
+        foreach ($quarters as $q => $spot) {
             if ($prev !== null && $q !== $prev + 900) {
                 foreach ($series as $key => $_) {
                     $series[$key][] = ['x' => ($prev + 900) * 1000, 'y' => null];
@@ -400,22 +425,32 @@ final class Series
                 $extrema[] = ['max' => $day['max'], 'min' => $day['min']];
             }
         }
-        // Aktive Ladefenster hinterlegt, kräftiger die Viertelstunden, die der Ladeplan für „fertig bis“ dazunimmt.
+        // Nur mit dynamischem Tarif: aktive Ladefenster hinterlegt, kräftiger die Viertelstunden, die der Ladeplan für
+        // „fertig bis“ dazunimmt, und der Preisbereich als waagerechtes Band.
         $bands = [];
-        foreach ((new PriceWindows($this->store, $tariff))->list($now) as $w) {
-            if ($w['on']) {
-                $bands[] = ['from' => $w['start'] * 1000, 'to' => $w['end'] * 1000, 'label' => 'Ladefenster', 'kind' => 'window'];
+        $ranges = [];
+        $windows = new PriceWindows($this->store, $tariff);
+        if ($windows->enabled($now)) {
+            foreach ($windows->list($now) as $w) {
+                if ($w['on']) {
+                    $bands[] = ['from' => $w['start'] * 1000, 'to' => $w['end'] * 1000, 'label' => 'Ladefenster', 'kind' => 'window'];
+                }
             }
-        }
-        $plan = ChargePlan::get($this->store);
-        $target = Target::get($this->store);
-        if ($plan !== null && $target !== null && (int) ($plan['target_set_at'] ?? 0) === (int) ($target['set_at'] ?? -1)) {
-            foreach (ChargePlan::windows((array) ($plan['extra'] ?? [])) as [$a, $b]) {
-                $bands[] = ['from' => $a * 1000, 'to' => $b * 1000, 'label' => 'Ladeplan', 'kind' => 'extra'];
+            $plan = ChargePlan::get($this->store);
+            $target = Target::get($this->store, 'grid');
+            if ($plan !== null && $target !== null && (int) ($plan['target_set_at'] ?? 0) === (int) ($target['set_at'] ?? -1)) {
+                foreach (ChargePlan::windows((array) ($plan['extra'] ?? [])) as [$a, $b]) {
+                    $bands[] = ['from' => $a * 1000, 'to' => $b * 1000, 'label' => 'Ladeplan', 'kind' => 'extra'];
+                }
+            }
+            $config = $windows->config();
+            if ($config['range_to'] !== null) {
+                $ranges[] = ['from' => $config['range_from'], 'to' => $config['range_to']];
             }
         }
         $payload = [
             'bands' => $bands,
+            'ranges' => $ranges,
             'days' => max(1, (int) round(($windowEnd - $from) / 86400)),
             'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
             'view' => [$today->getTimestamp() * 1000, $windowEnd * 1000],
@@ -437,7 +472,7 @@ final class Series
                 ['key' => 'export', 'label' => 'Einspeisung', 'color' => 'export', 'axis' => 'y', 'data' => $series['export']],
             ],
         ];
-        if (!$spots) {
+        if (!$quarters) {
             $error = $market->meta()['error'] ?? null;
             $payload['error'] = $error ? 'Börsenpreise: ' . $error : 'Noch keine Börsenpreise. Der Recorder holt sie gleich.';
         }
@@ -1197,7 +1232,8 @@ final class Series
         return Energy::energyToKwh((float) $row['state'], is_string($unit) ? $unit : null)[0];
     }
 
-    private function computeHouseMean(string $houseId, string $wallId, bool $includes): ?float
+    /** @return ?array{profile: array<int, float>, mean: float} */
+    private function computeHouseProfile(string $houseId, string $wallId, bool $includes): ?array
     {
         if ($houseId === '') {
             return null;
@@ -1232,7 +1268,7 @@ final class Series
                 }
             }
         }
-        return Energy::meanHouseBase($house, $wall, $includes);
+        return Energy::houseProfile($house, $wall, $includes);
     }
 
     private function flat(array $points, float $value): array

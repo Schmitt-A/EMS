@@ -11,7 +11,7 @@ declare(strict_types=1);
 $v = $snap['values'];
 $b = $snap['balance'];
 $c = $snap['cfg']['charge'];
-$cp = $snap['chargepoint'] + ['vehicle' => $snap['vehicle'], 'target' => $snap['target'], 'session_view' => $snap['session_view']];
+$cp = $snap['chargepoint'] + ['vehicle' => $snap['vehicle'], 'target' => $snap['target'], 'grid_target' => $snap['grid_target'] ?? null, 'session_view' => $snap['session_view']];
 $vehicle = $snap['vehicle'];
 $tariffs = $snap['cfg']['tariffs'];
 $f = $snap['forecast'];
@@ -99,10 +99,13 @@ ob_start();
 <?php
 echo ui_dialog('cp-settings', 'Einstellungen: ' . $cp['name'], ob_get_clean());
 
-// Ebene 2: Ladeziel
+// Ebene 2: Ladeziel für Sonne und Speicher und Ziel fürs Netzladen
 ob_start();
-view('partials/target-form', ['target' => Target::get(store()), 'snap' => $snap, 'back' => '/']);
+view('partials/target-form', ['target' => Target::get(store()), 'snap' => $snap, 'back' => '/', 'scope' => 'sun']);
 echo ui_dialog('cp-target', 'Ladeziel', ob_get_clean());
+ob_start();
+view('partials/target-form', ['target' => Target::get(store(), 'grid'), 'snap' => $snap, 'back' => '/', 'scope' => 'grid']);
+echo ui_dialog('cp-grid-target', 'Ziel fürs Netzladen', ob_get_clean());
 
 // Ebene 2: Fahrzeug
 ob_start();

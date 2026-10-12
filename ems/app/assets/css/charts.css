@@ -159,6 +159,12 @@
   fill-opacity: 0.2;
 }
 
+/* Preisbereich der Ladefenster: waagerecht in der Farbe der Einspeisung. */
+.chart .price-range {
+  fill: var(--data-grid-out);
+  fill-opacity: 0.14;
+}
+
 .chart .band-extra {
   fill-opacity: 0.45;
 }

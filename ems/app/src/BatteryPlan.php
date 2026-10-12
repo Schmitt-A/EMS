@@ -2,18 +2,22 @@
 declare(strict_types=1);
 
 /**
- * Hausspeicher in Ladefenstern aus dem Netz laden, nur wenn die Sonne nicht reicht (Speicher → Ausblick, an mit
- * battery_strategy.grid_charge). decide() rechnet je Viertelstunde vom Fensterbeginn bis 24 Stunden nach dem Fenster:
- * Sonne laut Prognose, Haus mit dem Mittel der letzten 30 Tage, Preise im aktiven Tarif (unbekannte wie am Vortag).
- * Es probiert, bis zu welchem Stand der Speicher im Fenster laden sollte, und nimmt den mit den geringsten Kosten:
- * Netzbezug im Fenster und danach, minus Einspeisung, plus Verschleiß je gespeicherter kWh, mit Verlusten. Füllt die
- * Sonne den Speicher ohnehin, oder ist der Preisunterschied zu klein, lädt er nicht.
- * sync() schaltet über Home Assistant: Betriebsmodus manuell und „Laden erzwingen“ mit der Ladeleistung, danach
- * Leistung 0 und der Betriebsmodus von vorher. Nur bei aktivem EMS. Zustand und Protokoll in kv.battery_grid.
+ * Hausspeicher in einem Ladefenster aus dem Netz laden (Speicher → Ausblick). Die Empfehlung rechnet decide() für das
+ * laufende oder nächste aktive Fenster, je Viertelstunde bis 24 Stunden danach: Sonne laut Prognose, Haus aus dem
+ * üblichen Tagesprofil, Preise im aktiven Tarif (unbekannte wie am Vortag). Es probiert, bis zu welchem Stand der
+ * Speicher im Fenster laden sollte, und nimmt den mit den geringsten Kosten: Netzbezug im Fenster und danach, minus
+ * Einspeisung, plus Verschleiß je gespeicherter kWh, mit Verlusten. Füllt die Sonne den Speicher ohnehin, oder ist der
+ * Preisunterschied zu klein, rät es ab.
+ * Geladen wird nur mit einem Energie-Boost (kv.battery_boost): einmalig in einem gewählten Fenster bis zu einem
+ * Ladestand, von Hand oder aus der Empfehlung übernommen; am Ziel oder am Ende des Fensters verfällt er. sync()
+ * schaltet über Home Assistant: Betriebsmodus manuell und „Laden erzwingen“ mit der Ladeleistung, danach Leistung 0
+ * und der Betriebsmodus von vorher. Nur bei aktivem EMS. Zustand und Protokoll in kv.battery_grid.
  */
 final class BatteryPlan
 {
     public const KEY = 'battery_grid';
+    /** Der Energie-Boost: start, end (das Fenster), target_soc, set_at. */
+    public const BOOST = 'battery_boost';
     /** Darunter lohnt sich ein Fenster nicht, damit kleine Rechenunterschiede nicht schalten. */
     private const MIN_SAVING_EUR = 0.05;
     private const STEP_KWH = 0.25;
@@ -32,7 +36,6 @@ final class BatteryPlan
         $power = is_numeric($b['grid_kw'] ?? null) && (float) $b['grid_kw'] > 0 ? (float) $b['grid_kw']
             : (is_numeric($b['discharge_kw'] ?? null) && (float) $b['discharge_kw'] > 0 ? (float) $b['discharge_kw'] : 2.5);
         return [
-            'on' => !empty($b['grid_charge']),
             'mode_entity' => (string) ($m['battery_operating_mode'] ?? ''),
             'power_entity' => (string) ($m['battery_force_charge'] ?? ''),
             'power_kw' => clamp_float($power, 0.1, 50),
@@ -158,12 +161,13 @@ final class BatteryPlan
     }
 
     /**
-     * Viertelstunden für decide(): Sonne aus der stündlichen Prognose, Haus als Mittel, Preis im aktiven Tarif; ohne
-     * Preis der vom Vortag zur selben Zeit.
+     * Viertelstunden für decide(): Sonne aus der stündlichen Prognose, Haus aus dem üblichen Tagesprofil, Preis im
+     * aktiven Tarif; ohne Preis der vom Vortag zur selben Zeit.
      *
      * @param array<int, array{t:int, kw:float}> $series stündliche Prognose (Forecast::fromRadiation)
+     * @param array<int, float> $profile Haus in kW je Stunde des Tages (Energy::houseProfile())
      */
-    public static function quarters(array $series, float $houseKw, Tariff $tariff, int $from, int $to): array
+    public static function quarters(array $series, array $profile, Tariff $tariff, int $from, int $to): array
     {
         $pv = [];
         foreach ($series as $point) {
@@ -173,48 +177,59 @@ final class BatteryPlan
         for ($q = intdiv($from, 900) * 900; $q < $to; $q += 900) {
             $hour = intdiv($q, 3600) * 3600;
             $ct = $tariff->importCt($q) ?? $tariff->importCt($q - 86400);
-            $out[] = [$q, $pv[$hour] ?? 0.0, $houseKw, $ct];
+            $out[] = [$q, $pv[$hour] ?? 0.0, self::houseAt($profile, $q), $ct];
         }
         return $out;
     }
 
     /**
-     * Plan für den Ausblick und sync(): das laufende oder nächste aktive Ladefenster mit der Entscheidung. null ohne
-     * Fenster, ohne Ladestand oder ohne Hausverbrauch.
+     * Die Empfehlung für den Ausblick: von den aktiven Fenstern, die laufen oder kommen, das, in dem Laden aus dem Netz am
+     * meisten spart; lohnt keines, die Entscheidung fürs nächste mit ihrem Grund. null ohne Fenster (mit statischem
+     * Tarif gibt es keine).
      */
-    public static function plan(array $cfg, array $values, array $series, ?float $houseKw, PriceWindows $windows, Tariff $tariff, int $now): ?array
+    public static function plan(array $cfg, array $values, array $series, ?array $profile, PriceWindows $windows, Tariff $tariff, int $now): ?array
     {
-        $window = $windows->current($now) ?? ($windows->upcoming($now, 1)[0] ?? null);
+        $candidates = $windows->offered($now, 6);
+        $window = $candidates[0] ?? null;
         $capacity = is_numeric($values['battery_total_kwh'] ?? null) && (float) $values['battery_total_kwh'] > 0 ? (float) $values['battery_total_kwh']
             : (is_numeric($values['battery_capacity_kwh'] ?? null) && is_numeric($values['battery_soc'] ?? null) && (float) $values['battery_soc'] > 1
                 ? (float) $values['battery_capacity_kwh'] / ((float) $values['battery_soc'] / 100) : null);
-        if ($window === null || $houseKw === null || $capacity === null || !is_numeric($values['battery_soc'] ?? null)) {
+        if ($window === null || $profile === null || $capacity === null || !is_numeric($values['battery_soc'] ?? null)) {
             return $window === null ? null : ['window' => $window, 'reason' => 'unknown', 'kwh' => 0.0, 'target_soc' => null];
         }
         $s = self::settings($cfg);
         $t = $tariff->tariffAt($now);
-        $decision = self::decide([
-            'soc' => (float) $values['battery_soc'],
-            'capacity_kwh' => $capacity,
-            'floor_soc' => $s['floor_soc'],
-            'max_soc' => $s['max_soc'],
-            'power_kw' => $s['power_kw'],
-            'efficiency' => $s['efficiency'],
-            'wear_ct' => $s['wear_ct'],
-            'export_ct' => (float) $t['export_ct'],
-            'window' => $window,
-            'quarters' => self::quarters($series, $houseKw, $tariff, $now, (int) $window['end'] + self::HORIZON_S),
-        ]);
-        return ['window' => $window] + $decision;
+        $best = null;
+        $first = null;
+        foreach ($candidates as $candidate) {
+            $result = ['window' => $candidate] + self::decide([
+                'soc' => (float) $values['battery_soc'],
+                'capacity_kwh' => $capacity,
+                'floor_soc' => $s['floor_soc'],
+                'max_soc' => $s['max_soc'],
+                'power_kw' => $s['power_kw'],
+                'efficiency' => $s['efficiency'],
+                'wear_ct' => $s['wear_ct'],
+                'export_ct' => (float) $t['export_ct'],
+                'window' => $candidate,
+                'quarters' => self::quarters($series, $profile, $tariff, $now, (int) $candidate['end'] + self::HORIZON_S),
+            ]);
+            $first ??= $result;
+            if ($result['reason'] === 'charge' && ($best === null || $result['saving_eur'] > $best['saving_eur'])) {
+                $best = $result;
+            }
+        }
+        return $best ?? $first;
     }
 
     /**
-     * Die nächsten Tage für den Ausblick: Sonne laut Prognose (heute der Rest, wie auf der Seite Prognose), Haus mit
-     * dem Mittel der letzten 30 Tage ohne Wallbox und was übrig bleibt oder fehlt.
+     * Die nächsten Tage für den Ausblick: Sonne laut Prognose (heute der Rest, wie auf der Seite Prognose), Haus aus dem
+     * üblichen Tagesprofil ohne Wallbox (heute ab jetzt) und was übrig bleibt oder fehlt.
      *
+     * @param ?array<int, float> $profile Haus in kW je Stunde des Tages
      * @return list<array{day: string, label: string, sun_kwh: ?float, house_kwh: ?float, balance_kwh: ?float}>
      */
-    public static function days(array $series, array $plant, ?float $houseKw, int $now, ?array $brief, int $count = 3): array
+    public static function days(array $series, array $plant, ?array $profile, int $now, ?array $brief, int $count = 3): array
     {
         $tz = new DateTimeZone('Europe/Berlin');
         $today = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0);
@@ -227,22 +242,38 @@ final class BatteryPlan
             $day = $today->modify('+' . $i . ' day');
             $next = $day->modify('+1 day');
             $key = $day->format('Y-m-d');
-            $hours = ($next->getTimestamp() - ($i === 0 ? max($now, $day->getTimestamp()) : $day->getTimestamp())) / 3600;
+            $from = $i === 0 ? max($now, $day->getTimestamp()) : $day->getTimestamp();
             $sun = match ($i) {
                 0 => isset($brief['remaining_kwh']) ? (float) $brief['remaining_kwh'] : null,
                 1 => isset($brief['tomorrow_kwh']) ? (float) $brief['tomorrow_kwh'] : ($totals[$key] ?? null),
                 default => $totals[$key] ?? null,
             };
-            $house = $houseKw === null ? null : max(0.0, $houseKw) * max(0.0, $hours);
+            $house = $profile === null ? null : self::houseKwh($profile, $from, $next->getTimestamp());
             $out[] = [
                 'day' => $key,
-                'label' => $i === 0 ? 'Heute, Rest' : ($i === 1 ? 'Morgen' : short_day_label($day)),
+                'label' => $i === 0 ? 'Heute ab ' . date('H:i', intdiv($now, 900) * 900) : ($i === 1 ? 'Morgen' : short_day_label($day)),
                 'sun_kwh' => $sun === null ? null : round($sun, 1),
                 'house_kwh' => $house === null ? null : round($house, 1),
                 'balance_kwh' => $sun === null || $house === null ? null : round($sun - $house, 1),
             ];
         }
         return $out;
+    }
+
+    /** Haus in kW zu einem Zeitpunkt aus dem Tagesprofil. */
+    public static function houseAt(array $profile, int $ts): float
+    {
+        return max(0.0, (float) ($profile[(int) date('G', $ts)] ?? (array_sum($profile) / max(1, count($profile)))));
+    }
+
+    /** Haus in kWh zwischen zwei Zeitpunkten aus dem Tagesprofil, je Viertelstunde. */
+    public static function houseKwh(array $profile, int $from, int $to): float
+    {
+        $kwh = 0.0;
+        for ($q = $from; $q < $to; $q += 900) {
+            $kwh += self::houseAt($profile, $q) * min(900, $to - $q) / 3600;
+        }
+        return $kwh;
     }
 
     public function state(): array
@@ -277,26 +308,34 @@ final class BatteryPlan
         return null;
     }
 
+    /** Der Energie-Boost, solange sein Fenster nicht vorbei ist, sonst null. */
+    public static function boost(ConfigStore $store, int $now): ?array
+    {
+        $boost = $store->get(self::BOOST, []);
+        if (!is_array($boost) || !is_numeric($boost['start'] ?? null) || !is_numeric($boost['end'] ?? null) || !is_numeric($boost['target_soc'] ?? null) || (int) $boost['end'] <= $now) {
+            return null;
+        }
+        return ['start' => (int) $boost['start'], 'end' => (int) $boost['end'], 'target_soc' => (float) $boost['target_soc'], 'set_at' => (int) ($boost['set_at'] ?? 0)];
+    }
+
     /**
-     * Was jetzt zu tun ist, ohne zu schreiben: start (Fenster läuft, laden lohnt, unter dem Ziel), stop (Ende des
-     * Fensters, Ziel erreicht, abgeschaltet) oder none.
+     * Was jetzt zu tun ist, ohne zu schreiben: start (das Fenster des Boosts läuft, unter dem Ziel), stop (Ende des
+     * Fensters, Ziel erreicht, Boost oder EMS aus) oder none.
      *
      * @return array{action: string, why?: string}
      */
-    public static function step(array $state, ?array $plan, bool $ready, ?float $soc, int $now): array
+    public static function step(array $state, ?array $boost, bool $ready, ?float $soc, int $now): array
     {
-        $active = !empty($state['active']);
-        if ($active) {
+        if (!empty($state['active'])) {
             $why = match (true) {
-                !$ready => 'off',
+                !$ready || $boost === null => 'off',
                 $now >= (int) $state['until'] => 'end',
                 $soc !== null && $state['target_soc'] !== null && $soc >= (float) $state['target_soc'] => 'target',
                 default => null,
             };
             return $why === null ? ['action' => 'none'] : ['action' => 'stop', 'why' => $why];
         }
-        $running = $plan !== null && (int) $plan['window']['start'] <= $now && $now < (int) $plan['window']['end'];
-        if ($ready && $running && ($plan['reason'] ?? '') === 'charge' && $soc !== null && $plan['target_soc'] !== null && $soc < (float) $plan['target_soc'] - 0.5) {
+        if ($ready && $boost !== null && $boost['start'] <= $now && $now < $boost['end'] && $soc !== null && $soc < $boost['target_soc'] - 0.5) {
             return ['action' => 'start'];
         }
         return ['action' => 'none'];
@@ -307,7 +346,6 @@ final class BatteryPlan
     {
         $s = self::settings($cfg);
         return match (true) {
-            !$s['on'] => 'aus',
             !Controller::active($cfg) => 'EMS regelt noch nicht; der Hauptschalter steht unter Einstellungen.',
             $s['mode_entity'] === '' || $s['power_entity'] === '' => 'Betriebsmodus und „Laden erzwingen“ sind noch nicht zugeordnet (Einstellungen → Speicher).',
             in_array((string) ($index[$s['mode_entity']]['state'] ?? 'unavailable'), ['unavailable', 'unknown', ''], true) => 'Der Betriebsmodus (' . $s['mode_entity'] . ') ist in Home Assistant nicht verfügbar.',
@@ -325,7 +363,11 @@ final class BatteryPlan
     {
         $state = $this->state();
         $cfg = $snap['cfg'];
-        $plan = $snap['battery_plan'] ?? null;
+        $boost = self::boost($this->store, $now);
+        if ($boost === null && $this->store->get(self::BOOST, []) !== []) {
+            // Das Fenster ist vorbei, ohne dass geladen wurde (etwa weil EMS nicht regelte): der Boost verfällt.
+            $this->store->put(self::BOOST, []);
+        }
         $soc = isset($snap['values']['battery_soc']) ? (float) $snap['values']['battery_soc'] : null;
         try {
             $index = $this->ha->index();
@@ -333,7 +375,7 @@ final class BatteryPlan
             return $state;
         }
         $blocker = self::blocker($cfg, $index);
-        $step = self::step($state, $plan, $blocker === '', $soc, $now);
+        $step = self::step($state, $boost, $blocker === '', $soc, $now);
         if ($step['action'] === 'none') {
             return $state;
         }
@@ -355,10 +397,10 @@ final class BatteryPlan
                 $this->ha->service('select', 'select_option', ['entity_id' => $modeEntity, 'option' => $manual]);
                 $this->ha->setNumber($powerEntity, round($s['power_kw'] * 1000, -2));
                 $state = array_merge($state, [
-                    'active' => true, 'since' => $now, 'until' => (int) $plan['window']['end'], 'target_soc' => (float) $plan['target_soc'],
+                    'active' => true, 'since' => $now, 'until' => $boost['end'], 'target_soc' => $boost['target_soc'],
                     'restore' => $restore, 'mode_entity' => $modeEntity, 'power_entity' => $powerEntity, 'error' => null, 'error_at' => null,
                 ]);
-                $state['log'] = self::log($state['log'], $now, 'Lädt aus dem Netz mit ' . kw($s['power_kw']) . ' bis ' . pct((float) $plan['target_soc']) . ', längstens bis ' . date('H:i', (int) $plan['window']['end']) . '.');
+                $state['log'] = self::log($state['log'], $now, 'Energie-Boost: lädt aus dem Netz mit ' . kw($s['power_kw']) . ' bis ' . pct($boost['target_soc']) . ', längstens bis ' . date('H:i', $boost['end']) . '.');
             } else {
                 $this->ha->setNumber($powerEntity, 0.0);
                 $restore = (string) (($state['restore'] ?? '') ?: (self::option('auto', $options) ?? 'automatic'));
@@ -370,6 +412,10 @@ final class BatteryPlan
                 };
                 $state = array_merge($state, ['active' => false, 'since' => null, 'until' => null, 'target_soc' => null, 'error' => null, 'error_at' => null]);
                 $state['log'] = self::log($state['log'], $now, $why . ', zurück auf ' . $restore . '.');
+                if (in_array($step['why'] ?? '', ['target', 'end'], true)) {
+                    // Einmalig: Am Ziel oder am Ende des Fensters ist der Boost verbraucht.
+                    $this->store->put(self::BOOST, []);
+                }
             }
         } catch (Throwable $e) {
             $state = array_merge($state, ['error' => ($step['action'] === 'start' ? 'Starten' : 'Beenden') . ' fehlgeschlagen: ' . $e->getMessage(), 'error_at' => $now]);
@@ -386,39 +432,32 @@ final class BatteryPlan
     }
 
     /**
-     * Sätze für Speicher → Ausblick: was EMS im nächsten Fenster tut und warum, mit der Rechnung. $state aus state(),
-     * $blocker aus blocker().
+     * Die Empfehlung für Speicher → Ausblick: ein Satz zum laufenden oder nächsten Fenster, ob und bis wohin Laden aus
+     * dem Netz lohnt, und die Rechnung dazu. charge sagt, ob sich die Empfehlung als Energie-Boost übernehmen lässt.
+     *
+     * @return array{head: string, lines: list<string>, charge: bool}
      */
-    public static function text(?array $plan, array $settings, array $state, string $blocker, int $now): array
+    public static function recommendation(?array $plan, array $settings, int $now): array
     {
-        $lines = [];
-        if (!empty($state['active'])) {
-            $lines[] = 'Lädt seit ' . date('H:i', (int) $state['since']) . ' aus dem Netz bis ' . pct((float) $state['target_soc']) . ', längstens bis ' . date('H:i', (int) $state['until']) . '.';
-        }
         if ($plan === null) {
-            $lines[] = 'Kein aktives Ladefenster bekannt. Die Fenster stehen unter Prognose → Strompreis.';
-            return ['head' => $lines[0], 'lines' => array_slice($lines, 1)];
+            return ['head' => 'Kein aktives Ladefenster bekannt, die Fenster stehen unter Prognose → Strompreis.', 'lines' => [], 'charge' => false];
         }
         $label = PriceWindows::label($plan['window'], $now);
         $head = match ((string) $plan['reason']) {
-            'charge' => 'Im Fenster ' . $label . ' lohnt es sich, ' . kwh((float) $plan['kwh'], 1) . ' aus dem Netz zu laden, bis ' . pct((float) $plan['target_soc']) . '.',
-            'sun' => 'Im Fenster ' . $label . ' ist Laden aus dem Netz nicht nötig: Speicher und Sonne reichen voraussichtlich bis einen Tag danach.',
-            'price' => 'Im Fenster ' . $label . ' lohnt Laden aus dem Netz nicht: Der Preisunterschied deckt Verluste und Verschleiß nicht.',
-            'full' => 'Im Fenster ' . $label . ' ist der Speicher voraussichtlich schon so voll, wie er aus dem Netz laden darf.',
-            default => 'Für das Fenster ' . $label . ' fehlen Ladestand, Kapazität oder der Hausverbrauch der letzten 30 Tage.',
+            'charge' => 'Empfehlung: im Fenster ' . $label . ' bis ' . pct((float) $plan['target_soc']) . ' aus dem Netz laden, etwa ' . kwh((float) $plan['kwh'], 1) . '. Spart etwa ' . euro((float) $plan['saving_eur']) . '.',
+            'sun' => 'Empfehlung: im Fenster ' . $label . ' nicht aus dem Netz laden. Speicher und Sonne reichen voraussichtlich bis einen Tag danach.',
+            'price' => 'Empfehlung: im Fenster ' . $label . ' nicht aus dem Netz laden. Der Preisunterschied deckt Verluste und Verschleiß nicht.',
+            'full' => 'Empfehlung: im Fenster ' . $label . ' nicht laden, der Speicher ist dann voraussichtlich schon voll genug.',
+            default => 'Für das Fenster ' . $label . ' fehlen Ladestand, Kapazität oder der übliche Hausverbrauch.',
         };
+        $lines = [];
         if ($plan['reason'] !== 'unknown') {
-            $sun = 'Danach erwartet: ' . kwh((float) $plan['sun_kwh'], 1) . ' Sonnenüberschuss';
-            $sun .= (float) $plan['need_kwh'] >= 0.1 ? ', ohne Laden kämen ' . kwh((float) $plan['need_kwh'], 1) . ' aus dem Netz' . ($plan['later_ct'] !== null ? ' zu Ø ' . ct((float) $plan['later_ct']) : '') . '.' : ', der Speicher reicht.';
-            $lines[] = $sun;
+            $lines[] = 'Bis einen Tag nach dem Fenster erwartet: ' . kwh((float) $plan['sun_kwh'], 1) . ' Sonnenüberschuss'
+                . ((float) $plan['need_kwh'] >= 0.1 ? '; ohne Laden kämen ' . kwh((float) $plan['need_kwh'], 1) . ' aus dem Netz' . ($plan['later_ct'] !== null ? ' zu Ø ' . ct((float) $plan['later_ct']) : '') . '.' : '; der Speicher reicht.');
             if ($plan['window_ct'] !== null) {
-                $lines[] = 'Im Fenster kostet die kWh Ø ' . ct((float) $plan['window_ct']) . ', mit ' . pct((1 - $settings['efficiency']) * 100) . ' Verlust und ' . ct($settings['wear_ct']) . ' Verschleiß ' . ct((float) $plan['cost_ct']) . ' je gespeicherter kWh.'
-                    . ((float) $plan['saving_eur'] > 0 ? ' Spart etwa ' . euro((float) $plan['saving_eur']) . '.' : '');
+                $lines[] = 'Im Fenster kostet die kWh Ø ' . ct((float) $plan['window_ct']) . ', mit ' . pct((1 - $settings['efficiency']) * 100) . ' Verlust und ' . ct($settings['wear_ct']) . ' Verschleiß ' . ct((float) $plan['cost_ct']) . ' je gespeicherter kWh.';
             }
         }
-        if ($blocker !== '' && $blocker !== 'aus' && ($plan['reason'] ?? '') === 'charge') {
-            $lines[] = 'Geschaltet wird nicht: ' . $blocker;
-        }
-        return ['head' => $head, 'lines' => $lines];
+        return ['head' => $head, 'lines' => $lines, 'charge' => ($plan['reason'] ?? '') === 'charge'];
     }
 }

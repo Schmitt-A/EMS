@@ -19,7 +19,7 @@ final class PriceView
         $market = $tariff->market();
         $today = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0);
         $tomorrow = $today->modify('+1 day');
-        $last = $market->lastEnd();
+        $last = $tariff->horizon();
         $ahead = [];
         for ($q = intdiv($now, 900) * 900; $q < $last; $q += 900) {
             $ct = $tariff->dynamicAt($q);
@@ -29,21 +29,24 @@ final class PriceView
         }
         $span = isset(self::SPANS[$span]) ? $span : 'jahr';
         [$from, $to] = self::spanRange($span, $now);
+        $windows = new PriceWindows($this->store, $tariff);
+        $enabled = $windows->enabled($now);
         $plan = ChargePlan::get($this->store);
-        $target = Target::get($this->store);
-        if ($plan !== null && ($target === null || (int) ($plan['target_set_at'] ?? 0) !== (int) ($target['set_at'] ?? -1))) {
+        $target = Target::get($this->store, 'grid');
+        if ($plan !== null && (!$enabled || $target === null || (int) ($plan['target_set_at'] ?? 0) !== (int) ($target['set_at'] ?? -1))) {
             $plan = null;
         }
-        $windows = new PriceWindows($this->store, $tariff);
         $config = $windows->config();
         $cfg = $this->store->all();
         return [
             'plan' => $plan,
             'windows' => $windows->list($now),
+            'windows_enabled' => $enabled,
             'windows_config' => $config,
             'users' => [
                 'car' => Energy::grid($cfg['charge']['grid'] ?? 'off'),
-                'battery' => !empty($cfg['battery_strategy']['grid_charge']),
+                'car_chosen' => ChargePlan::chosen($this->store, $now),
+                'battery' => BatteryPlan::boost($this->store, $now),
             ],
             'months' => $this->months($tariff, $config['length_h'], $now),
             'now' => $tariff->now($now),

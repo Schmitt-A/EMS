@@ -70,17 +70,34 @@ if (!empty($price['meta']['error']) && $price['horizon'] < time()) {
       ],
       'empty' => 'Noch keine Börsenpreise. Der Recorder holt sie gleich.',
   ]) ?>
-  <p class="caption muted">Dick der Tarif, nach dem du bezahlst, gestrichelt der andere. Hinterlegt sind die aktiven Ladefenster, kräftiger die Viertelstunden, die ein Ladeplan dazunimmt. Je Tag stehen der teuerste und der günstigste dynamische Preis. Ändern unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
+  <p class="caption muted">Dick der Tarif, nach dem du bezahlst, gestrichelt der andere. Mit dynamischem Tarif sind die aktiven Ladefenster hinterlegt, kräftiger die Viertelstunden, die ein Ladeplan dazunimmt, und der Preisbereich als waagerechtes Band. Je Tag stehen der teuerste und der günstigste dynamische Preis. Ändern unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
   <p class="caption muted"><?= e(MarketPrices::SOURCE) ?>.</p>
 </section>
 
-<section class="card stack" aria-labelledby="windows-title">
-  <h2 class="card-title" id="windows-title">Ladefenster</h2>
-  <p class="body-sm muted">Je Tag sucht EMS das günstigste Fenster am Stück, sobald die Preise da sind. In aktiven Fenstern lädt das Auto mit Netzladen „In Ladefenstern“ voll aus dem Netz, der Speicher, wenn er es unter Speicher → Ausblick darf und die Sonne nicht reicht.</p>
+<?php
+// Ladefenster: mit dynamischem Tarif direkt, mit statischem als aufklappbare Vorschau (gleiche Bedienung).
+ob_start();
+?>
   <form method="post" action="<?= e(url('/einstellungen')) ?>" class="form-rows" data-autosubmit>
     <?= $post('windows') ?>
-    <?= ui_form_row('Länge je Tag', ui_select('length_h', array_combine(array_map('strval', PriceWindows::LENGTHS), array_map(static fn (int $h): string => $h . ($h === 1 ? ' Stunde' : ' Stunden'), PriceWindows::LENGTHS)), (string) $wc['length_h']), ['for' => 'f-length_h']) ?>
+    <?= ui_form_row('Günstigstes Fenster je Tag', ui_select('length_h', array_combine(array_map('strval', PriceWindows::LENGTHS), array_map(static fn (int $h): string => $h . ($h === 1 ? ' Stunde' : ' Stunden'), PriceWindows::LENGTHS)), (string) $wc['length_h']), ['for' => 'f-length_h']) ?>
     <noscript><div class="form-actions"><button class="btn btn-secondary" type="submit">Länge speichern</button></div></noscript>
+  </form>
+  <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack window-range">
+    <?= $post('window_range') ?>
+    <fieldset class="window-range-set">
+      <legend class="form-label">Preisbereich<span class="form-hint">Jede Zeit, in der der Preis darin liegt, wird ein Ladefenster, auch für alle kommenden Tage. „Von“ leer heißt ohne Untergrenze.</span></legend>
+      <div class="window-range-fields">
+        <label for="f-range_from"><span class="caption muted">von, ct/kWh</span><?= ui_input('range_from', $wc['range_from'] === null ? '' : ui_field_num((float) $wc['range_from'], 1), ['id' => 'f-range_from', 'class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off', 'placeholder' => '–']) ?></label>
+        <label for="f-range_to"><span class="caption muted">bis, ct/kWh</span><?= ui_input('range_to', $wc['range_to'] === null ? '' : ui_field_num((float) $wc['range_to'], 1), ['id' => 'f-range_to', 'class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off', 'placeholder' => 'aus']) ?></label>
+      </div>
+    </fieldset>
+    <div class="form-actions">
+      <button class="btn btn-secondary" type="submit">Preisbereich speichern</button>
+<?php if ($wc['range_to'] !== null): ?>
+      <button class="btn btn-secondary" type="submit" name="clear" value="1">Preisbereich aus</button>
+<?php endif; ?>
+    </div>
   </form>
 <?php if (!$price['windows']): ?>
   <p class="body muted">Noch keine Preise für heute, die Fenster erscheinen mit ihnen.</p>
@@ -90,25 +107,35 @@ if (!empty($price['meta']['error']) && $price['horizon'] < time()) {
 <?php
     $status = PriceWindows::status($w, $ts);
     $label = ucfirst(PriceWindows::label($w, $ts));
+    $kind = match ($w['kind']) {
+        'custom' => 'eigenes',
+        'range' => 'Preisbereich',
+        default => 'günstigstes je Tag',
+    };
     $state = match ($status) {
         'past' => 'vorbei',
         'running' => 'läuft',
         default => '',
     };
-    $meta = implode(' · ', array_filter([$w['ct'] === null ? 'Preis noch offen' : 'Ø ' . ct((float) $w['ct']), $w['kind'] === 'custom' ? 'eigenes' : 'Vorschlag', $state]));
+    $meta = implode(' · ', array_filter([$w['ct'] === null ? 'Preis noch offen' : 'Ø ' . ct((float) $w['ct']), $kind, $state]));
 ?>
-    <li class="window-item" data-status="<?= e($status) ?>"<?= $w['on'] ? '' : ' data-off' ?>>
+    <li class="window-item" data-status="<?= e($status) ?>" data-kind="<?= e($w['kind']) ?>"<?= $w['on'] ? '' : ' data-off' ?>>
       <div class="window-main"><span class="window-when num"><?= e($label) ?></span><span class="caption muted"><?= e($meta) ?></span></div>
-<?php if ($w['kind'] === 'auto'): ?>
-      <form method="post" action="<?= e(url('/einstellungen')) ?>" data-autosubmit>
-        <?= $post('window_toggle') ?><input type="hidden" name="day" value="<?= e($w['day']) ?>">
-        <?= ui_toggle('on', (bool) $w['on'], 'Ladefenster ' . $label, ['id' => 'f-win-' . $w['day']]) ?>
-        <noscript><button class="btn btn-secondary" type="submit">Speichern</button></noscript>
-      </form>
-<?php else: ?>
+<?php if ($w['kind'] === 'custom'): ?>
       <form method="post" action="<?= e(url('/einstellungen')) ?>">
         <?= $post('window_delete') ?><input type="hidden" name="start" value="<?= (int) $w['start'] ?>"><input type="hidden" name="end" value="<?= (int) $w['end'] ?>">
         <?= '<button type="submit" class="icon-btn" aria-label="' . e('Ladefenster ' . $label . ' löschen') . '">' . icon('x', 'icon-20') . '</button>' ?>
+      </form>
+<?php else: ?>
+      <form method="post" action="<?= e(url('/einstellungen')) ?>" data-autosubmit>
+        <?= $post('window_toggle') ?>
+<?php if ($w['kind'] === 'range'): ?>
+        <input type="hidden" name="start" value="<?= (int) $w['start'] ?>">
+<?php else: ?>
+        <input type="hidden" name="day" value="<?= e($w['day']) ?>">
+<?php endif; ?>
+        <?= ui_toggle('on', (bool) $w['on'], 'Ladefenster ' . $label, ['id' => 'f-win-' . $w['id']]) ?>
+        <noscript><button class="btn btn-secondary" type="submit">Speichern</button></noscript>
       </form>
 <?php endif; ?>
     </li>
@@ -134,14 +161,33 @@ for ($i = 0; $i < 3; $i++) {
       <div class="form-actions"><button class="btn btn-primary" type="submit">Fenster anlegen</button></div>
     </form>
   </details>
+<?php
+$windowsUi = ob_get_clean();
+$chosen = $price['users']['car_chosen'];
+$boostWindow = $price['users']['battery'];
+?>
+<section class="card stack" aria-labelledby="windows-title">
+  <h2 class="card-title" id="windows-title">Ladefenster</h2>
+<?php if (!$price['windows_enabled']): ?>
+  <p class="body-sm muted">Mit deinem statischen Tarif kostet jede Viertelstunde gleich viel, Ladefenster gibt es deshalb erst mit dynamischem Tarif. Die Vorschau zeigt, wie sie mit deinen Aufschlägen aussähen; was du dort einstellst, gilt, sobald du unter Einstellungen → Tarif auf dynamisch wechselst.</p>
+  <details class="window-preview">
+    <summary><?= icon('chevron-down', 'icon-16') ?><span>Vorschau</span></summary>
+    <div class="stack window-preview-body"><?= $windowsUi ?></div>
+  </details>
+<?php else: ?>
+  <p class="body-sm muted">Je Tag sucht EMS das günstigste Fenster am Stück, sobald die Preise da sind; gegen 13 Uhr kommen die für morgen dazu, mit einer Preis-Entität von Tibber oder Octopus auch deren Preise. Dazu kommen die Zeiten in deinem Preisbereich und eigene Fenster. Aus den aktiven Fenstern wählst du in der Ladepunkt-Karte die fürs Auto und unter Speicher → Ausblick das für den Energie-Boost.</p>
+  <?= $windowsUi ?>
   <ul class="plain-list stack-tight body-sm" role="list">
-    <li>Auto: <?= e($price['users']['car'] === 'windows' ? 'lädt in den Fenstern (Netzladen „In Ladefenstern“).' : 'nutzt die Fenster nicht, Netzladen steht auf „' . Energy::gridLabel((string) $price['users']['car']) . '“.') ?> <?= ui_inline('Laden', ['href' => url('/') . '#cp']) ?></li>
-    <li>Speicher: <?= e($price['users']['battery'] ? 'lädt in den Fenstern, wenn die Sonne nicht reicht.' : 'nutzt die Fenster nicht.') ?> <?= ui_inline('Speicher → Ausblick', ['href' => url('/speicher') . '#outlook-title']) ?></li>
+    <li>Auto: <?= e($price['users']['car'] !== 'windows'
+        ? 'Netzladen steht auf „' . Energy::gridLabel((string) $price['users']['car']) . '“.'
+        : ($chosen ? 'lädt in ' . implode(', ', array_map(static fn (array $w): string => PriceWindows::label($w, $ts), $chosen)) . '.' : 'In Ladefenstern, aber noch kein Fenster gewählt.')) ?> <?= ui_inline('Laden', ['href' => url('/') . '#cp']) ?></li>
+    <li>Speicher: <?= e($boostWindow !== null ? 'Energie-Boost ' . PriceWindows::label($boostWindow, $ts) . ' bis ' . pct((float) $boostWindow['target_soc']) . '.' : 'kein Energie-Boost geplant.') ?> <?= ui_inline('Speicher → Ausblick', ['href' => url('/speicher') . '#outlook-title']) ?></li>
 <?php if ($price['plan'] !== null): ?>
     <li><?= e(ChargePlan::text($price['plan'])) ?></li>
 <?php endif; ?>
   </ul>
-  <p class="caption muted">Ab jetzt am günstigsten: <?= e($range($price['cheap']['hour'])) ?><?= $price['cheap']['hour'] ? ' · ' . e(ct((float) $price['cheap']['hour']['ct'])) : '' ?>, am teuersten: <?= e($range($price['cheap']['dear'])) ?><?= $price['cheap']['dear'] ? ' · ' . e(ct((float) $price['cheap']['dear']['ct'])) : '' ?>, je eine Stunde. Preise bis <?= e($price['horizon'] > 0 ? $until($price['horizon']) : '—') ?>.<?= $tomorrowKnown ? '' : ' Die Preise für morgen gibt es ab etwa 13 Uhr.' ?></p>
+<?php endif; ?>
+  <p class="caption muted">Ab jetzt am günstigsten: <?= e($range($price['cheap']['hour'])) ?><?= $price['cheap']['hour'] ? ' · ' . e(ct((float) $price['cheap']['hour']['ct'])) : '' ?>, am teuersten: <?= e($range($price['cheap']['dear'])) ?><?= $price['cheap']['dear'] ? ' · ' . e(ct((float) $price['cheap']['dear']['ct'])) : '' ?>, je eine Stunde, dynamisch. Preise bis <?= e($price['horizon'] > 0 ? $until($price['horizon']) : '—') ?>.<?= $tomorrowKnown ? '' : ' Die Preise für morgen gibt es ab etwa 13 Uhr.' ?></p>
 </section>
 
 <section class="card stack" aria-labelledby="decide-title"<?= ui_attrs($decision === null ? [] : [

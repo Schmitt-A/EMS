@@ -384,12 +384,18 @@ final class Actions
             }
             flash($message);
             self::redirectBack();
-        } elseif (in_array($section, ['windows', 'window_toggle', 'window_add', 'window_delete'], true)) {
+        } elseif (in_array($section, ['windows', 'window_range', 'window_toggle', 'window_add', 'window_delete'], true)) {
             flash(self::saveWindows($section));
             (new Controller(store(), ha()))->kick(time());
             self::redirectBack();
+        } elseif ($section === 'grid_windows') {
+            flash(self::saveGridWindows());
+            self::redirectBack();
         } elseif ($section === 'battery_grid') {
             flash(self::saveBatteryGrid());
+            self::redirectBack();
+        } elseif ($section === 'battery_boost') {
+            flash(self::saveBoost());
             self::redirectBack();
         }
         flash('Gespeichert.');
@@ -397,20 +403,16 @@ final class Actions
     }
 
     /**
-     * Speicher aus dem Netz laden: an oder aus (Speicher → Ausblick), unter Einstellungen → Speicher die Entitäten,
-     * Ladeleistung, Höchststand, Wirkungsgrad und Verschleiß. Nur gesendete Felder. Danach gleich ein Schritt, damit
-     * Ausschalten ein laufendes Laden sofort beendet.
+     * Unter Einstellungen → Speicher: die Entitäten für das Laden aus dem Netz, Ladeleistung, Wirkungsgrad und
+     * Verschleiß. Nur gesendete Felder.
      */
     private static function saveBatteryGrid(): string
     {
         $patch = [];
-        if (array_key_exists('grid_charge', $_POST)) {
-            $patch['grid_charge'] = ($_POST['grid_charge'] ?? '0') === '1';
-        }
         if (array_key_exists('grid_kw', $_POST)) {
             $patch['grid_kw'] = self::optional('grid_kw', 0.1, 50);
         }
-        foreach (['grid_max_soc' => [10, 100, 100], 'grid_efficiency_pct' => [50, 100, 90], 'grid_wear_ct' => [0, 50, 2]] as $key => [$min, $max, $fallback]) {
+        foreach (['grid_efficiency_pct' => [50, 100, 90], 'grid_wear_ct' => [0, 50, 2]] as $key => [$min, $max, $fallback]) {
             if (array_key_exists($key, $_POST)) {
                 $patch[$key] = post_float($key, $min, $max, $fallback);
             }
@@ -430,20 +432,53 @@ final class Actions
         if ($mapped) {
             store()->put('mapping', $mapping);
         }
+        return 'Gespeichert.';
+    }
+
+    /**
+     * Energie-Boost unter Speicher → Ausblick: aus der Empfehlung übernehmen (do=recommend), mit Fenster und Ladestand
+     * setzen (do=set) oder abbrechen (do=clear). Danach gleich ein Schritt, damit ein Boost im laufenden Fenster sofort
+     * startet und Abbrechen ein laufendes Laden beendet.
+     */
+    private static function saveBoost(): string
+    {
+        $now = time();
+        $do = (string) ($_POST['do'] ?? 'set');
+        $battery = new BatteryPlan(store(), ha());
         $snap = (new Snapshot(store(), ha()))->build();
-        (new BatteryPlan(store(), ha()))->sync($snap, time());
-        if (!array_key_exists('grid_charge', $patch)) {
-            return 'Gespeichert.';
+        if ($do === 'clear') {
+            store()->put(BatteryPlan::BOOST, []);
+            $battery->sync($snap, $now);
+            return 'Energie-Boost abgebrochen.';
         }
-        if (!$patch['grid_charge']) {
-            return 'Der Speicher lädt nicht mehr aus dem Netz.';
+        if ($do === 'recommend') {
+            $plan = $snap['battery_plan'] ?? null;
+            if (!is_array($plan) || ($plan['reason'] ?? '') !== 'charge') {
+                return 'Gerade empfiehlt EMS kein Laden aus dem Netz.';
+            }
+            $window = $plan['window'];
+            $target = (float) $plan['target_soc'];
+        } else {
+            $key = (string) ($_POST['window'] ?? '');
+            $window = null;
+            foreach ((new PriceWindows(store()))->offered($now, 20) as $w) {
+                if ($w['start'] . '-' . $w['end'] === $key) {
+                    $window = $w;
+                }
+            }
+            if ($window === null) {
+                return 'Bitte ein aktives Ladefenster wählen.';
+            }
+            $target = (float) post_int('target_soc', 20, 100, 80);
         }
+        store()->put(BatteryPlan::BOOST, ['start' => (int) $window['start'], 'end' => (int) $window['end'], 'target_soc' => round($target), 'set_at' => $now]);
+        $battery->sync($snap, $now);
         try {
             $blocker = BatteryPlan::blocker(cfg(), ha()->index());
         } catch (Throwable) {
             $blocker = 'Home Assistant ist nicht erreichbar.';
         }
-        return 'Der Speicher lädt in aktiven Ladefenstern aus dem Netz, wenn die Sonne nicht reicht und es sich lohnt.' . ($blocker !== '' && $blocker !== 'aus' ? ' Noch schaltet EMS nicht: ' . $blocker : '');
+        return 'Energie-Boost: im Fenster ' . PriceWindows::label($window, $now) . ' bis ' . pct($target) . ' aus dem Netz laden.' . ($blocker !== '' ? ' Noch schaltet EMS nicht: ' . $blocker : '');
     }
 
     /**
@@ -460,6 +495,34 @@ final class Actions
             $s['length_h'] = in_array($length, PriceWindows::LENGTHS, true) ? $length : $s['length_h'];
             $windows->save($s, $now);
             return 'Ladefenster: je Tag die günstigsten ' . $s['length_h'] . ($s['length_h'] === 1 ? ' Stunde.' : ' Stunden.');
+        }
+        if ($section === 'window_range') {
+            $clear = !empty($_POST['clear']);
+            $s['range_from'] = $clear ? null : self::optional('range_from', -100, 200);
+            $s['range_to'] = $clear ? null : self::optional('range_to', -100, 200);
+            $windows->save($s, $now);
+            $saved = $windows->config();
+            if ($saved['range_to'] === null) {
+                return 'Kein Preisbereich mehr.';
+            }
+            return 'Preisbereich: ' . ($saved['range_from'] === null ? 'bis ' : ct($saved['range_from']) . ' bis ') . ct($saved['range_to']) . '. Jede Zeit darin wird ein Ladefenster.';
+        }
+        if ($section === 'window_toggle' && is_numeric($_POST['start'] ?? null)) {
+            // Ein Fenster im Preisbereich, bestimmt durch seinen Beginn.
+            $start = (int) $_POST['start'];
+            $on = ($_POST['on'] ?? '0') === '1';
+            $found = null;
+            foreach ($windows->list($now) as $w) {
+                if ($w['kind'] === 'range' && $w['start'] === $start) {
+                    $found = $w;
+                }
+            }
+            $s['range_off'] = array_values(array_diff($s['range_off'], [$start]));
+            if (!$on) {
+                $s['range_off'][] = $start;
+            }
+            $windows->save($s, $now);
+            return 'Ladefenster ' . ($found === null ? '' : PriceWindows::label($found, $now) . ' ') . ($on ? 'ist an.' : 'ist aus.');
         }
         if ($section === 'window_toggle') {
             $day = (string) ($_POST['day'] ?? '');
@@ -802,13 +865,10 @@ final class Actions
             if (array_key_exists('discharge_kw', $incoming)) {
                 $strategy['discharge_kw'] = is_numeric($incoming['discharge_kw']) && (float) $incoming['discharge_kw'] > 0 ? clamp_float((float) $incoming['discharge_kw'], 0.1, 50) : null;
             }
-            if (array_key_exists('grid_charge', $incoming)) {
-                $strategy['grid_charge'] = !empty($incoming['grid_charge']);
-            }
             if (array_key_exists('grid_kw', $incoming)) {
                 $strategy['grid_kw'] = is_numeric($incoming['grid_kw']) && (float) $incoming['grid_kw'] > 0 ? clamp_float((float) $incoming['grid_kw'], 0.1, 50) : null;
             }
-            foreach (['grid_max_soc' => [10, 100, 100], 'grid_efficiency_pct' => [50, 100, 90], 'grid_wear_ct' => [0, 50, 2]] as $key => [$min, $max, $fallback]) {
+            foreach (['grid_efficiency_pct' => [50, 100, 90], 'grid_wear_ct' => [0, 50, 2]] as $key => [$min, $max, $fallback]) {
                 if (array_key_exists($key, $incoming)) {
                     $strategy[$key] = self::clamped($incoming[$key], $min, $max, $fallback);
                 }
@@ -981,28 +1041,68 @@ final class Actions
         return $message;
     }
 
-    /** Ladeziel aus dem Sheet setzen oder löschen; gibt die Rückmeldung zurück. */
+    /**
+     * Ladeziel aus dem Sheet setzen oder löschen, für Sonne und Speicher oder (scope grid) fürs Netzladen; gibt die
+     * Rückmeldung zurück.
+     */
     public static function saveTarget(): string
     {
         $controller = new Controller(store(), ha());
+        $scope = ($_POST['scope'] ?? '') === 'grid' ? 'grid' : 'sun';
+        $key = $scope === 'grid' ? Target::GRID_KEY : Target::KEY;
+        $name = $scope === 'grid' ? 'Ziel fürs Netzladen' : 'Ladeziel';
         if (!empty($_POST['clear'])) {
-            store()->put(Target::KEY, []);
-            store()->put(ChargePlan::KEY, []);
+            store()->put($key, []);
+            if ($scope === 'grid') {
+                store()->put(ChargePlan::KEY, []);
+            }
             $controller->kick(time());
-            return 'Ladeziel gelöscht.';
+            return $name . ' gelöscht.';
         }
         $snap = (new Snapshot(store(), ha()))->build();
-        $built = Target::build($_POST, time(), $snap['vehicle']['soc'] ?? null, $snap['vehicle']['range_km'] ?? null);
+        $built = Target::build($_POST, time(), $snap['vehicle']['soc'] ?? null, $snap['vehicle']['range_km'] ?? null, $scope);
         if ($built['error'] !== null) {
             return $built['error'];
         }
-        store()->put(Target::KEY, $built['target']);
+        store()->put($key, $built['target']);
         // Mit „fertig bis“ steht der Plan gleich, nicht erst beim nächsten Recorder-Schritt.
-        $plan = ChargePlan::refresh(store(), $snap, time(), true);
+        $plan = $scope === 'grid' ? ChargePlan::refresh(store(), $snap, time(), true) : null;
         $controller->kick(time());
         $view = Target::view($built['target'], Target::inputs($snap), time());
         $planText = ChargePlan::text($plan);
-        return 'Ladeziel gesetzt: ' . $view['label'] . ', danach ' . Energy::modeLabel((string) $built['target']['then']) . '.' . ($planText !== '' ? ' ' . $planText : '');
+        $then = $scope === 'grid' ? ', danach ohne Netz' : ', danach ' . ($built['target']['then'] === 'aus' ? 'Laden aus' : Energy::modeLabel((string) $built['target']['then']));
+        return $name . ' gesetzt: ' . $view['label'] . $then . '.' . ($planText !== '' ? ' ' . $planText : '');
+    }
+
+    /** Die Fenster fürs Auto aus der Ladepunkt-Karte übernehmen; nur aktive Fenster, die noch kommen. */
+    private static function saveGridWindows(): string
+    {
+        $now = time();
+        $offered = [];
+        foreach ((new PriceWindows(store()))->offered($now, 20) as $w) {
+            $offered[$w['start'] . '-' . $w['end']] = ['start' => (int) $w['start'], 'end' => (int) $w['end']];
+        }
+        foreach (ChargePlan::chosen(store(), $now) as $w) {
+            $offered[$w['start'] . '-' . $w['end']] = $w;
+        }
+        $chosen = [];
+        foreach ((array) ($_POST['windows'] ?? []) as $key) {
+            if (is_string($key) && isset($offered[$key])) {
+                $chosen[] = $offered[$key];
+            }
+        }
+        usort($chosen, static fn (array $a, array $b): int => $a['start'] <=> $b['start']);
+        store()->put(ChargePlan::CHOICE, ['windows' => $chosen, 'at' => $now]);
+        store()->put(ChargePlan::DONE, 0);
+        $snap = (new Snapshot(store(), ha()))->build();
+        $plan = ChargePlan::refresh(store(), $snap, $now, true);
+        (new Controller(store(), ha()))->kick($now);
+        if ($chosen === []) {
+            return 'Kein Fenster gewählt, das Auto lädt in keinem Ladefenster aus dem Netz.';
+        }
+        $text = 'Das Auto lädt aus dem Netz: ' . implode(', ', array_map(static fn (array $w): string => PriceWindows::label($w, $now), $chosen)) . '.';
+        $planText = ChargePlan::text($plan);
+        return $planText === '' ? $text : $text . ' ' . $planText;
     }
 
     /**
@@ -1033,6 +1133,9 @@ final class Actions
             $grid = (string) $_POST['grid'];
             if (!in_array($grid, Energy::GRID, true)) {
                 json_out(['error' => 'Unbekannte Auswahl für Netzladen.'], 422);
+            }
+            if ($grid === 'windows' && !(new PriceWindows(store()))->enabled(time())) {
+                json_out(['error' => 'Ladefenster gibt es nur mit dynamischem Tarif.'], 422);
             }
             $patch['grid'] = $grid;
         }

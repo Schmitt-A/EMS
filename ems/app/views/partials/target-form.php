@@ -1,15 +1,19 @@
 <?php
 declare(strict_types=1);
 /**
- * Ladeziel-Sheet: nach Energiemenge, Uhrzeit, Ladestand oder Reichweite, dazu der Folgemodus. Die Felder der
- * gewählten Art zeigt CSS über :has() am Segment, ohne Skript. Unter jedem Feld rechnet components/target.js beim
- * Tippen die Kilometer und die Dauer aus den data-Werten des Formulars. Gespeichert wird per Formular (section target).
- * Energie, Ladestand und Reichweite haben optional „fertig bis“: Mit Netzladen in Ladefenstern prüft ChargePlan, ob
- * die Fenster reichen, und plant sonst die günstigsten Viertelstunden dazu.
+ * Ladeziel-Sheet: nach Energiemenge, Uhrzeit, Ladestand oder Reichweite. Für Sonne und Speicher ($scope sun) mit dem
+ * Folgemodus, fürs Netzladen ($scope grid) ohne ihn, dafür bei Energie, Ladestand und Reichweite optional „fertig
+ * bis“: In Ladefenstern prüft ChargePlan, ob die gewählten Fenster reichen, und plant sonst die günstigsten
+ * Viertelstunden dazu. Die Felder der gewählten Art zeigt CSS über :has() am Segment, ohne Skript. Unter jedem Feld
+ * rechnet components/target.js beim Tippen die Kilometer und die Dauer aus den data-Werten des Formulars. Gespeichert
+ * wird per Formular (section target, scope). Beide Sheets stehen auf derselben Seite, darum tragen die IDs den Bereich.
  * @var ?array $target gespeichertes Ziel
  * @var array $snap
  * @var string $back
+ * @var string $scope sun oder grid
  */
+$scope = ($scope ?? 'sun') === 'grid' ? 'grid' : 'sun';
+$px = $scope === 'grid' ? 'g' : 't';
 $type = (string) ($target['type'] ?? 'energy');
 $then = (string) ($target['then'] ?? ($snap['cfg']['charge']['then_mode'] ?? 'smart'));
 $vehicle = $snap['vehicle'];
@@ -37,8 +41,12 @@ $hint = static fn (string $panel): string => '<p class="caption target-km" data-
     'data-range' => $range,
 ]) ?>>
   <?= csrf_field() ?>
-  <input type="hidden" name="section" value="target"><input type="hidden" name="back" value="<?= e($back) ?>">
-  <p class="body-sm muted">Ist das Ziel erreicht, wechselt die App in den Modus darunter; Aus stoppt die Wallbox. Beim Abstecken verfällt das Ziel.</p>
+  <input type="hidden" name="section" value="target"><input type="hidden" name="scope" value="<?= e($scope) ?>"><input type="hidden" name="back" value="<?= e($back) ?>">
+<?php if ($scope === 'grid'): ?>
+  <p class="body-sm muted">Bis hierhin lädt das Auto mit Netzladen aus dem Netz, jetzt oder in den gewählten Fenstern. Ist das Ziel erreicht, endet Netzladen, und Sonne und Speicher laden nach dem Modus weiter. Beim Abstecken verfällt das Ziel.</p>
+<?php else: ?>
+  <p class="body-sm muted">Ist das Ziel erreicht, wechselt die App in den Modus darunter; „Laden aus“ stoppt die Wallbox. Beim Abstecken verfällt das Ziel.</p>
+<?php endif; ?>
 <?php if (!Controller::active($snap['cfg'])): ?>
   <?= ui_notice('info', 'EMS regelt die Wallbox noch nicht. Das Ziel zeigt Fortschritt und Restzeit, stoppen kann EMS erst, wenn es unter ' . ui_inline('Einstellungen', ['href' => url('/einstellungen')]) . ' eingeschaltet ist.') ?>
 <?php endif; ?>
@@ -47,13 +55,13 @@ $hint = static fn (string $panel): string => '<p class="caption target-km" data-
       'time' => ['label' => 'Uhrzeit', 'short' => 'Zeit'],
       'soc' => ['label' => 'Ladestand', 'short' => '%'],
       'range' => ['label' => 'Reichweite', 'short' => 'km'],
-  ], $type, ['id' => 'tg-type']) ?>
+  ], $type, ['id' => $px . 'g-type']) ?>
   <div class="target-panel stack" data-panel="energy">
-    <div class="form-rows"><?= ui_form_row('Energie', ui_input('kwh', ui_field_num($energy, 1), ['id' => 'f-kwh', 'class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off']), ['for' => 'f-kwh', 'hint' => 'kWh insgesamt seit dem Anstecken, bisher ' . kwh($kwhNow) . '.']) ?></div>
+    <div class="form-rows"><?= ui_form_row('Energie', ui_input('kwh', ui_field_num($energy, 1), ['id' => 'f-' . $px . '-kwh', 'class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off']), ['for' => 'f-' . $px . '-kwh', 'hint' => 'kWh insgesamt seit dem Anstecken, bisher ' . kwh($kwhNow) . '.']) ?></div>
     <?= $hint('energy') ?>
   </div>
   <div class="target-panel stack" data-panel="time">
-    <div class="form-rows"><?= ui_form_row('Bis', ui_input('until', $until, ['id' => 'f-until', 'type' => 'time', 'class' => 'field-num']), ['for' => 'f-until', 'hint' => 'Lädt ab jetzt bis zu dieser Uhrzeit, eine vergangene Zeit meint morgen.']) ?></div>
+    <div class="form-rows"><?= ui_form_row('Bis', ui_input('until', $until, ['id' => 'f-' . $px . '-until', 'type' => 'time', 'class' => 'field-num']), ['for' => 'f-' . $px . '-until', 'hint' => 'Lädt ab jetzt bis zu dieser Uhrzeit, eine vergangene Zeit meint morgen.']) ?></div>
     <?= $hint('time') ?>
     <div class="row wrap target-quick" role="group" aria-label="Schnellwahl">
       <button class="btn btn-secondary" type="submit" name="hours" value="1">+1 h</button>
@@ -65,7 +73,7 @@ $hint = static fn (string $panel): string => '<p class="caption target-km" data-
 <?php if ($carSoc === null): ?>
     <p class="body-sm">Für ein Ziel nach Ladestand braucht die App den Ladestand des Autos, etwa über Tesla BLE unter <?= ui_inline('Einstellungen → Fahrzeug', ['href' => url('/einstellungen/fahrzeug')]) ?>.</p>
 <?php else: ?>
-    <?= ui_range('soc', 'Bis Ladestand', $soc, 20, 100, 5, '%', 'Jetzt ' . pct((float) $carSoc) . '.') ?>
+    <?= str_replace(['id="f-soc"', 'for="f-soc"'], ['id="f-' . $px . '-soc"', 'for="f-' . $px . '-soc"'], ui_range('soc', 'Bis Ladestand', $soc, 20, 100, 5, '%', 'Jetzt ' . pct((float) $carSoc) . '.')) ?>
     <?= $hint('soc') ?>
 <?php endif; ?>
   </div>
@@ -73,12 +81,15 @@ $hint = static fn (string $panel): string => '<p class="caption target-km" data-
 <?php if ($range === null): ?>
     <p class="body-sm">Für ein Ziel nach Reichweite braucht die App die Reichweite des Autos, etwa über Tesla BLE, oder Ladestand, Akku und Verbrauch unter <?= ui_inline('Einstellungen → Fahrzeug', ['href' => url('/einstellungen/fahrzeug')]) ?>.</p>
 <?php else: ?>
-    <div class="form-rows"><?= ui_form_row('Reichweite', ui_input('km', ui_field_num($km, 0), ['id' => 'f-km', 'class' => 'field-num', 'inputmode' => 'numeric', 'autocomplete' => 'off']), ['for' => 'f-km', 'hint' => 'Kilometer, die das Auto danach anzeigt, jetzt ' . with_unit((float) $range, 0, 'km') . '.']) ?></div>
+    <div class="form-rows"><?= ui_form_row('Reichweite', ui_input('km', ui_field_num($km, 0), ['id' => 'f-' . $px . '-km', 'class' => 'field-num', 'inputmode' => 'numeric', 'autocomplete' => 'off']), ['for' => 'f-' . $px . '-km', 'hint' => 'Kilometer, die das Auto danach anzeigt, jetzt ' . with_unit((float) $range, 0, 'km') . '.']) ?></div>
     <?= $hint('range') ?>
 <?php endif; ?>
   </div>
-  <div class="form-rows target-ready"><?= ui_form_row('Fertig bis', ui_input('ready_by', $ready, ['id' => 'f-ready_by', 'type' => 'time', 'class' => 'field-num']), ['for' => 'f-ready_by', 'hint' => 'Optional, mit Netzladen „In Ladefenstern“. EMS prüft dann, ob die Ladefenster bis dahin reichen, mit der erwarteten Sonne, und nimmt sonst die günstigsten Viertelstunden davor dazu.']) ?></div>
-  <div class="form-rows"><?= ui_form_row('Danach', ui_select('then', ['smart' => 'Intelligent', 'smart_dauerhaft' => 'Min+Sonne', 'aus' => 'Laden aus (Wallbox stoppt)'], $then), ['for' => 'f-then', 'hint' => 'Netzladen „Jetzt“ endet mit dem Ziel, „In Ladefenstern“ ruht bis zum Abstecken.']) ?></div>
+<?php if ($scope === 'grid'): ?>
+  <div class="form-rows target-ready"><?= ui_form_row('Fertig bis', ui_input('ready_by', $ready, ['id' => 'f-' . $px . '-ready_by', 'type' => 'time', 'class' => 'field-num']), ['for' => 'f-' . $px . '-ready_by', 'hint' => 'Optional, mit „In Ladefenstern“. EMS prüft, ob die gewählten Fenster bis dahin reichen, mit der erwarteten Sonne, und nimmt sonst die günstigsten Viertelstunden davor dazu.']) ?></div>
+<?php else: ?>
+  <div class="form-rows"><?= ui_form_row('Danach', ui_select('then', ['smart' => 'Intelligent', 'smart_dauerhaft' => 'Min+Sonne', 'aus' => 'Laden aus (Wallbox stoppt)'], $then, ['id' => 'f-' . $px . '-then']), ['for' => 'f-' . $px . '-then']) ?></div>
+<?php endif; ?>
   <div class="form-actions">
     <button class="btn btn-primary" type="submit"><?= icon('target', 'icon-16') ?>Ziel setzen</button>
 <?php if ($target !== null): ?>

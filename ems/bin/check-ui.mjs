@@ -3,6 +3,7 @@
 //   npm run check:ui                      alle Seiten
 //   CHECK_ROUTES=/,/speicher npm run check:ui
 //   CHECK_SHOTS=0 npm run check:ui        ohne Screenshots
+//   CHECK_TARIFF=dynamic npm run check:ui mit dynamischem Tarif (Ladefenster, Fensterwahl, Energie-Boost)
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -26,6 +27,18 @@ const seeded = spawnSync('php', ['bin/demo-seed.php'], { cwd: root, env, encodin
 if (seeded.status !== 0) {
   console.error(seeded.stderr || seeded.stdout);
   process.exit(1);
+}
+// CHECK_TARIFF=dynamic: dieselbe Demo mit dynamischem Tarif und Netzladen „In Ladefenstern“, damit Ladefenster,
+// Fensterwahl, Preisbereich und Energie-Boost geprüft werden; mit statischem Tarif gibt es sie nur als Vorschau.
+if (process.env.CHECK_TARIFF === 'dynamic') {
+  const php = "require 'app/src/bootstrap.php'; $t = new Tariff(store()); $c = $t->tariffAt(time()); $c['mode'] = 'dynamic'; "
+    + "$t->saveHistory(Tariff::withEntry($t->history(), date('Y-m-d'), $c), time()); store()->merge('charge', ['grid' => 'windows']); "
+    + "$w = new PriceWindows(store()); $w->save(['range_to' => 25.0] + $w->config(), time());";
+  const switched = spawnSync('php', ['-r', php], { cwd: root, env, encoding: 'utf8' });
+  if (switched.status !== 0) {
+    console.error(switched.stderr || switched.stdout);
+    process.exit(1);
+  }
 }
 const server = spawn('php', ['-S', `127.0.0.1:${port}`, '-t', 'app/public', 'app/public/router.php'], { cwd: root, env, stdio: 'ignore' });
 const stop = () => {

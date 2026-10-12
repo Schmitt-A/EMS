@@ -404,17 +404,25 @@
   display: grid;
 }
 
+/* Speicher: Säule und Verlauf nebeneinander und gleich hoch, darunter „So wird geladen“ und der Ausblick. */
 .storage-grid {
   display: grid;
   gap: var(--s-4);
-  align-items: start;
 }
 
 .storage-figure {
   display: grid;
   justify-items: center;
+  align-content: start;
   gap: var(--s-4);
   text-align: center;
+}
+
+.storage-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
 }
 
 @media (min-width: 48rem) {
@@ -422,10 +430,60 @@
     grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
   }
 
-  .storage-figure {
-    position: sticky;
-    inset-block-start: var(--s-4);
+  .storage-wide {
+    grid-column: 1 / -1;
   }
+
+  /* Das Diagramm füllt die Kachel, so hoch wie die Säule daneben. */
+  .storage-history .chart {
+    flex: 1 1 auto;
+    grid-template-rows: auto minmax(var(--chart-h), 1fr);
+  }
+
+  .storage-history .chart-frame {
+    height: auto;
+  }
+}
+
+/* Ausblick: Empfehlung hervorgehoben, ein laufender Boost darunter. */
+.boost-advice {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-field);
+  background: var(--surface-2);
+}
+
+.boost-advice-charge {
+  background: var(--accent-soft);
+}
+
+.boost-advice-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-weight: 600;
+}
+
+.boost-advice-head .icon {
+  flex: none;
+  margin-block-start: 0.125rem;
+}
+
+.boost-advice-charge .boost-advice-head .icon {
+  color: var(--accent-on-soft);
+}
+
+.boost-advice form {
+  justify-self: start;
+}
+
+.boost-active {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-3);
 }
 
 .page > .section:not(:first-child),

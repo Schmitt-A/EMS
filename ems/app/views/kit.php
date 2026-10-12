@@ -432,8 +432,8 @@ function ui_flow_table(array $rows, string $id = 'flow-table', bool $static = fa
  * von links nach rechts, mehr und schneller, je größer ihr Anteil an allem, was hereinkommt. Der Ring der Sonne zeigt,
  * wie viel der Tagesprognose schon erzeugt ist; die Ringe rechts (Haus, Auto, Speicher, Einspeisung) zeigen als ganzer
  * Kreis = 100 %, woher ihre Energie kommt. Unter jedem Namen steht eine Zeile mit Kennzahlen und Icons:
- * Sonne gemessen und Prognose, Speicher Ladestand und bis voll, Netz und Einspeisung der Preis, Haus das Mittel der
- * letzten 30 Tage, Auto Ladestand und Reichweite. Daten aus Snapshot::flowGraph().
+ * Sonne gemessen und Prognose, Speicher Ladestand und bis voll, Netz und Einspeisung der Preis, Haus der übliche
+ * Verbrauch, Auto Ladestand und Reichweite. Daten aus Snapshot::flowGraph().
  * opts: id, static, car (Name des Autos), links (bool: Kreise führen zu Prognose, Speicher, Ladepunkt)
  */
 function ui_energy_flow(array $graph, array $opts = []): string
@@ -483,7 +483,7 @@ function ui_energy_flow(array $graph, array $opts = []): string
     $in = $node('sun', 'Sonne', $sunFacts, 'sun', $sunAria, url('/prognose'), 'progress')
         . $node('battery_out', 'Speicher', $battery('battery_out'), 'battery', 'Speicher entlädt ' . kw((float) $n['battery_out']['kw']), url('/speicher'), 'full')
         . $node('grid_in', 'Netz', $fact('grid_in_price', 'coins', 'Preis Netzbezug', $value($n['grid_in']['price_ct'] ?? null, 'ct')), 'utility-pole', 'Netzbezug ' . kw((float) $n['grid_in']['kw']), null, 'full');
-    $out = $node('home', 'Haus', $fact('home_mean', 'history', 'Mittel der letzten 30 Tage', $value($n['home']['mean_kw'] ?? null, static fn (float $x): string => 'Ø ' . kw($x))), 'house', 'Haus ' . kw((float) $n['home']['kw']), null, 'mix')
+    $out = $node('home', 'Haus', $fact('home_mean', 'history', 'Üblicher Verbrauch', $value($n['home']['mean_kw'] ?? null, static fn (float $x): string => 'Ø ' . kw($x))), 'house', 'Haus ' . kw((float) $n['home']['kw']), null, 'mix')
         . $node('car', $car, $fact('car_soc', 'battery-medium', 'Ladestand', $value($n['car']['soc'] ?? null, $soc)) . $fact('car_range', 'route', 'Reichweite', $value($n['car']['range_km'] ?? null, static fn (float $x): string => with_unit($x, 0, 'km'))), 'car', $car . ' lädt mit ' . kw((float) $n['car']['kw']), '#cp', 'mix')
         . $node('battery_in', 'Speicher', $battery('battery_in'), 'battery', 'Speicher lädt ' . kw((float) $n['battery_in']['kw']), url('/speicher'), 'mix')
         . $node('grid_out', 'Einspeisung', $fact('grid_out_price', 'hand-coins', 'Vergütung Einspeisung', $value($n['grid_out']['price_ct'] ?? null, 'ct')), 'utility-pole', 'Einspeisung ' . kw((float) $n['grid_out']['kw']), null, 'mix');
@@ -547,7 +547,8 @@ function ui_live_num(string $path, ?float $value, string $unit, int $decimals = 
 
 /**
  * 7.3 Ladepunkt-Karte: oben der Schalter „Laden“, darunter Leistung, Geladen und Restzeit, die Modi für Sonne und
- * Speicher, das Ladeziel und Netzladen mit den nächsten Ladefenstern; unten Fahrzeug und 7.4 Ladebalken.
+ * Speicher mit ihrem Ladeziel und Netzladen mit eigenem Ziel und der Wahl der Ladefenster; unten Fahrzeug und 7.4
+ * Ladebalken. Teile, die nur bei einer Auswahl von Netzladen gelten, tragen data-grid-show.
  * $cp kommt aus Snapshot::chargepointView(), im Demo- und Komponentenmodus auch aus Beispielwerten.
  */
 function ui_chargepoint(array $cp, array $opts = []): string
@@ -565,7 +566,13 @@ function ui_chargepoint(array $cp, array $opts = []): string
         'tight' => true,
         'attrs' => ['data-mode-switch' => $live ? '1' : null, 'disabled' => !$editable],
     ]);
-    $gridSeg = ui_segment($id === 'cp' ? 'grid' : $id . '-grid', 'Netzladen', ui_grid_options(), $grid, [
+    // Ladefenster gibt es nur mit dynamischem Tarif; mit statischem bleibt „In Ladefenstern“ gesperrt.
+    $enabled = (bool) ($cp['windows_enabled'] ?? true);
+    $gridOptions = ui_grid_options();
+    if (!$enabled) {
+        $gridOptions['windows']['disabled'] = true;
+    }
+    $gridSeg = ui_segment($id === 'cp' ? 'grid' : $id . '-grid', 'Netzladen', $gridOptions, $grid, [
         'id' => $id . '-grid',
         'tight' => true,
         'attrs' => ['data-grid-switch' => $live ? '1' : null, 'disabled' => !$editable],
@@ -573,23 +580,51 @@ function ui_chargepoint(array $cp, array $opts = []): string
     $switch = '<label class="cp-switch" for="' . e($id) . '-on"><span class="cp-switch-text">Laden</span><span class="toggle"><input type="checkbox" role="switch"'
         . ui_attrs(['id' => $id . '-on', 'checked' => $on, 'disabled' => !$editable, 'data-charge-switch' => $live ? '1' : null])
         . '><span class="toggle-track"></span><span class="toggle-knob">' . icon('check', 'icon-16') . '</span></span></label>';
+    // Die Fenster fürs Auto: ankreuzen und bestätigen; gewählte bleiben angekreuzt.
     $windowItems = '';
     foreach ((array) ($cp['grid_windows'] ?? []) as $w) {
-        $windowItems .= '<li' . (!empty($w['running']) ? ' data-running' : '') . '><span>' . e((string) $w['label']) . '</span><span class="num">' . e((string) $w['ct']) . '</span></li>';
+        $cid = $id . '-win-' . (int) $w['start'] . '-' . (int) $w['end'];
+        $windowItems .= '<li><label class="cp-window" for="' . e($cid) . '"' . (!empty($w['running']) ? ' data-running' : '') . '><span class="check"><input type="checkbox"'
+            . ui_attrs(['id' => $cid, 'name' => 'windows[]', 'value' => (string) $w['key'], 'checked' => !empty($w['chosen']), 'disabled' => !$editable])
+            . '><span class="check-box" aria-hidden="true">' . icon('check', 'icon-16') . '</span></span>'
+            . '<span class="cp-window-when">' . e((string) $w['label']) . '</span><span class="num cp-window-ct">' . e((string) $w['ct']) . '</span></label></li>';
     }
-    $windowsHtml = '<ul class="cp-windows body-sm" role="list" data-grid-windows' . ($grid !== 'windows' || $windowItems === '' ? ' hidden' : '') . '>' . $windowItems . '</ul>';
+    $windowsHtml = !$editable || !$enabled || $windowItems === '' ? '' : '<form method="post" action="' . e(url('/einstellungen')) . '" class="cp-windows-form stack-tight" data-grid-show="windows"' . ($grid !== 'windows' ? ' hidden' : '') . '>'
+        . csrf_field() . '<input type="hidden" name="section" value="grid_windows"><input type="hidden" name="back" value="/">'
+        . '<fieldset class="cp-window-set"><legend class="caption muted">Fenster fürs Auto</legend><ul class="cp-windows" role="list">' . $windowItems . '</ul></fieldset>'
+        . '<div class="form-actions"><button class="btn btn-secondary" type="submit">Fenster übernehmen</button></div></form>';
     $gridText = (string) ($cp['grid_text'] ?? '');
     $sunSection = '<section class="cp-section" aria-labelledby="' . e($id) . '-sun-title"><h3 class="cp-section-title label" id="' . e($id) . '-sun-title">Sonne &amp; Speicher</h3>'
         . '<div class="cp-mode">' . $mode . '</div>'
         . '<p class="caption muted cp-hint"' . ui_attrs(['data-live' => $p('chargepoint.mode_hint')]) . '>' . e((string) ($cp['mode_hint'] ?? Energy::modeHint($sunMode))) . '</p>'
         . '<p class="caption cp-off-note" data-off-note' . ($on ? ' hidden' : '') . '>Laden ist aus, die Wallbox bleibt gesperrt. Ein Modus schaltet es wieder an.</p>'
         . '</section>';
+    // Ladeziele: Zeile mit Fortschritt oder „… setzen“; live.js schreibt die Texte, chargepoint.js Breite und Sichtbarkeit.
+    $targetRow = static function (string $scope, ?array $target, array $attrs = []) use ($id, $p, $editable): string {
+        if (!$editable) {
+            return '';
+        }
+        $path = $scope === 'grid' ? 'grid_target' : 'target';
+        $dialog = $id . ($scope === 'grid' ? '-grid-target' : '-target');
+        $t = $target ?? ['label' => '', 'text' => '', 'then_text' => '', 'progress' => 0];
+        return '<div class="cp-target-slot"' . ui_attrs($attrs) . '><div class="cp-target" data-target="' . $scope . '" data-progress="' . e((string) (float) $t['progress']) . '"' . ($target === null ? ' hidden' : '') . '>'
+            . '<span class="cp-target-icon" aria-hidden="true">' . icon('target', 'icon-16') . '</span>'
+            . '<div class="cp-target-body"><p class="cp-target-head"><span class="cp-target-label"' . ui_attrs(['data-live' => $p($path . '.label')]) . '>' . e((string) $t['label']) . '</span>'
+            . '<span class="caption muted"' . ui_attrs(['data-live' => $p($path . '.then_text')]) . '>' . e((string) $t['then_text']) . '</span></p>'
+            . '<span class="cp-target-bar" aria-hidden="true"><span class="cp-target-fill"></span></span>'
+            . '<p class="caption cp-target-text"' . ui_attrs(['data-live' => $p($path . '.text')]) . '>' . e((string) $t['text']) . '</p></div>'
+            . ui_inline('Ändern', ['data-open-dialog' => $dialog, 'aria-label' => $scope === 'grid' ? 'Ziel fürs Netzladen ändern' : 'Ladeziel ändern'])
+            . '</div>'
+            . '<button type="button" class="text-action cp-target-set" data-open-dialog="' . e($dialog) . '" data-target-none="' . $scope . '"' . ($target !== null ? ' hidden' : '') . '>' . icon('target', 'icon-16')
+            . '<span>' . ($scope === 'grid' ? 'Ziel fürs Netzladen setzen' : 'Ladeziel setzen') . '</span></button></div>';
+    };
     $gridSection = '<section class="cp-section" aria-labelledby="' . e($id) . '-grid-title"><h3 class="cp-section-title label" id="' . e($id) . '-grid-title">Netzladen</h3>'
         . '<div class="cp-mode">' . $gridSeg . '</div>'
         . '<p class="caption muted cp-hint"' . ui_attrs(['data-live' => $p('chargepoint.grid_hint')]) . '>' . e((string) ($cp['grid_hint'] ?? Energy::gridText($grid))) . '</p>'
+        . $targetRow('grid', $cp['grid_target'] ?? null, ['data-grid-show' => 'now windows', 'hidden' => $grid === 'off'])
         . $windowsHtml
         . '<p class="caption cp-grid-text"' . ui_attrs(['data-live' => $p('chargepoint.grid_text'), 'data-live-hide' => $p('chargepoint.grid_text')]) . ($gridText === '' ? ' hidden' : '') . '>' . e($gridText) . '</p>'
-        . ($editable ? '<p class="caption">' . ui_inline('Ladefenster einstellen', ['href' => url('/prognose/strompreis') . '#windows-title']) . '</p>' : '')
+        . ($editable ? '<p class="caption">' . ui_inline($enabled ? 'Ladefenster einstellen' : 'Vorschau der Ladefenster', ['href' => url('/prognose/strompreis') . '#windows-title']) . '</p>' : '')
         . '</section>';
     $power = '<span class="cp-power">' . icon('zap', 'icon-16') . ($live ? ui_live_num('chargepoint.power_kw', $cp['power_kw'], 'kW') : ui_num($cp['power_kw'], 'kW')) . '</span>';
     $phases = '<span class="phases" data-active="' . (int) $cp['phases'] . '"' . ui_attrs(['data-live-phases' => $p('chargepoint.phases')]) . ' role="img" aria-label="' . e(((int) $cp['phases']) > 0 ? $cp['phases'] . '-phasig' : 'keine Phase aktiv') . '"><span></span><span></span><span></span></span>';
@@ -612,18 +647,7 @@ function ui_chargepoint(array $cp, array $opts = []): string
     $name = $editable
         ? ui_inline(e((string) $v['name']), ['data-open-dialog' => $id . '-vehicle', 'aria-label' => 'Fahrzeug ' . $v['name'] . ': Einstellungen'], 'align-start')
         : '<span class="metric-sm">' . e((string) $v['name']) . '</span>';
-    // Ladeziel: Zeile mit Fortschritt oder „Ladeziel setzen“; live.js schreibt die Texte, chargepoint.js Breite und Sichtbarkeit.
-    $target = $cp['target'] ?? null;
-    $t = $target ?? ['label' => '', 'text' => '', 'then_text' => '', 'progress' => 0];
-    $targetHtml = !$editable ? '' : '<div class="cp-target" data-target data-progress="' . e((string) (float) $t['progress']) . '"' . ($target === null ? ' hidden' : '') . '>'
-        . '<span class="cp-target-icon" aria-hidden="true">' . icon('target', 'icon-16') . '</span>'
-        . '<div class="cp-target-body"><p class="cp-target-head"><span class="cp-target-label"' . ui_attrs(['data-live' => $p('target.label')]) . '>' . e((string) $t['label']) . '</span>'
-        . '<span class="caption muted"' . ui_attrs(['data-live' => $p('target.then_text')]) . '>' . e((string) $t['then_text']) . '</span></p>'
-        . '<span class="cp-target-bar" aria-hidden="true"><span class="cp-target-fill"></span></span>'
-        . '<p class="caption cp-target-text"' . ui_attrs(['data-live' => $p('target.text')]) . '>' . e((string) $t['text']) . '</p></div>'
-        . ui_inline('Ändern', ['data-open-dialog' => $id . '-target', 'aria-label' => 'Ladeziel ändern'])
-        . '</div>'
-        . '<button type="button" class="text-action cp-target-set" data-open-dialog="' . e($id) . '-target" data-target-none' . ($target !== null ? ' hidden' : '') . '>' . icon('target', 'icon-16') . '<span>Ladeziel setzen</span></button>';
+    $targetHtml = $targetRow('sun', $cp['target'] ?? null);
     // Übersicht des laufenden Ladevorgangs.
     $session = $cp['session_view'] ?? ['open' => false];
     $item = static fn (string $label, string $key) => '<div><dt>' . e($label) . '</dt><dd' . ui_attrs(['data-live' => $p('session_view.' . $key)]) . '>' . e((string) ($session[$key] ?? '—')) . '</dd></div>';

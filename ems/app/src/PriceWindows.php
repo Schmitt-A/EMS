@@ -3,11 +3,13 @@ declare(strict_types=1);
 
 /**
  * Ladefenster, eingestellt unter Prognose → Strompreis: je Tag das günstigste zusammenhängende Fenster fester Länge
- * nach dem dynamischen Preis (auch mit statischem Tarif, dann folgt es der Börse), einzeln abschaltbar, dazu eigene
- * Fenster. Das Auto lädt in aktiven Fenstern mit Netzladen „In Ladefenstern“ voll aus dem Netz, der Speicher, wenn
- * unter Speicher → Ausblick eingeschaltet und die Sonne nicht reicht (BatteryPlan).
- * kv.price_windows: length_h (Länge des Vorschlags), off (Tage Y-m-d, deren Vorschlag aus ist), custom (eigene
- * Fenster als start/end in Sekunden, auf die Viertelstunde).
+ * nach dem dynamischen Preis (Börse plus Aufschläge oder die Preis-Entität des Anbieters), optional jede Zeit in einem
+ * Preisbereich, dazu eigene Fenster; jedes einzeln abschaltbar. Es gibt sie nur mit dynamischem Tarif (enabled()), mit
+ * statischem zeigt die Seite sie als Vorschau. Aus den aktiven Fenstern (offered()) wählt man in der Ladepunkt-Karte
+ * die fürs Auto und unter Speicher → Ausblick das für den Energie-Boost.
+ * kv.price_windows: length_h (Länge des Vorschlags), off (Tage Y-m-d, deren Vorschlag aus ist), range_from und
+ * range_to (Preisbereich in ct/kWh brutto, ohne range_to aus), range_off (Beginn abgeschalteter Fenster im
+ * Preisbereich), custom (eigene Fenster als start/end in Sekunden, auf die Viertelstunde).
  */
 final class PriceWindows
 {
@@ -49,9 +51,19 @@ final class PriceWindows
             }
         }
         usort($custom, static fn (array $a, array $b): int => $a['start'] <=> $b['start']);
+        $price = static fn (mixed $v): ?float => is_numeric($v) ? round(clamp_float((float) $v, -100, 200), 2) : null;
+        $from = $price($raw['range_from'] ?? null);
+        $to = $price($raw['range_to'] ?? null);
+        if ($to !== null && $from !== null && $from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+        $rangeOff = array_values(array_unique(array_map('intval', array_filter((array) ($raw['range_off'] ?? []), 'is_numeric'))));
         return [
             'length_h' => in_array($length, self::LENGTHS, true) ? $length : 3,
             'off' => array_values(array_unique($off)),
+            'range_from' => $to === null ? null : $from,
+            'range_to' => $to,
+            'range_off' => $rangeOff,
             'custom' => array_slice($custom, 0, self::CUSTOM_COUNT),
         ];
     }
@@ -68,6 +80,7 @@ final class PriceWindows
         $yesterday = self::dayKey($now - 86400);
         $settings['off'] = array_values(array_filter($settings['off'], static fn (string $day): bool => $day >= $yesterday));
         $settings['custom'] = array_values(array_filter($settings['custom'], static fn (array $w): bool => $w['end'] > $now - 86400));
+        $settings['range_off'] = array_values(array_filter($settings['range_off'], static fn (int $start): bool => $start > $now - 2 * 86400));
         $this->store->put(self::KEY, $settings);
         $this->list = null;
     }
@@ -107,8 +120,9 @@ final class PriceWindows
     }
 
     /**
-     * Die Fenster von heute bis zum Ende der bekannten Preise: je Tag der Vorschlag (kind auto) und die eigenen
-     * Fenster (kind custom), nach Beginn sortiert. Je Fenster id, kind, day (Y-m-d des Beginns), start, end, ct
+     * Die Fenster von heute bis zum Ende der bekannten Preise: je Tag der Vorschlag (kind auto), die Zeiten im
+     * Preisbereich (kind range) und die eigenen Fenster (kind custom), nach Beginn sortiert. Neue Preise (gegen 13 Uhr
+     * die für morgen) bringen ihre Fenster von selbst mit. Je Fenster id, kind, day (Y-m-d des Beginns), start, end, ct
      * (Ø dynamisch brutto, null ohne Preise), on.
      *
      * @return list<array{id: string, kind: string, day: string, start: int, end: int, ct: ?float, on: bool}>
@@ -121,18 +135,25 @@ final class PriceWindows
         $s = $this->config();
         $tz = new DateTimeZone('Europe/Berlin');
         $day = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0);
-        $last = $this->tariff->market()->lastEnd();
+        $last = $this->tariff->horizon();
         $length = $s['length_h'] * 4;
         $out = [];
+        $all = [];
         for (; $day->getTimestamp() < $last; $day = $day->modify('+1 day')) {
             $next = $day->modify('+1 day')->getTimestamp();
             $prices = $this->prices($day->getTimestamp(), $next);
+            $all += $prices;
             $best = self::cheapest($prices, $length);
             if ($best === null) {
                 continue;
             }
             $key = $day->format('Y-m-d');
             $out[] = ['id' => 'auto-' . $key, 'kind' => 'auto', 'day' => $key, 'start' => $best['start'], 'end' => $best['end'], 'ct' => round($best['ct'], 2), 'on' => !in_array($key, $s['off'], true)];
+        }
+        if ($s['range_to'] !== null) {
+            foreach (self::runs($all, $s['range_from'], (float) $s['range_to']) as $run) {
+                $out[] = ['id' => 'range-' . $run['start'], 'kind' => 'range', 'day' => self::dayKey($run['start'])] + $run + ['on' => !in_array($run['start'], $s['range_off'], true)];
+            }
         }
         $todayStart = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0)->getTimestamp();
         foreach ($s['custom'] as $w) {
@@ -156,20 +177,56 @@ final class PriceWindows
         return $out;
     }
 
-    /** Das aktive Fenster, in dem $now liegt, sonst null. */
-    public function current(int $now): ?array
+    /**
+     * Zusammenhängende Zeiten, in denen der Preis im Bereich liegt (ohne Untergrenze bis $to), je mit Ø-Preis.
+     *
+     * @param array<int, float> $prices Viertelstunde => ct
+     * @return list<array{start: int, end: int, ct: float}>
+     */
+    public static function runs(array $prices, ?float $from, float $to): array
     {
-        foreach ($this->list($now) as $w) {
-            if ($w['on'] && $w['start'] <= $now && $now < $w['end']) {
-                return $w;
+        ksort($prices);
+        $out = [];
+        $run = null;
+        foreach ($prices as $q => $ct) {
+            $in = $ct <= $to + 1e-9 && ($from === null || $ct >= $from - 1e-9);
+            if ($in && $run !== null && $run['end'] === $q) {
+                $run['end'] = $q + 900;
+                $run['sum'] += $ct;
+                $run['n']++;
+                continue;
+            }
+            if ($run !== null) {
+                $out[] = ['start' => $run['start'], 'end' => $run['end'], 'ct' => round($run['sum'] / $run['n'], 2)];
+                $run = null;
+            }
+            if ($in) {
+                $run = ['start' => $q, 'end' => $q + 900, 'sum' => $ct, 'n' => 1];
             }
         }
-        return null;
+        if ($run !== null) {
+            $out[] = ['start' => $run['start'], 'end' => $run['end'], 'ct' => round($run['sum'] / $run['n'], 2)];
+        }
+        return $out;
     }
 
-    /** Aktive Fenster, die noch laufen oder kommen, höchstens $limit. */
-    public function upcoming(int $now, int $limit = 3): array
+    /** Ladefenster gibt es nur mit dynamischem Tarif; mit statischem kostet jede Viertelstunde gleich viel. */
+    public function enabled(int $now): bool
     {
+        return ($this->tariff->tariffAt($now)['mode'] ?? 'static') === 'dynamic';
+    }
+
+    /**
+     * Die aktiven Fenster, die noch laufen oder kommen, zum Auswählen fürs Auto und den Speicher; leer mit
+     * statischem Tarif. Überlappende Fenster bleiben getrennt, jedes lässt sich einzeln wählen.
+     *
+     * @return list<array{id: string, kind: string, day: string, start: int, end: int, ct: ?float, on: bool}>
+     */
+    public function offered(int $now, int $limit = 8): array
+    {
+        if (!$this->enabled($now)) {
+            return [];
+        }
         $out = [];
         foreach ($this->list($now) as $w) {
             if ($w['on'] && $w['end'] > $now) {
@@ -179,19 +236,27 @@ final class PriceWindows
         return array_slice($out, 0, $limit);
     }
 
+    /** Das Fenster aus $windows, in dem $now liegt, sonst null. */
+    public static function at(array $windows, int $now): ?array
+    {
+        foreach ($windows as $w) {
+            if ((int) $w['start'] <= $now && $now < (int) $w['end']) {
+                return $w;
+            }
+        }
+        return null;
+    }
+
     /**
-     * Viertelstunden aktiver Fenster in [$from, $to).
+     * Viertelstunden der Fenster $windows in [$from, $to).
      *
      * @return list<int>
      */
-    public function slots(int $from, int $to, int $now): array
+    public static function slotsOf(array $windows, int $from, int $to): array
     {
         $slots = [];
-        foreach ($this->list($now) as $w) {
-            if (!$w['on']) {
-                continue;
-            }
-            for ($q = max($w['start'], intdiv($from, 900) * 900); $q < min($w['end'], $to); $q += 900) {
+        foreach ($windows as $w) {
+            for ($q = max((int) $w['start'], intdiv($from, 900) * 900); $q < min((int) $w['end'], $to); $q += 900) {
                 $slots[$q] = true;
             }
         }

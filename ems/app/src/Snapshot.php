@@ -193,19 +193,22 @@ final class Snapshot
             (float) ($cfg['battery_strategy']['car_auto_soc'] ?? 100),
         );
         $reported = Energy::reportedPhases($values['wallbox_phases_raw'] ?? null);
-        // Netzladen „Jetzt“ oder in einem Ladefenster (auch einer Viertelstunde, die der Plan dazunimmt): Für Regelung
-        // und Backup-Puffer gilt Netzladen; die Modusauswahl zeigt weiter den eingestellten Modus (charge.mode).
+        // Netzladen „Jetzt“ oder in einem gewählten Ladefenster (auch einer Viertelstunde, die der Plan dazunimmt): Für
+        // Regelung und Backup-Puffer gilt Netzladen; die Modusauswahl zeigt weiter den eingestellten Modus (charge.mode).
+        // Ladefenster gelten nur mit dynamischem Tarif.
         $pricing = new Tariff($this->store);
         $price = $pricing->now($now);
         $windows = new PriceWindows($this->store, $pricing);
+        $enabled = $windows->enabled($now);
         $plan = ChargePlan::get($this->store);
-        $target = Target::get($this->store);
-        if ($plan !== null && ($target === null || (int) ($plan['target_set_at'] ?? 0) !== (int) ($target['set_at'] ?? -1))) {
+        $gridTarget = Target::get($this->store, 'grid');
+        if ($plan !== null && (!$enabled || $gridTarget === null || (int) ($plan['target_set_at'] ?? 0) !== (int) ($gridTarget['set_at'] ?? -1))) {
             $plan = null;
         }
         $cfg['charge']['mode'] = Energy::userMode($cfg['charge']['mode'] ?? 'smart');
         $cfg['charge']['grid'] = Energy::grid($cfg['charge']['grid'] ?? 'off');
-        $window = $windows->current($now);
+        $chosen = ChargePlan::chosen($this->store, $now);
+        $window = $enabled ? PriceWindows::at($chosen, $now) : null;
         $gridDone = ChargePlan::done($this->store);
         $effective = ChargePlan::effective(
             $cfg['charge']['mode'],
@@ -221,7 +224,7 @@ final class Snapshot
         $base['cfg'] = $cfg;
         $base['price'] = $price;
         $base['plan'] = $plan;
-        $base['windows'] = ['current' => $window, 'upcoming' => $windows->upcoming($now, 3), 'done' => $gridDone];
+        $base['windows'] = ['enabled' => $enabled, 'current' => $window, 'chosen' => $chosen, 'offered' => $windows->offered($now, 6), 'done' => $gridDone];
         $charge = ['mode' => $effective['mode']] + $cfg['charge'];
         // Backup-Puffer, Schonen beim Netzladen und Entladeleistung: woher dem Auto fehlende Leistung käme.
         $battery = Reserve::battery($cfg);
@@ -279,12 +282,15 @@ final class Snapshot
         if ($series) {
             Forecast::rememberDays($this->store->pdo(), $series, $cfg['plant']);
         }
-        $mean = null;
+        // Üblicher Hausverbrauch ohne Wallbox: je Stunde der Median der letzten 30 Tage, als Mittel und als Tagesprofil.
+        $profile = null;
         try {
-            $mean = (new Series($this->store, $this->ha))->houseMean($cfg['mapping']);
+            $profile = (new Series($this->store, $this->ha))->houseProfile($cfg['mapping']);
         } catch (Throwable) {
-            $mean = null;
+            $profile = null;
         }
+        $mean = $profile === null ? null : (float) $profile['mean'];
+        $houseHours = $profile === null ? null : $profile['profile'];
         $bufferSoc = (float) ($cfg['battery_strategy']['car_buffer_soc'] ?? 100);
         $outlook = Forecast::storageOutlook(
             $series,
@@ -311,7 +317,7 @@ final class Snapshot
             }
         }
         // Speicher in Ladefenstern aus dem Netz laden: die Entscheidung für das laufende oder nächste aktive Fenster.
-        $base['battery_plan'] = BatteryPlan::plan($cfg, $values, $series, $mean, $windows, $pricing, $now);
+        $base['battery_plan'] = BatteryPlan::plan($cfg, $values, $series, $houseHours, $windows, $pricing, $now);
         $charging = ((float) ($values['wallbox_kw'] ?? 0) > 0.05)
             || Sessions::carState($values['wallbox_car_raw'] ?? null) === 'charging';
         $actualToday = null;
@@ -335,7 +341,8 @@ final class Snapshot
                 $brief['tomorrow_sd'] = isset($captions[$tomorrowKey]['sd']) ? round((float) $captions[$tomorrowKey]['sd'], 2) : null;
             }
         }
-        $base['days_outlook'] = BatteryPlan::days($series, $cfg['plant'], $mean, $now, is_array($brief) ? $brief : null);
+        $base['days_outlook'] = BatteryPlan::days($series, $cfg['plant'], $houseHours, $now, is_array($brief) ? $brief : null);
+        $base['house_profile'] = $houseHours;
         $sessions = new Sessions($this->store);
         $session = $sessions->open() ?: $sessions->latest();
         $base['balance'] = $balance;
@@ -367,16 +374,18 @@ final class Snapshot
             $base['warnings'][] = 'Backup-Puffer: ' . $base['reserve']['error'];
         }
         $base['target'] = Target::view(Target::get($this->store), Target::inputs($base), $now);
+        $base['grid_target'] = Target::view($gridTarget, Target::inputs($base), $now);
         $base['chargepoint']['grid_text'] = self::gridText($cfg['charge'], $base['windows'], $plan, (bool) $base['vehicle']['connected'], $now);
-        $base['chargepoint']['grid_windows'] = array_map(static fn (array $w): array => [
-            'label' => ucfirst(PriceWindows::label($w, $now)),
-            'ct' => $w['ct'] === null ? '' : 'Ø ' . ct((float) $w['ct']),
-            'running' => PriceWindows::status($w, $now) === 'running',
-        ], $base['windows']['upcoming']);
-        if ($base['target'] !== null && $base['target']['remaining_s'] !== null && !$base['target']['reached']) {
-            // Mit Ziel zählt die Restzeit bis zum Ziel, nicht bis zum Limit.
-            $base['chargepoint']['remaining_s'] = $base['target']['remaining_s'];
-            $base['chargepoint']['remaining_text'] = duration_clock((int) $base['target']['remaining_s']);
+        $base['chargepoint']['windows_enabled'] = $enabled;
+        $base['chargepoint']['grid_windows'] = self::windowChoices($base['windows'], $now);
+        // Mit Ziel zählt die Restzeit bis zum Ziel, nicht bis zum Limit: erst das für Sonne und Speicher, sonst das fürs Netzladen.
+        foreach (['target', 'grid_target'] as $key) {
+            $view = $base[$key];
+            if ($view !== null && $view['remaining_s'] !== null && !$view['reached']) {
+                $base['chargepoint']['remaining_s'] = $view['remaining_s'];
+                $base['chargepoint']['remaining_text'] = duration_clock((int) $view['remaining_s']);
+                break;
+            }
         }
         $base['session_view'] = self::sessionView($base, $cfg['tariffs'], $now, $pricing);
         $base['control'] = self::control($live, $cfg['charge'], $strategy, $latched, $modes, $battery, $base['reserve'], $ems);
@@ -405,13 +414,11 @@ final class Snapshot
             'reserve' => ['text' => $snap['reserve']['text'], 'raised' => $snap['reserve']['raised'], 'value' => $snap['reserve']['value']],
             // Ladeziel und Übersicht des laufenden Ladevorgangs in der Ladepunkt-Karte
             'target' => $snap['target'] === null ? ['active' => false] : ['active' => true] + $snap['target'] + ['remaining_text' => $snap['target']['text']],
+            // Ziel fürs Netzladen, eigene Zeile im Abschnitt Netzladen
+            'grid_target' => ($snap['grid_target'] ?? null) === null ? ['active' => false] : ['active' => true] + $snap['grid_target'],
             'session_view' => $snap['session_view'],
-            // Erklärliste des Speichers
-            'house_mean' => kw($snap['house_mean_kw'] ?? null),
-            'battery_full' => $this->fullText($snap['storage'] ?? []),
-            'battery_priority' => $this->priorityText($snap['storage'] ?? [], (float) ($v['priority_soc'] ?? 80)),
-            'battery_buffer' => $this->bufferText($snap['storage'] ?? [], (float) ($snap['car_buffer_soc'] ?? 100)),
-            'battery_surplus' => $this->surplusText($snap['storage'] ?? [], isset($snap['house_mean_kw']) && $snap['house_mean_kw'] !== null, $snap['house_mean_kw'] ?? null),
+            // Ausblick des Speichers
+            'outlook' => self::outlookRows($snap['storage'] ?? [], (float) ($snap['car_buffer_soc'] ?? 100), isset($snap['house_mean_kw']) ? (float) $snap['house_mean_kw'] : null),
             'remaining_kwh' => $f['remaining_kwh'] ?? null,
             'flow' => Energy::flowBar($v, $b),
             'flow_graph' => self::flowGraph($snap),
@@ -534,8 +541,41 @@ final class Snapshot
     }
 
     /**
-     * Satz unter Netzladen in der Ladepunkt-Karte: was gerade gilt, ob ein Ladefenster läuft und, bei einem Ziel mit
-     * „fertig bis“, ob die Fenster bis dahin reichen (ChargePlan::text()). Die Fenster selbst stehen als Liste darüber.
+     * Die Fenster zur Auswahl fürs Auto: die aktiven aus PriceWindows::offered() und die schon gewählten, je mit
+     * Schlüssel (Beginn-Ende), Text, Ø-Preis und ob gewählt oder laufend.
+     *
+     * @return list<array{key: string, start: int, end: int, label: string, ct: string, chosen: bool, running: bool}>
+     */
+    public static function windowChoices(array $windows, int $now): array
+    {
+        $chosen = [];
+        foreach ((array) ($windows['chosen'] ?? []) as $w) {
+            $chosen[$w['start'] . '-' . $w['end']] = $w;
+        }
+        $out = [];
+        foreach (array_merge((array) ($windows['offered'] ?? []), array_values($chosen)) as $w) {
+            $key = $w['start'] . '-' . $w['end'];
+            if (isset($out[$key])) {
+                continue;
+            }
+            $out[$key] = [
+                'key' => $key,
+                'start' => (int) $w['start'],
+                'end' => (int) $w['end'],
+                'label' => ucfirst(PriceWindows::label($w, $now)),
+                'ct' => isset($w['ct']) && $w['ct'] !== null ? 'Ø ' . ct((float) $w['ct']) : '',
+                'chosen' => isset($chosen[$key]),
+                'running' => PriceWindows::status($w, $now) === 'running',
+            ];
+        }
+        $list = array_values($out);
+        usort($list, static fn (array $a, array $b): int => $a['start'] <=> $b['start']);
+        return $list;
+    }
+
+    /**
+     * Satz unter Netzladen in der Ladepunkt-Karte: was gerade gilt, welche Fenster gewählt sind und, bei einem Ziel fürs
+     * Netzladen mit „fertig bis“, ob sie bis dahin reichen (ChargePlan::text()).
      */
     public static function gridText(array $charge, array $windows, ?array $plan, bool $connected, int $now): string
     {
@@ -549,16 +589,20 @@ final class Snapshot
         if ($grid !== 'windows') {
             return '';
         }
+        if (empty($windows['enabled'])) {
+            return 'Ladefenster gibt es nur mit dynamischem Tarif; mit deinem statischen kostet jede Viertelstunde gleich viel. Eine Vorschau steht unter Prognose → Strompreis.';
+        }
         if (!empty($windows['done'])) {
-            return 'Ladeziel erreicht. Bis zum Abstecken lädt das Auto in Ladefenstern nicht mehr aus dem Netz.';
+            return 'Ziel fürs Netzladen erreicht. Bis zum Abstecken lädt das Auto in Ladefenstern nicht mehr aus dem Netz.';
         }
         $current = $windows['current'] ?? null;
-        // Die Fenster stehen als Liste darüber; der Satz sagt nur, was gerade gilt, und ob sie bis „fertig bis“ reichen.
+        $chosen = (array) ($windows['chosen'] ?? []);
         $text = match (true) {
-            $current !== null && $connected => 'Das Ladefenster läuft bis ' . date('H:i', (int) $current['end']) . ', das Auto lädt voll aus dem Netz.',
-            $current !== null => 'Das Ladefenster läuft bis ' . date('H:i', (int) $current['end']) . '. Angesteckt lädt das Auto voll aus dem Netz.',
-            !empty($windows['upcoming']) => '',
-            default => 'Kein aktives Ladefenster bekannt. Fenster stehen unter Prognose → Strompreis.',
+            $current !== null && $connected => 'Das gewählte Fenster läuft bis ' . date('H:i', (int) $current['end']) . ', das Auto lädt voll aus dem Netz.',
+            $current !== null => 'Das gewählte Fenster läuft bis ' . date('H:i', (int) $current['end']) . '. Angesteckt lädt das Auto voll aus dem Netz.',
+            $chosen !== [] => 'Gewählt: ' . implode(', ', array_map(static fn (array $w): string => PriceWindows::label($w, $now), array_slice($chosen, 0, 3))) . '.',
+            !empty($windows['offered']) => 'Noch kein Fenster gewählt. Kreuze an, wann das Auto aus dem Netz laden soll, und bestätige.',
+            default => 'Kein aktives Ladefenster bekannt. Die Fenster stehen unter Prognose → Strompreis.',
         };
         return trim($text . ' ' . ChargePlan::text($plan));
     }
@@ -833,7 +877,7 @@ final class Snapshot
 
     /**
      * Energie-Flow für Laden, die Vorschau unter Einstellungen → Darstellung und /api/live: die Flüsse, die Prognose an
-     * der Sonne und die Zahlen der zweiten Zeile (Ø Haus der letzten 30 Tage, Preise, Reichweite).
+     * der Sonne und die Zahlen der zweiten Zeile (üblicher Hausverbrauch, Preise, Reichweite).
      */
     public static function flowGraph(array $snap): array
     {
@@ -917,77 +961,28 @@ final class Snapshot
         return implode(', ', $parts) . '.';
     }
 
-    /** @param array{already_full?:bool, reachable?:bool, full_at?:?int, house_missing?:bool} $storage */
-    private function fullText(array $storage): string
+    /**
+     * Ausblick des Speichers in kurzen Werten: wann Speicher-Vorrang, batteriegestütztes Laden und voll erreicht sind,
+     * der Überschuss bis Mitternacht und der übliche Hausverbrauch ohne Wallbox.
+     *
+     * @return array{priority: string, buffer: string, full: string, surplus: string, house: string}
+     */
+    public static function outlookRows(array $storage, float $buffer, ?float $houseKw): array
     {
-        if (!empty($storage['already_full'])) {
-            return 'Batterie ist voll.';
-        }
-        if (!empty($storage['house_missing'])) {
-            return '100 % bleibt offen, bis der Hausverbrauch der letzten 30 Tage da ist.';
-        }
-        if (empty($storage['reachable'])) {
-            return 'Zeit bis 100 % braucht Ladestand und nutzbare Energie.';
-        }
-        if (empty($storage['full_at'])) {
-            return '100 % in den nächsten vier Tagen mit diesem Überschuss nicht erreicht.';
-        }
-        return '100 % voraussichtlich ' . when_label((int) $storage['full_at']) . '.';
-    }
-
-    /** @param array{priority_open?:bool, priority_reached?:bool, reachable?:bool, priority_at?:?int, house_missing?:bool} $storage */
-    private function priorityText(array $storage, float $priority): string
-    {
-        if (empty($storage['priority_open'])) {
-            return '';
-        }
-        $mark = num($priority, 0) . NNBSP . '%';
-        if (!empty($storage['priority_reached'])) {
-            return 'Speicher-Vorrang ' . $mark . ' ist erreicht.';
-        }
-        if (!empty($storage['house_missing'])) {
-            return 'Speicher-Vorrang ' . $mark . ' bleibt offen, bis der Hausverbrauch der letzten 30 Tage da ist.';
-        }
-        if (empty($storage['reachable'])) {
-            return '';
-        }
-        if (empty($storage['priority_at'])) {
-            return 'Speicher-Vorrang ' . $mark . ' in den nächsten vier Tagen nicht erreicht.';
-        }
-        return 'Speicher-Vorrang ' . $mark . ' voraussichtlich ' . when_label((int) $storage['priority_at']) . '.';
-    }
-
-    /** @param array{buffer_open?:bool, buffer_reached?:bool, reachable?:bool, buffer_at?:?int, house_missing?:bool} $storage */
-    private function bufferText(array $storage, float $buffer): string
-    {
-        $mark = num($buffer, 0) . NNBSP . '%';
-        if ($buffer >= 99.5 || empty($storage['buffer_open'])) {
-            return 'Batteriegestütztes Laden ist bei ' . $mark . '. Der Hausspeicher bleibt fürs Haus.';
-        }
-        if (!empty($storage['buffer_reached'])) {
-            return 'Batteriegestütztes Laden ab ' . $mark . ' ist erreicht.';
-        }
-        if (!empty($storage['house_missing'])) {
-            return 'Batteriegestütztes Laden ab ' . $mark . ' bleibt offen, bis der Hausverbrauch der letzten 30 Tage da ist.';
-        }
-        if (empty($storage['reachable'])) {
-            return 'Batteriegestütztes Laden ab ' . $mark . ' braucht Ladestand und Kapazität.';
-        }
-        if (empty($storage['buffer_at'])) {
-            return 'Batteriegestütztes Laden ab ' . $mark . ' in den nächsten vier Tagen nicht erreicht.';
-        }
-        return 'Batteriegestütztes Laden ab ' . $mark . ' voraussichtlich ' . when_label((int) $storage['buffer_at']) . '.';
-    }
-
-    /** @param array{surplus_kwh?:?float, house_missing?:bool} $storage */
-    private function surplusText(array $storage, bool $houseKnown, ?float $houseKw): string
-    {
-        if (!empty($storage['house_missing']) || !$houseKnown || $houseKw === null) {
-            return 'Überschuss bis Mitternacht bleibt offen. Der Hausverbrauch der letzten 30 Tage fehlt noch.';
-        }
-        if (!isset($storage['surplus_kwh']) || $storage['surplus_kwh'] === null) {
-            return '';
-        }
-        return 'Überschuss bis Mitternacht ' . kwh((float) $storage['surplus_kwh'], 1) . '. Hausverbrauch angesetzt mit ' . kw($houseKw) . '.';
+        $when = static fn (bool $open, bool $reached, mixed $at): string => match (true) {
+            !$open => 'aus',
+            $reached => 'erreicht',
+            !empty($storage['house_missing']) => 'offen, der Hausverbrauch fehlt noch',
+            empty($storage['reachable']) => 'offen, Ladestand oder Kapazität fehlen',
+            !is_numeric($at) => 'in den nächsten vier Tagen nicht',
+            default => 'voraussichtlich ' . when_label((int) $at),
+        };
+        return [
+            'priority' => $when(!empty($storage['priority_open']), !empty($storage['priority_reached']), $storage['priority_at'] ?? null),
+            'buffer' => $buffer >= 99.5 ? 'aus, die Grenze steht auf 100 %' : $when(!empty($storage['buffer_open']), !empty($storage['buffer_reached']), $storage['buffer_at'] ?? null),
+            'full' => $when(true, !empty($storage['already_full']), $storage['full_at'] ?? null),
+            'surplus' => $houseKw === null || !isset($storage['surplus_kwh']) ? 'offen' : kwh((float) $storage['surplus_kwh'], 1),
+            'house' => $houseKw === null ? 'noch unbekannt' : 'Ø ' . kw($houseKw, 2) . ', ' . kwh($houseKw * 24, 1) . ' am Tag',
+        ];
     }
 }

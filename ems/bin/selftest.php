@@ -377,18 +377,28 @@ check($switched['mode'] === 'aus' && Target::get($targetStore) === null && $targ
 $targetStore->put(Target::KEY, $energyTarget);
 $unplugged = Target::check($targetStore, ['values' => ['wallbox_kw' => 0.0, 'wallbox_car_raw' => 'idle']] + $targetSnap, $noon, true);
 check(Target::get($targetStore) === null && str_contains((string) $unplugged['text'], 'abgesteckt'), 'Abstecken löscht das Ziel');
-// Netzladen: „Jetzt“ endet mit dem Ziel und beim Abstecken, „In Ladefenstern“ ruht nach dem Ziel bis zum Abstecken.
+// Zwei Ziele: Sonne und Speicher mit Folgemodus, Netzladen für sich. Das Ziel fürs Netzladen beendet „Jetzt“ und lässt
+// „In Ladefenstern“ bis zum Abstecken ruhen; Sonne und Speicher laden weiter.
+$gridTarget = Target::build(['type' => 'energy', 'kwh' => '20', 'then' => 'aus', 'ready_by' => '07:00'], $noon, null, null, 'grid')['target'];
+check($gridTarget['then'] === 'grid' && isset($gridTarget['ready_by']) && !isset(Target::build(['type' => 'energy', 'kwh' => '20', 'ready_by' => '07:00'], $noon, null)['target']['ready_by'])
+    && Target::view($gridTarget, ['session_kwh' => 5.0], $noon)['then_text'] === 'Danach ohne Netz', 'Ziel fürs Netzladen: ohne Folgemodus, mit „fertig bis“; das für Sonne und Speicher ohne');
+$targetStore->put(Target::GRID_KEY, $gridTarget);
+$targetStore->put('charge', ['mode' => 'smart', 'grid' => 'now']);
+$gridDone = Target::check($targetStore, ['cfg' => ['charge' => ['mode' => 'smart', 'grid' => 'now']]] + $targetSnap, $noon, true);
+check($targetStore->get('charge')['grid'] === 'off' && $targetStore->get('charge')['mode'] === 'smart' && Target::get($targetStore, 'grid') === null && $gridDone['mode'] === 'smart' && str_contains((string) $gridDone['text'], 'ohne Netz'), 'Ziel fürs Netzladen erreicht: „Jetzt“ ist aus, der Modus bleibt');
+$targetStore->put(Target::GRID_KEY, $gridTarget);
+$targetStore->put(ChargePlan::CHOICE, ['windows' => [['start' => $noon + 3600, 'end' => $noon + 7200]]]);
+$targetStore->put('charge', ['mode' => 'smart', 'grid' => 'windows']);
+Target::check($targetStore, ['cfg' => ['charge' => ['mode' => 'smart', 'grid' => 'windows']]] + $targetSnap, $noon, true);
+check($targetStore->get('charge')['grid'] === 'windows' && ChargePlan::done($targetStore) && ChargePlan::chosen($targetStore, $noon) === [], 'Ziel fürs Netzladen erreicht: In Ladefenstern ruht bis zum Abstecken, die Wahl verfällt');
 $targetStore->put(Target::KEY, $energyTarget);
 $targetStore->put('charge', ['mode' => 'smart', 'grid' => 'now']);
 Target::check($targetStore, ['cfg' => ['charge' => ['mode' => 'smart', 'grid' => 'now']]] + $targetSnap, $noon, true);
-check($targetStore->get('charge')['grid'] === 'off' && !ChargePlan::done($targetStore), 'Ziel erreicht: Netzladen „Jetzt“ ist aus');
-$targetStore->put(Target::KEY, $energyTarget);
-$targetStore->put('charge', ['mode' => 'smart', 'grid' => 'windows']);
-$windowsDone = Target::check($targetStore, ['cfg' => ['charge' => ['mode' => 'smart', 'grid' => 'windows']]] + $targetSnap, $noon, true);
-check($targetStore->get('charge')['grid'] === 'windows' && ChargePlan::done($targetStore) && str_contains((string) $windowsDone['text'], 'Abstecken'), 'Ziel erreicht: In Ladefenstern ruht bis zum Abstecken');
-$targetStore->put('charge', ['mode' => 'smart', 'grid' => 'now']);
+check($targetStore->get('charge')['grid'] === 'now' && $targetStore->get('charge')['mode'] === 'aus', 'Ziel für Sonne und Speicher erreicht: Folgemodus, Netzladen bleibt');
+$targetStore->put(Target::GRID_KEY, $gridTarget);
+$targetStore->put(ChargePlan::CHOICE, ['windows' => [['start' => $noon + 3600, 'end' => $noon + 7200]]]);
 Target::check($targetStore, ['cfg' => ['charge' => ['mode' => 'smart', 'grid' => 'now']], 'values' => ['wallbox_kw' => 0.0, 'wallbox_car_raw' => 'idle']] + $targetSnap, $noon, true);
-check(!ChargePlan::done($targetStore) && $targetStore->get('charge')['grid'] === 'off', 'Abstecken: Netzladen „Jetzt“ aus, Ladefenster wieder frei');
+check(!ChargePlan::done($targetStore) && $targetStore->get('charge')['grid'] === 'off' && Target::get($targetStore, 'grid') === null && ChargePlan::chosen($targetStore, $noon) === [], 'Abstecken: Ziele und Wahl der Fenster weg, Netzladen „Jetzt“ aus');
 
 $sample = <<<'KML'
 <?xml version="1.0" encoding="ISO-8859-1"?>
@@ -991,11 +1001,11 @@ check(ChargePlan::effective('smart_dauerhaft', 'windows', true, true, null, fals
     && ChargePlan::effective('smart', 'windows', true, true, null, true, $p0) === ['mode' => 'smart', 'reason' => null]
     && ChargePlan::effective('schnell', 'off', true, true, ['extra' => [$p0]], false, $p0) === ['mode' => 'schnell', 'reason' => null], 'In Ladefenstern: im Fenster und in dazu geplanten Viertelstunden, nicht mehr nach dem Ziel, nie mit Netzladen aus');
 check(ChargePlan::windows([900, 0, 2700]) === [[0, 1800], [2700, 3600]], 'Zeitfenster aus Viertelstunden');
-$ready = Target::build(['type' => 'soc', 'soc' => '80', 'ready_by' => '07:00', 'then' => 'smart'], $p0, 40.0);
-check(($ready['target']['ready_by'] ?? null) === (int) strtotime('2026-10-13 07:00:00 Europe/Berlin') && Target::build(['type' => 'soc', 'soc' => '80', 'ready_by' => '7 Uhr'], $p0, 40.0)['error'] !== null
-    && !isset(Target::build(['type' => 'time', 'until' => '20:00', 'ready_by' => '07:00'], $p0, null)['target']['ready_by']), 'Fertig bis: die nächste 7:00, Unsinn wird abgelehnt, ein Ziel nach Uhrzeit braucht es nicht');
+$ready = Target::build(['type' => 'soc', 'soc' => '80', 'ready_by' => '07:00'], $p0, 40.0, null, 'grid');
+check(($ready['target']['ready_by'] ?? null) === (int) strtotime('2026-10-13 07:00:00 Europe/Berlin') && Target::build(['type' => 'soc', 'soc' => '80', 'ready_by' => '7 Uhr'], $p0, 40.0, null, 'grid')['error'] !== null
+    && !isset(Target::build(['type' => 'time', 'until' => '20:00', 'ready_by' => '07:00'], $p0, null, null, 'grid')['target']['ready_by']), 'Fertig bis: die nächste 7:00, Unsinn wird abgelehnt, ein Ziel nach Uhrzeit braucht es nicht');
 check(abs(Target::neededKwh(['type' => 'soc', 'value' => 80], ['car_soc' => 40, 'capacity_kwh' => 75]) - 30 / 0.92) < 1e-9 && Target::neededKwh(['type' => 'energy', 'value' => 20], ['session_kwh' => 5]) === 15.0 && Target::neededKwh(['type' => 'soc', 'value' => 80], []) === null, 'Was bis zum Ziel noch fehlt, mit Ladeverlust');
-check(str_contains(ChargePlan::text($short), 'Dazu aus dem Netz: 01:30–02:00 (Ø 15,0') && str_contains(ChargePlan::text($enough), 'reichen die Ladefenster') && str_contains(ChargePlan::text(['status' => 'waiting', 'slots' => [], 'deadline' => $deadline, 'sun_kwh' => 0, 'avg_ct' => null]), '13 Uhr') && ChargePlan::text(null) === '', 'Satz zum Plan für die Karte');
+check(str_contains(ChargePlan::text($short), 'Dazu aus dem Netz: 01:30–02:00 (Ø 15,0') && str_contains(ChargePlan::text($enough), 'reichen die gewählten Fenster') && str_contains(ChargePlan::text(['status' => 'waiting', 'slots' => [], 'deadline' => $deadline, 'sun_kwh' => 0, 'avg_ct' => null]), '13 Uhr') && ChargePlan::text(null) === '', 'Satz zum Plan für die Karte');
 
 // Ladefenster: je Tag das günstigste Fenster fester Länge, abschaltbar, eigene Fenster.
 check(PriceWindows::cheapest([0 => 20.0, 900 => 10.0, 1800 => 10.0, 2700 => 20.0, 3600 => 10.0, 4500 => 10.0], 2) == ['start' => 900, 'end' => 2700, 'ct' => 10.0]
@@ -1017,10 +1027,24 @@ for ($q = $dayStart; $q < $dayStart + 2 * 86400; $q += 900) {
 $wins = new PriceWindows($winStore);
 $winList = $wins->list($dayStart + 10 * 3600);
 check(count($winList) === 2 && $winList[0]['start'] === $dayStart + 13 * 3600 && $winList[0]['end'] === $dayStart + 16 * 3600 && $winList[1]['start'] === $dayStart + 86400 + 2 * 3600 && $winList[0]['on'], 'Je Tag das günstigste 3-Stunden-Fenster');
-check($wins->current($dayStart + 14 * 3600)['day'] === '2026-10-12' && $wins->current($dayStart + 17 * 3600) === null && count($wins->slots($dayStart + 15 * 3600, $dayStart + 86400 + 3 * 3600, $dayStart + 15 * 3600)) === 8, 'Laufendes Fenster und seine Viertelstunden');
+check(PriceWindows::at($winList, $dayStart + 14 * 3600)['day'] === '2026-10-12' && PriceWindows::at($winList, $dayStart + 17 * 3600) === null && count(PriceWindows::slotsOf($winList, $dayStart + 15 * 3600, $dayStart + 86400 + 3 * 3600)) === 8, 'Fenster zu einer Zeit und seine Viertelstunden');
+check($wins->enabled($dayStart) === false && $wins->offered($dayStart + 10 * 3600) === [], 'Mit statischem Tarif gibt es keine Ladefenster zur Wahl, nur die Vorschau');
+$winStore->put('tariffs', ['mode' => 'dynamic'] + $winStore->get('tariffs'));
+$wins = new PriceWindows($winStore);
+check($wins->enabled($dayStart) && count($wins->offered($dayStart + 10 * 3600)) === 2 && count($wins->offered($dayStart + 17 * 3600)) === 1, 'Mit dynamischem Tarif: die aktiven Fenster, die noch kommen');
 $wins->save(['off' => ['2026-10-12'], 'custom' => [['start' => $dayStart + 20 * 3600, 'end' => $dayStart + 21 * 3600]]] + $wins->config(), $dayStart + 10 * 3600);
 $winList = (new PriceWindows($winStore))->list($dayStart + 10 * 3600);
-check(count($winList) === 3 && $winList[0]['on'] === false && $winList[1]['kind'] === 'custom' && (new PriceWindows($winStore))->current($dayStart + 14 * 3600) === null && (new PriceWindows($winStore))->current($dayStart + 20 * 3600 + 60)['kind'] === 'custom', 'Abgeschaltet zählt nicht, eigene Fenster schon');
+$offeredNow = (new PriceWindows($winStore))->offered($dayStart + 10 * 3600);
+check(count($winList) === 3 && $winList[0]['on'] === false && $winList[1]['kind'] === 'custom' && count($offeredNow) === 2 && $offeredNow[0]['kind'] === 'custom', 'Abgeschaltet steht nicht zur Wahl, eigene Fenster schon');
+check(PriceWindows::runs([0 => 30.0, 900 => 12.0, 1800 => 9.0, 2700 => 25.0, 3600 => 8.0, 7200 => 5.0], null, 12.0) === [['start' => 900, 'end' => 2700, 'ct' => 10.5], ['start' => 3600, 'end' => 4500, 'ct' => 8.0], ['start' => 7200, 'end' => 8100, 'ct' => 5.0]]
+    && PriceWindows::runs([0 => -2.0, 900 => 3.0], 0.0, 12.0) === [['start' => 900, 'end' => 1800, 'ct' => 3.0]], 'Preisbereich: zusammenhängende Zeiten darin, Lücken trennen, mit Untergrenze');
+$wins = new PriceWindows($winStore);
+$wins->save(['range_from' => null, 'range_to' => 22.0] + $wins->config(), $dayStart + 10 * 3600);
+$rangeList = array_values(array_filter((new PriceWindows($winStore))->list($dayStart + 10 * 3600), static fn (array $w): bool => $w['kind'] === 'range'));
+check(count($rangeList) === 1 && $rangeList[0]['start'] === $dayStart + 86400 + 2 * 3600 && $rangeList[0]['end'] === $dayStart + 86400 + 5 * 3600 && $rangeList[0]['on'], 'Preisbereich bis 22 ct (Börse 1 ct plus Aufschläge 21,7 ct): morgen 02:00–05:00 wird ein Ladefenster');
+$wins->save(['range_off' => [$rangeList[0]['start']]] + (new PriceWindows($winStore))->config(), $dayStart + 10 * 3600);
+check(array_values(array_filter((new PriceWindows($winStore))->list($dayStart + 10 * 3600), static fn (array $w): bool => $w['kind'] === 'range'))[0]['on'] === false
+    && PriceWindows::settings(['range_from' => 20, 'range_to' => 5])['range_from'] === 5.0 && PriceWindows::settings(['range_from' => 5])['range_from'] === null, 'Fenster im Preisbereich einzeln abschaltbar; von und bis werden geordnet, ohne „bis“ kein Bereich');
 
 // Speicher aus dem Netz: nur wenn die Sonne nicht reicht und der Preisunterschied Verluste und Verschleiß übersteigt.
 $bp = static function (float $soc, callable $pv, callable $price): array {
@@ -1040,12 +1064,37 @@ check($summer['reason'] === 'sun' && $summer['kwh'] === 0.0, 'Füllt die Sonne d
 $flat = $bp(20.0, static fn (int $h): float => 0.0, static fn (bool $in, int $h): float => 30.0);
 check($flat['reason'] === 'price' && $flat['cost_ct'] > 35, 'Statischer Preis: Verluste und Verschleiß machen Laden teurer');
 check($bp(100.0, static fn (int $h): float => 0.0, static fn (bool $in, int $h): float => $in ? 20.0 : 35.0)['reason'] === 'full', 'Voller Speicher lädt nicht');
-$plan = ['window' => ['start' => 1000, 'end' => 2000], 'reason' => 'charge', 'target_soc' => 70.0];
-check(BatteryPlan::step([], $plan, true, 40.0, 1500) === ['action' => 'start'] && BatteryPlan::step([], $plan, true, 40.0, 2500)['action'] === 'none' && BatteryPlan::step([], $plan, false, 40.0, 1500)['action'] === 'none'
-    && BatteryPlan::step(['active' => true, 'until' => 2000, 'target_soc' => 70.0], $plan, true, 70.0, 1500) === ['action' => 'stop', 'why' => 'target']
-    && BatteryPlan::step(['active' => true, 'until' => 2000, 'target_soc' => 70.0], $plan, true, 50.0, 2000) === ['action' => 'stop', 'why' => 'end']
-    && BatteryPlan::step(['active' => true, 'until' => 2000, 'target_soc' => 70.0], $plan, false, 50.0, 1500) === ['action' => 'stop', 'why' => 'off'], 'Starten im laufenden Fenster, beenden am Ziel, am Ende und beim Abschalten');
+$boost = ['start' => 1000, 'end' => 2000, 'target_soc' => 70.0];
+$running = ['active' => true, 'until' => 2000, 'target_soc' => 70.0];
+check(BatteryPlan::step([], $boost, true, 40.0, 1500) === ['action' => 'start'] && BatteryPlan::step([], $boost, true, 40.0, 900)['action'] === 'none' && BatteryPlan::step([], $boost, false, 40.0, 1500)['action'] === 'none' && BatteryPlan::step([], null, true, 40.0, 1500)['action'] === 'none'
+    && BatteryPlan::step($running, $boost, true, 70.0, 1500) === ['action' => 'stop', 'why' => 'target']
+    && BatteryPlan::step($running, $boost, true, 50.0, 2000) === ['action' => 'stop', 'why' => 'end']
+    && BatteryPlan::step($running, $boost, false, 50.0, 1500) === ['action' => 'stop', 'why' => 'off'] && BatteryPlan::step($running, null, true, 50.0, 1500) === ['action' => 'stop', 'why' => 'off'], 'Energie-Boost: im Fenster starten, am Ziel, am Ende, beim Abbrechen und ohne EMS beenden');
+$boostStore = new ConfigStore(':memory:');
+$boostStore->put(BatteryPlan::BOOST, $boost + ['set_at' => 900]);
+check(BatteryPlan::boost($boostStore, 1500)['target_soc'] === 70.0 && BatteryPlan::boost($boostStore, 2000) === null, 'Der Boost gilt nur bis zum Ende seines Fensters');
+$advice = BatteryPlan::recommendation(['window' => ['start' => $p0, 'end' => $p0 + 3 * 3600]] + $winter, BatteryPlan::settings([]), $p0 - 3600);
+check($advice['charge'] && str_starts_with($advice['head'], 'Empfehlung: im Fenster heute 18:00–21:00 bis ') && BatteryPlan::recommendation(null, BatteryPlan::settings([]), $p0)['charge'] === false, 'Empfehlung in einem Satz, übernehmbar nur beim Laden');
 check(BatteryPlan::meaning('manual') === 'manual' && BatteryPlan::meaning('2') === 'auto' && BatteryPlan::option('auto', ['manual', 'automatic', 'timeofuse']) === 'automatic' && BatteryPlan::option('manual', ['automatic']) === null, 'Betriebsmodus nach Bedeutung');
+
+// Üblicher Hausverbrauch: je Stunde der Median, Ladetage ohne Wallbox-Messung schlagen nicht durch.
+$profileHouse = [];
+$profileWall = [];
+$base0 = (int) strtotime('2026-09-01 00:00:00 Europe/Berlin');
+for ($d = 0; $d < 10; $d++) {
+    for ($h = 0; $h < 24; $h++) {
+        $t = $base0 + $d * 86400 + $h * 3600;
+        // 0,3 kW Haus, an drei Tagen von 12 bis 15 Uhr 11 kW Auto ohne Messung, an einem Tag mit Messung.
+        $car = in_array($d, [1, 4, 7], true) && $h >= 12 && $h < 15 ? 11.0 : ($d === 9 && $h === 20 ? 7.0 : 0.0);
+        $profileHouse[] = ['start' => $t, 'kw' => 0.3 + $car];
+        if ($d === 9 && $h === 20) {
+            $profileWall[] = ['start' => $t, 'kw' => 7.0];
+        }
+    }
+}
+$profile = Energy::houseProfile($profileHouse, $profileWall, true);
+check(abs($profile['profile'][13] - 0.3) < 1e-9 && abs($profile['profile'][20] - 0.3) < 1e-9 && abs($profile['mean'] - 0.3) < 1e-9 && Energy::houseProfile([], [], true) === null, 'Hausverbrauch je Stunde als Median: Ladetage ohne Messung zählen nicht');
+check(abs(BatteryPlan::houseKwh(array_fill(0, 24, 0.5), $base0, $base0 + 86400) - 12.0) < 1e-9 && abs(BatteryPlan::houseKwh(array_fill(0, 24, 0.5), $base0 + 22 * 3600, $base0 + 86400) - 1.0) < 1e-9, 'Haus in kWh aus dem Tagesprofil, heute nur der Rest');
 
 // Einmal umstellen: Netzladen als Modus wird zu Intelligent mit Netzladen „Jetzt“.
 $migrateFile = tempnam(sys_get_temp_dir(), 'ems-test');

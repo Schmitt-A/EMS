@@ -53,13 +53,21 @@
   background: var(--surface-2);
 }
 
-.cp-off-note[hidden],
-.cp-grid-text[hidden],
-.cp-windows[hidden] {
-  display: none;
+/* Fenster fürs Auto: je Zeile Häkchen, Zeit und Preis; das laufende in der Akzentfläche. */
+.cp-window-set {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
-/* Die nächsten Ladefenster; das laufende in der Akzentfläche. */
+.cp-window-set > legend {
+  margin-block-end: var(--s-1);
+  padding: 0;
+}
+
 .cp-windows {
   display: grid;
   gap: var(--s-1);
@@ -68,19 +76,30 @@
   list-style: none;
 }
 
-.cp-windows li {
+.cp-window {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 0 var(--s-3);
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 2.75rem;
   padding: var(--s-2) var(--s-3);
   border-radius: var(--r-field);
   background: var(--surface-2);
+  cursor: pointer;
 }
 
-.cp-windows li[data-running] {
+.cp-window[data-running] {
   background: var(--accent-soft);
   color: var(--accent-on-soft);
+}
+
+.cp-window-when {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.cp-window-ct {
+  white-space: nowrap;
 }
 
 .cp-power {
@@ -388,19 +407,15 @@
   display: none;
 }
 
-.target-form:has(#tg-type-energy:checked) [data-panel="energy"],
-.target-form:has(#tg-type-time:checked) [data-panel="time"],
-.target-form:has(#tg-type-soc:checked) [data-panel="soc"],
-.target-form:has(#tg-type-range:checked) [data-panel="range"] {
+.target-form:has(input[name="type"][value="energy"]:checked) [data-panel="energy"],
+.target-form:has(input[name="type"][value="time"]:checked) [data-panel="time"],
+.target-form:has(input[name="type"][value="soc"]:checked) [data-panel="soc"],
+.target-form:has(input[name="type"][value="range"]:checked) [data-panel="range"] {
   display: grid;
 }
 
-/* „Fertig bis“ gilt nicht für ein Ziel nach Uhrzeit. */
-.target-form:has(#tg-type-time:checked) .target-ready {
-  display: none;
-}
-
-.cp-target-plan:empty {
+/* „Fertig bis“ (nur beim Ziel fürs Netzladen) gilt nicht für ein Ziel nach Uhrzeit. */
+.target-form:has(input[name="type"][value="time"]:checked) .target-ready {
   display: none;
 }
 

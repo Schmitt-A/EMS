@@ -2,32 +2,36 @@
 declare(strict_types=1);
 
 /**
- * Ladeziel für den laufenden Ladevorgang, wie Energie- und SoC-Limit in evcc: eine Energiemenge seit dem
- * Anstecken, eine Uhrzeit, ein Ladestand oder eine Reichweite des Autos. Ist es erreicht, wechselt die App in den
- * Folgemodus (Aus stoppt die Wallbox); beim Abstecken verfällt es. Gespeichert in kv.charge_target. Mit dem
- * Verbrauch des Autos nennt jedes Ziel auch die Kilometer.
+ * Ladeziele für den laufenden Ladevorgang, wie Energie- und SoC-Limit in evcc: eine Energiemenge seit dem Anstecken,
+ * eine Uhrzeit, ein Ladestand oder eine Reichweite des Autos. Zwei getrennte Ziele: eines für Sonne und Speicher
+ * (kv.charge_target; erreicht, wechselt die App in den Folgemodus, „Laden aus“ stoppt die Wallbox) und eines fürs
+ * Netzladen (kv.grid_target; erreicht, endet Netzladen, die Sonne lädt nach dem Modus weiter; optional „fertig bis“
+ * für den Ladeplan). Beim Abstecken verfallen beide. Mit dem Verbrauch des Autos nennt jedes Ziel auch die Kilometer.
  */
 final class Target
 {
     public const KEY = 'charge_target';
+    public const GRID_KEY = 'grid_target';
     /** Zuletzt erreichtes Ziel (Zeit, Beschreibung, Folgemodus), für die Mitteilung „Ladeziel erreicht“. */
     public const DONE = 'charge_target_done';
     public const THEN = ['aus', 'smart', 'smart_dauerhaft'];
 
-    public static function get(ConfigStore $store): ?array
+    /** Das Ziel für Sonne und Speicher (sun) oder fürs Netzladen (grid). */
+    public static function get(ConfigStore $store, string $scope = 'sun'): ?array
     {
-        $target = $store->get(self::KEY, []);
+        $target = $store->get($scope === 'grid' ? self::GRID_KEY : self::KEY, []);
         return is_array($target) && isset($target['type'], $target['value']) ? $target : null;
     }
 
     /**
      * Ziel aus Formular oder JSON: type energy (kwh), time (until „HH:MM“ oder hours), soc (soc) oder range (km),
-     * dazu then. Energie, Ladestand und Reichweite nehmen optional ready_by („HH:MM“, fertig bis): Mit Netzladen in
-     * Ladefenstern prüft ChargePlan dann, ob die Fenster davor reichen, und plant sonst Viertelstunden dazu.
+     * fürs Ziel von Sonne und Speicher dazu then. Das Ziel fürs Netzladen ($scope grid) hat statt then den Wert grid
+     * und für Energie, Ladestand und Reichweite optional ready_by („HH:MM“, fertig bis): In Ladefenstern prüft
+     * ChargePlan dann, ob die gewählten Fenster davor reichen, und plant sonst Viertelstunden dazu.
      *
      * @return array{target: ?array, error: ?string}
      */
-    public static function build(array $input, int $now, ?float $carSoc, ?float $carRange = null): array
+    public static function build(array $input, int $now, ?float $carSoc, ?float $carRange = null, string $scope = 'sun'): array
     {
         $number = static function (mixed $value): ?float {
             $raw = str_replace(',', '.', trim((string) $value));
@@ -83,8 +87,11 @@ final class Target
         } else {
             return ['target' => null, 'error' => 'Unbekannte Zielart.'];
         }
+        if ($scope === 'grid') {
+            $then = 'grid';
+        }
         $ready = trim((string) ($input['ready_by'] ?? ''));
-        if ($type !== 'time' && $ready !== '') {
+        if ($scope === 'grid' && $type !== 'time' && $ready !== '') {
             $at = self::nextTime($ready, $now);
             if ($at === null) {
                 return ['target' => null, 'error' => 'Bitte bei „fertig bis“ eine Uhrzeit wie 07:00 angeben.'];
@@ -207,7 +214,7 @@ final class Target
             'label' => $label,
             'text' => $text,
             'then' => (string) $target['then'],
-            'then_text' => 'Danach ' . Energy::modeLabel((string) $target['then']),
+            'then_text' => $target['then'] === 'grid' ? 'Danach ohne Netz' : 'Danach ' . ($target['then'] === 'aus' ? 'Laden aus' : Energy::modeLabel((string) $target['then'])),
             'progress' => round(max(0.0, min(1.0, $progress)), 3),
             'remaining_s' => $remaining,
             'reached' => $reached,
@@ -240,10 +247,10 @@ final class Target
     }
 
     /**
-     * Recorder: Beim Abstecken verfällt das Ziel, Netzladen „Jetzt“ endet und der Modus geht, falls eingestellt, auf
-     * „Nach dem Abstecken“. Ist das Ziel erreicht, gilt der Folgemodus; Netzladen „Jetzt“ endet, „In Ladefenstern“
-     * ruht bis zum Abstecken (ChargePlan::DONE). Gibt den Modus, der jetzt gilt, und eine Protokollzeile zurück,
-     * sonst null.
+     * Recorder: Beim Abstecken verfallen beide Ziele und die Wahl der Fenster, Netzladen „Jetzt“ endet und der Modus
+     * geht, falls eingestellt, auf „Nach dem Abstecken“. Ist das Ziel fürs Netzladen erreicht, endet „Jetzt“, und „In
+     * Ladefenstern“ ruht bis zum Abstecken (ChargePlan::DONE). Ist das Ziel für Sonne und Speicher erreicht, gilt sein
+     * Folgemodus. Gibt den Modus, der jetzt gilt, und eine Protokollzeile zurück, sonst null.
      *
      * @return ?array{mode: string, text: string}
      */
@@ -254,15 +261,18 @@ final class Target
         $mode = (string) ($cfg['charge']['mode'] ?? 'smart');
         $grid = Energy::grid($cfg['charge']['grid'] ?? 'off');
         $target = self::get($store);
+        $gridTarget = self::get($store, 'grid');
         $connected = Sessions::carConnected($values['wallbox_car_raw'] ?? null, isset($values['wallbox_kw']) ? (float) $values['wallbox_kw'] : null);
         if ($connected === false && $wasConnected === true) {
             $after = (string) ($cfg['charge']['after_unplug'] ?? '');
             $parts = ['Auto abgesteckt.'];
-            if ($target !== null) {
+            if ($target !== null || $gridTarget !== null) {
                 $store->put(self::KEY, []);
-                $parts[] = 'Ladeziel gelöscht.';
+                $store->put(self::GRID_KEY, []);
+                $parts[] = $target !== null && $gridTarget !== null ? 'Ladeziele gelöscht.' : 'Ladeziel gelöscht.';
             }
             $store->put(ChargePlan::DONE, 0);
+            $store->put(ChargePlan::CHOICE, []);
             $patch = [];
             if ($grid === 'now') {
                 $patch['grid'] = 'off';
@@ -281,26 +291,33 @@ final class Target
             }
             return count($parts) > 1 ? ['mode' => $mode, 'text' => implode(' ', $parts)] : null;
         }
-        if ($target === null) {
-            return null;
+        $inputs = self::inputs($snap);
+        $texts = [];
+        if ($gridTarget !== null) {
+            $view = self::view($gridTarget, $inputs, $now);
+            if ($view !== null && $view['reached']) {
+                $store->put(self::GRID_KEY, []);
+                if ($grid === 'now') {
+                    $store->merge('charge', ['grid' => 'off']);
+                } elseif ($grid === 'windows') {
+                    $store->put(ChargePlan::DONE, $now);
+                    $store->put(ChargePlan::CHOICE, []);
+                }
+                $store->put(self::DONE, ['t' => $now, 'label' => 'Netzladen ' . $view['label'], 'then' => $mode]);
+                $texts[] = 'Ziel fürs Netzladen erreicht (' . $view['label'] . '), weiter ohne Netz.';
+            }
         }
-        $view = self::view($target, self::inputs($snap), $now);
-        if ($view === null || !$view['reached']) {
-            return null;
+        if ($target !== null) {
+            $view = self::view($target, $inputs, $now);
+            if ($view !== null && $view['reached']) {
+                $then = in_array($target['then'] ?? '', self::THEN, true) ? (string) $target['then'] : 'smart';
+                $store->put(self::KEY, []);
+                $store->merge('charge', ['mode' => $then] + ($then !== 'aus' ? ['last_mode' => $then] : []));
+                $store->put(self::DONE, ['t' => $now, 'label' => $view['label'], 'then' => $then]);
+                $mode = $then;
+                $texts[] = 'Ladeziel erreicht (' . $view['label'] . '), weiter mit ' . ($then === 'aus' ? 'Laden aus' : Energy::modeLabel($then)) . '.';
+            }
         }
-        $then = in_array($target['then'] ?? '', self::THEN, true) ? (string) $target['then'] : 'smart';
-        $store->put(self::KEY, []);
-        $patch = ['mode' => $then] + ($then !== 'aus' ? ['last_mode' => $then] : []);
-        $extra = '';
-        if ($grid === 'now') {
-            $patch['grid'] = 'off';
-            $extra = ' Netzladen aus.';
-        } elseif ($grid === 'windows') {
-            $store->put(ChargePlan::DONE, $now);
-            $extra = ' Bis zum Abstecken lädt das Auto in Ladefenstern nicht mehr aus dem Netz.';
-        }
-        $store->merge('charge', $patch);
-        $store->put(self::DONE, ['t' => $now, 'label' => $view['label'], 'then' => $then]);
-        return ['mode' => $then, 'text' => 'Ladeziel erreicht (' . $view['label'] . '), weiter mit ' . Energy::modeLabel($then) . '.' . $extra];
+        return $texts === [] ? null : ['mode' => $mode, 'text' => implode(' ', $texts)];
     }
 }

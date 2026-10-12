@@ -593,7 +593,8 @@ final class Controller
         // Ziel erreicht oder Auto abgesteckt: Folgemodus, Ziel löschen.
         $switch = Target::check($this->store, $snap, $now, $state['connected']);
         if ($switch !== null) {
-            $mode = $switch['mode'];
+            // Ziel erreicht oder abgesteckt: was jetzt gilt, mit den Einstellungen von eben (Folgemodus, Netzladen).
+            $mode = ChargePlan::effectiveNow($this->store, $snap, $now)['mode'];
             $state['log'] = self::log($state['log'], $now, $switch['text']);
         }
         $suggestion = $switch === null ? ($snap['suggestion'] ?? []) : Energy::suggest(

@@ -124,6 +124,12 @@ export function renderTime(figure, payload, state) {
     const from = x(Math.max(today[0], bounds[0]));
     svg('rect', { class: 'today-zone', x: from, y: top - 8, width: x(Math.min(today[1], bounds[1])) - from, height: height - bottom - top + 8 }, plot);
   }
+  // Preisbereich der Ladefenster als waagerechtes Band über die ganze Breite, ohne Untergrenze bis zum Boden.
+  for (const range of payload.ranges || []) {
+    const top0 = y(Math.min(axis.max, range.to));
+    const bottom0 = range.from === null || range.from === undefined ? height - bottom : y(Math.max(axis.min, range.from));
+    if (bottom0 > top0) svg('rect', { class: 'price-range', x: 0, y: top0, width: plotWidth, height: bottom0 - top0 }, plot);
+  }
   // Hinterlegte Zeitfenster aus der Antwort (Ladefenster und Ladeplan beim Strompreis).
   for (const band of payload.bands || []) {
     if (band.to <= bounds[0] || band.from >= bounds[1]) continue;

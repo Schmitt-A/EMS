@@ -2,19 +2,22 @@
 declare(strict_types=1);
 
 /**
- * Netzladen fürs Auto (charge.grid): „Jetzt“ lädt sofort voll aus dem Netz, „In Ladefenstern“ in den aktiven
- * Ladefenstern (PriceWindows), jeweils bis das Ziel erreicht ist. Für Regelung und Backup-Puffer gilt dann Netzladen
- * (effective()), die Modusauswahl bleibt. Hat das Ladeziel ein „fertig bis“, prüft der Plan, ob die Fenster davor
- * reichen, mit der Sonne, die bis dahin zu erwarten ist; reichen sie nicht, nimmt er die günstigsten weiteren
- * Viertelstunden vor der Uhrzeit dazu. Kennt EMS die Preise für morgen noch nicht und reicht die Zeit danach, wartet
- * der Rest auf sie (gegen 13 Uhr). Der Plan liegt in kv.charge_plan; der Recorder rechnet ihn alle 15 min neu, nach
- * neuen Preisen und wenn sich Ziel, Modus oder Fenster ändern.
+ * Netzladen fürs Auto (charge.grid): „Jetzt“ lädt sofort voll aus dem Netz, „In Ladefenstern“ in den Fenstern, die
+ * man in der Ladepunkt-Karte gewählt und bestätigt hat (kv.grid_choice, aus PriceWindows::offered()), jeweils bis das
+ * Ziel fürs Netzladen erreicht ist (Target, Bereich grid). Für Regelung und Backup-Puffer gilt dann Netzladen
+ * (effective()), die Modusauswahl bleibt. Hat das Ziel fürs Netzladen ein „fertig bis“, prüft der Plan, ob die
+ * gewählten Fenster davor reichen, mit der Sonne, die bis dahin zu erwarten ist; reichen sie nicht, nimmt er die
+ * günstigsten weiteren Viertelstunden vor der Uhrzeit dazu. Kennt EMS die Preise für morgen noch nicht und reicht die
+ * Zeit danach, wartet der Rest auf sie (gegen 13 Uhr). Der Plan liegt in kv.charge_plan; der Recorder rechnet ihn alle
+ * 15 min neu, nach neuen Preisen und wenn sich Ziel, Modus oder Fenster ändern.
  */
 final class ChargePlan
 {
     public const KEY = 'charge_plan';
     /** Ziel in Ladefenstern erreicht: bis zum Abstecken lädt das Auto in Fenstern nicht mehr aus dem Netz. */
     public const DONE = 'grid_done';
+    /** Die Fenster, die man fürs Auto gewählt hat: windows (start, end), at. Beim Abstecken verfällt die Wahl. */
+    public const CHOICE = 'grid_choice';
     private const REPLAN_S = 900;
     /** Von der vorhergesagten Sonne zählt fürs Auto nur dieser Teil, der Rest bleibt Puffer für Wolken. */
     private const SUN_SHARE = 0.7;
@@ -159,29 +162,71 @@ final class ChargePlan
     }
 
     /**
-     * Recorder: Plan neu rechnen, wenn Netzladen in Ladefenstern gilt, das Ziel ein „fertig bis“ hat und sich etwas
-     * geändert hat oder 15 min vorbei sind. Ohne das, nach dem Ziel oder ohne Auto verschwindet er.
+     * Die fürs Auto gewählten Fenster, die noch laufen oder kommen.
+     *
+     * @return list<array{start: int, end: int}>
+     */
+    public static function chosen(ConfigStore $store, int $now): array
+    {
+        $choice = $store->get(self::CHOICE, []);
+        $out = [];
+        foreach ((array) (is_array($choice) ? ($choice['windows'] ?? []) : []) as $w) {
+            if (is_array($w) && is_numeric($w['start'] ?? null) && is_numeric($w['end'] ?? null) && (int) $w['end'] > $now) {
+                $out[] = ['start' => (int) $w['start'], 'end' => (int) $w['end']];
+            }
+        }
+        usort($out, static fn (array $a, array $b): int => $a['start'] <=> $b['start']);
+        return $out;
+    }
+
+    /**
+     * Was jetzt gilt, mit den Einstellungen von eben (nach einem erreichten Ziel oder dem Abstecken).
+     *
+     * @return array{mode: string, reason: ?string}
+     */
+    public static function effectiveNow(ConfigStore $store, array $snap, int $now): array
+    {
+        $charge = $store->all()['charge'];
+        $values = $snap['values'] ?? [];
+        $connected = Sessions::carConnected($values['wallbox_car_raw'] ?? null, isset($values['wallbox_kw']) ? (float) $values['wallbox_kw'] : null) !== false;
+        $plan = self::get($store);
+        $enabled = (new PriceWindows($store))->enabled($now);
+        return self::effective(
+            Energy::userMode($charge['mode'] ?? 'smart'),
+            Energy::grid($charge['grid'] ?? 'off'),
+            $connected,
+            $enabled && PriceWindows::at(self::chosen($store, $now), $now) !== null,
+            $enabled ? $plan : null,
+            self::done($store),
+            $now
+        );
+    }
+
+    /**
+     * Recorder: Plan neu rechnen, wenn Netzladen in Ladefenstern gilt (nur mit dynamischem Tarif), das Ziel fürs
+     * Netzladen ein „fertig bis“ hat und sich etwas geändert hat oder 15 min vorbei sind. Ohne das, nach dem Ziel oder
+     * ohne Auto verschwindet er.
      */
     public static function refresh(ConfigStore $store, array $snap, int $now, bool $force = false, ?PriceWindows $windows = null): ?array
     {
-        $target = Target::get($store);
+        $target = Target::get($store, 'grid');
         $cfg = $snap['cfg'];
         $mode = (string) ($cfg['charge']['mode'] ?? 'smart');
         $grid = Energy::grid($cfg['charge']['grid'] ?? 'off');
         $connected = !empty($snap['vehicle']['connected']);
+        $tariff = new Tariff($store);
+        $windows ??= new PriceWindows($store, $tariff);
         $view = $target === null ? null : Target::view($target, Target::inputs($snap), $now);
         if ($target === null || empty($target['ready_by']) || !$connected || $grid !== 'windows' || $mode === 'aus' || self::done($store)
-            || ($view['reached'] ?? false) || (int) $target['ready_by'] <= $now) {
+            || !$windows->enabled($now) || ($view['reached'] ?? false) || (int) $target['ready_by'] <= $now) {
             if (self::get($store) !== null) {
                 $store->put(self::KEY, []);
             }
             return null;
         }
-        $tariff = new Tariff($store);
-        $windows ??= new PriceWindows($store, $tariff);
-        $horizon = $tariff->market()->lastEnd();
+        $horizon = $tariff->horizon();
         $deadline = (int) $target['ready_by'];
-        $slots = $windows->slots($now, $deadline, $now);
+        $slots = PriceWindows::slotsOf(self::chosen($store, $now), $now, $deadline);
         $old = self::get($store);
         $fresh = $old !== null
             && (int) ($old['target_set_at'] ?? 0) === (int) $target['set_at']
@@ -208,7 +253,7 @@ final class ChargePlan
     }
 
     /**
-     * Sonne fürs Auto je Viertelstunde: Prognose der Anlage minus Ø Haus der letzten 30 Tage, davon SUN_SHARE.
+     * Sonne fürs Auto je Viertelstunde: Prognose der Anlage minus üblicher Hausverbrauch, davon SUN_SHARE.
      *
      * @return array<int, float>
      */
@@ -241,15 +286,17 @@ final class ChargePlan
         $list = implode(', ', array_map(static fn (array $w): string => $time($w[0]) . '–' . $time($w[1]), array_slice($extra, 0, 3))) . (count($extra) > 3 ? ' …' : '');
         $need = ($plan['need_kwh'] ?? null) === null ? '' : kwh((float) $plan['need_kwh'], 1);
         $sun = (float) ($plan['sun_kwh'] ?? 0) >= 0.5 ? ', ' . kwh((float) $plan['sun_kwh'], 1) . ' Sonne erwartet' : '';
+        // Ohne gewähltes Fenster plant EMS die Viertelstunden allein.
+        $short = (float) ($plan['window_kwh'] ?? 0) > 0 ? 'Die gewählten Fenster reichen bis ' . $until . ' nicht.' : 'Ohne gewähltes Fenster bis ' . $until . ':';
         return match ((string) $plan['status']) {
             'done' => 'Ziel erreicht.',
             'sun' => 'Bis ' . $until . ' reicht voraussichtlich die Sonne (' . $need . ' fehlen' . $sun . ').',
-            'windows' => 'Bis ' . $until . ' reichen die Ladefenster: ' . $need . ' fehlen, sie schaffen bis zu ' . kwh((float) ($plan['window_kwh'] ?? 0), 0) . $sun . '.',
-            'waiting' => 'Die Ladefenster reichen bis ' . $until . ' nicht. Den Rest plant EMS, sobald die Preise für morgen da sind (gegen 13 Uhr).',
+            'windows' => 'Bis ' . $until . ' reichen die gewählten Fenster: ' . $need . ' fehlen, sie schaffen bis zu ' . kwh((float) ($plan['window_kwh'] ?? 0), 0) . $sun . '.',
+            'waiting' => $short . ' Den Rest plant EMS, sobald die Preise für morgen da sind (gegen 13 Uhr).',
             'tight' => 'Die Zeit bis ' . $until . ' ist knapp: Das Auto lädt durchgehend voll aus dem Netz.',
             'unknown' => 'Ohne Ladestand oder Akku des Autos lässt sich nicht rechnen, ob die Fenster bis ' . $until . ' reichen.',
-            'partial' => 'Die Ladefenster reichen bis ' . $until . ' nicht. Dazu aus dem Netz: ' . $list . ', den Rest nach den Preisen für morgen.',
-            default => 'Die Ladefenster reichen bis ' . $until . ' nicht. Dazu aus dem Netz: ' . $list . (($plan['extra_ct'] ?? null) !== null ? ' (Ø ' . ct((float) $plan['extra_ct']) . ')' : '') . '.',
+            'partial' => $short . ' Dazu aus dem Netz: ' . $list . ', den Rest nach den Preisen für morgen.',
+            default => $short . ' Dazu aus dem Netz: ' . $list . (($plan['extra_ct'] ?? null) !== null ? ' (Ø ' . ct((float) $plan['extra_ct']) . ')' : '') . '.',
         };
     }
 

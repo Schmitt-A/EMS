@@ -40,7 +40,8 @@ $cards = [
     'Lädt mit Ziel und Übersicht' => ['name' => 'Garage', 'mode' => 'smart', 'charging' => true, 'solar_only' => true, 'power_kw' => 7.36, 'phases' => 3, 'session_kwh' => 12.4, 'remaining_s' => 4300, 'vehicle' => $vehicle,
         'target' => ['label' => 'Ziel 20,0' . NNBSP . 'kWh · ≈ 115' . NNBSP . 'km', 'text' => 'bisher 12,4' . NNBSP . 'kWh ≈ 71' . NNBSP . 'km, noch ca. 1:02 h', 'then_text' => 'Danach Intelligent', 'progress' => 0.62],
         'session_view' => ['open' => true, 'since' => 'seit 10:12', 'duration' => '1:41 h', 'km' => '≈ 71' . NNBSP . 'km', 'avg' => '7,4' . NNBSP . 'kW', 'solar' => '92' . NNBSP . '%', 'cost' => '0,13' . NNBSP . '€']],
-    'Verbunden, Netzladen in Ladefenstern' => ['name' => 'Garage', 'mode' => 'smart_dauerhaft', 'grid' => 'windows', 'grid_text' => 'Im nächsten Ladefenster lädt das Auto voll aus dem Netz, bis das Ziel erreicht ist.', 'grid_windows' => [['label' => 'Heute 23:00–02:00', 'ct' => 'Ø 24,1' . NNBSP . 'ct/kWh', 'running' => false], ['label' => 'Morgen 13:00–16:00', 'ct' => 'Ø 18,3' . NNBSP . 'ct/kWh', 'running' => false]], 'charging' => false, 'solar_only' => false, 'power_kw' => 0.0, 'phases' => 0, 'session_kwh' => 0.0, 'remaining_s' => null, 'vehicle' => ['status' => 'Verbunden'] + $vehicle],
+    'Verbunden, Netzladen in Ladefenstern' => ['name' => 'Garage', 'mode' => 'smart_dauerhaft', 'grid' => 'windows', 'grid_text' => 'Gewählt: heute 23:00–02:00.', 'windows_enabled' => true, 'grid_windows' => [['key' => '1-2', 'start' => 1, 'end' => 2, 'label' => 'Heute 23:00–02:00', 'ct' => 'Ø 24,1' . NNBSP . 'ct/kWh', 'chosen' => true, 'running' => false], ['key' => '3-4', 'start' => 3, 'end' => 4, 'label' => 'Morgen 13:00–16:00', 'ct' => 'Ø 18,3' . NNBSP . 'ct/kWh', 'chosen' => false, 'running' => false]],
+        'grid_target' => ['label' => 'Bis 60' . NNBSP . '% · fertig bis 07:00', 'text' => 'jetzt 41' . NNBSP . '% · noch ≈ 110' . NNBSP . 'km', 'then_text' => 'Danach ohne Netz', 'progress' => 0.2], 'charging' => false, 'solar_only' => false, 'power_kw' => 0.0, 'phases' => 0, 'session_kwh' => 0.0, 'remaining_s' => null, 'vehicle' => ['status' => 'Verbunden'] + $vehicle],
     'Laden aus, Fahrzeugdaten fehlen' => ['name' => 'Garage', 'mode' => 'aus', 'sun_mode' => 'smart', 'charging' => false, 'solar_only' => false, 'power_kw' => null, 'phases' => 0, 'session_kwh' => null, 'remaining_s' => null, 'vehicle' => ['name' => 'Auto', 'status' => 'Nicht verbunden', 'soc' => null, 'range_km' => null, 'limit' => null, 'range_at_limit' => null]],
 ];
 $battery = [
@@ -143,6 +144,7 @@ $section('Ladepunkt-Karte mit Ladebalken', 'Modus, Leistung mit Phasen, Ladeziel
             echo ui_dialog($id . '-settings', 'Einstellungen: ' . $card['name'], '<p class="body muted">Hier stehen in der App die Ladeparameter, die Regelung im Detail und die Modi.</p>');
             echo ui_dialog($id . '-vehicle', 'Fahrzeug: ' . $card['vehicle']['name'], '<p class="body muted">Hier stehen in der App Name, Ladelimit und die Entitäten des Fahrzeugs.</p>');
             echo ui_dialog($id . '-target', 'Ladeziel', '<p class="body muted">Hier stehen in der App Energie, Uhrzeit oder Ladestand und der Folgemodus.</p>');
+            echo ui_dialog($id . '-grid-target', 'Ziel fürs Netzladen', '<p class="body muted">Hier stehen in der App Energie, Uhrzeit, Ladestand oder Reichweite und „fertig bis“.</p>');
         }
     }
 });

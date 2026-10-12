@@ -263,9 +263,8 @@ final class ConfigStore
             'control' => ['active' => false],
             // backup_soc: Standardwert des Backup-Puffers (null: nicht gesetzt; Netzladen hebt den Puffer an),
             // discharge_kw: höchste Entladeleistung des Speichers (null: unbekannt).
-            // grid_charge: in Ladefenstern aus dem Netz laden, wenn die Sonne nicht reicht (BatteryPlan), mit
-            // grid_kw (Ladeleistung, null: Entladeleistung oder 2,5 kW), grid_max_soc, Wirkungsgrad hin und zurück
-            // und Verschleiß je gespeicherter kWh.
+            // Laden aus dem Netz (BatteryPlan, Energie-Boost): grid_kw (Ladeleistung, null: Entladeleistung oder
+            // 2,5 kW), grid_max_soc (Obergrenze der Empfehlung), Wirkungsgrad hin und zurück, Verschleiß je kWh.
             'battery_strategy' => [
                 'priority_soc' => 80.0,
                 'reserve_soc' => 100.0,
@@ -273,7 +272,6 @@ final class ConfigStore
                 'car_auto_soc' => 100.0,
                 'backup_soc' => null,
                 'discharge_kw' => null,
-                'grid_charge' => false,
                 'grid_kw' => null,
                 'grid_max_soc' => 100.0,
                 'grid_efficiency_pct' => 90.0,

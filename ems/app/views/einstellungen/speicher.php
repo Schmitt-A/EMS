@@ -61,13 +61,12 @@ $numberField = static fn (string $name, ?float $value, int $decimals, array $att
 <?php $grid = BatteryPlan::settings($cfg); ?>
 <section class="card stack" aria-labelledby="grid-charge-title">
   <h3 class="card-title" id="grid-charge-title">Laden aus dem Netz</h3>
-  <p class="body-sm muted">In aktiven Ladefenstern lädt EMS den Speicher aus dem Netz, wenn die Sonne bis einen Tag danach nicht reicht und der Preisunterschied Verluste und Verschleiß übersteigt. Eingeschaltet wird das unter <?= ui_inline('Speicher → Ausblick', ['href' => url('/speicher')]) ?>, geschaltet nur bei aktivem EMS. Dafür stellt EMS den Betriebsmodus auf manuell und „Laden erzwingen“ auf die Ladeleistung, danach zurück auf den Betriebsmodus von vorher.</p>
+  <p class="body-sm muted">Mit einem Energie-Boost lädt EMS den Speicher einmalig in einem Ladefenster aus dem Netz, bis zu einem Ladestand. Den Boost und die Empfehlung dazu findest du unter <?= ui_inline('Speicher → Ausblick', ['href' => url('/speicher')]) ?>; geschaltet wird nur bei aktivem EMS. Dafür stellt EMS den Betriebsmodus auf manuell und „Laden erzwingen“ auf die Ladeleistung, danach zurück auf den Betriebsmodus von vorher. Wirkungsgrad und Verschleiß gehen in die Empfehlung ein.</p>
   <?= $open('battery_grid') ?>
   <?= ui_entity_field('battery_operating_mode', 'Betriebsmodus', (string) ($cfg['mapping']['battery_operating_mode'] ?? ''), 'select mit manual und automatic, bei der sonnenBatterie select.sonnenbatterie_…_select_operating_mode. Sie erscheint erst, wenn die Integration schreiben darf (Token der JSON-API).', $suggest['battery_operating_mode'] ?? '') ?>
   <?= ui_entity_field('battery_force_charge', 'Laden erzwingen', (string) ($cfg['mapping']['battery_force_charge'] ?? ''), 'number in Watt, bei der sonnenBatterie number.sonnenbatterie_…_number_charge.', $suggest['battery_force_charge'] ?? '') ?>
   <div class="form-rows">
     <?= ui_form_row('Ladeleistung', $numberField('grid_kw', $grid['power_set'] ? $grid['power_kw'] : null, 2), ['for' => 'f-grid_kw', 'hint' => 'kW. Leer heißt die Entladeleistung, sonst 2,5 kW.']) ?>
-    <?= ui_form_row('Höchstens bis', $numberField('grid_max_soc', $grid['max_soc'], 0, ['inputmode' => 'numeric']), ['for' => 'f-grid_max_soc', 'hint' => 'Prozent. Darüber lädt der Speicher nur noch mit Sonne.']) ?>
     <?= ui_form_row('Wirkungsgrad', $numberField('grid_efficiency_pct', $grid['efficiency'] * 100, 0, ['inputmode' => 'numeric']), ['for' => 'f-grid_efficiency_pct', 'hint' => 'Prozent, Laden und Entladen zusammen. Standard 90 %.']) ?>
     <?= ui_form_row('Verschleiß', $numberField('grid_wear_ct', $grid['wear_ct'], 1), ['for' => 'f-grid_wear_ct', 'hint' => 'ct je kWh, die durch den Speicher geht. Standard 2 ct.']) ?>
   </div>

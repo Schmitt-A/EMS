@@ -1,7 +1,9 @@
 <?php
 declare(strict_types=1);
 /**
- * Speicher (8): Heimspeicher-Säule mit drei Zonen, Erklärliste, Ausblick und Speicherverlauf.
+ * Speicher (8): oben die Heimspeicher-Säule mit drei Zonen und daneben, gleich hoch, der Speicherverlauf; darunter in
+ * voller Breite „So wird geladen“ und der Ausblick: wann Speicher-Vorrang, batteriegestütztes Laden und voll erreicht
+ * sind, Überschuss und Hausverbrauch, die nächsten Tage und der Energie-Boost mit der Empfehlung.
  * Ebene 2: Grenzen mit Reglern und die Zonen-Tabelle.
  * @var array $snap
  * @var array $live
@@ -18,7 +20,13 @@ $buffer = (int) $z['car_buffer_soc'];
 $auto = (int) $z['car_auto_soc'];
 $saved = (float) $overview['periods']['all']['saved'];
 $mode = (string) ($snap['cfg']['charge']['mode'] ?? 'smart');
-// Aus dem Netz laden (BatteryPlan): Einstellungen, Stand, was das Schalten gerade verhindert, und die Sätze dazu.
+$now = time();
+$outlook = $live['outlook'];
+// Energie-Boost (BatteryPlan): Fenster zur Wahl, laufender Boost, Stand, was das Schalten gerade verhindert, Empfehlung.
+$windows = new PriceWindows(store());
+$enabled = $windows->enabled($now);
+$offered = $windows->offered($now, 8);
+$boost = BatteryPlan::boost(store(), $now);
 $gridSettings = BatteryPlan::settings($snap['cfg']);
 $gridState = (new BatteryPlan(store(), ha()))->state();
 try {
@@ -26,9 +34,12 @@ try {
 } catch (Throwable) {
     $gridBlocker = 'Home Assistant ist nicht erreichbar.';
 }
-$gridText = BatteryPlan::text($snap['battery_plan'] ?? null, $gridSettings, $gridState, $gridBlocker, time());
-$read =static fn (string $key, int $value): string => '<span data-zone-read="' . e($key) . '">' . $value . '</span>' . NNBSP . '%';
+$plan = $snap['battery_plan'] ?? null;
+$advice = BatteryPlan::recommendation($plan, $gridSettings, $now);
+$boostTarget = $boost['target_soc'] ?? (($plan['reason'] ?? '') === 'charge' ? (float) $plan['target_soc'] : 80.0);
+$read = static fn (string $key, int $value): string => '<span data-zone-read="' . e($key) . '">' . $value . '</span>' . NNBSP . '%';
 $limit = static fn (string $key, int $value): string => ui_inline('<span class="sr-only">Grenze ändern, </span>' . $read($key, $value), ['data-open-dialog' => 'battery-limits']);
+$post = static fn (string $do): string => csrf_field() . '<input type="hidden" name="section" value="battery_boost"><input type="hidden" name="back" value="/speicher"><input type="hidden" name="do" value="' . e($do) . '">';
 
 echo ui_page_head('Speicher', ui_head_chip('coins', e(num($saved, 2)) . NNBSP . '€', 'Ersparnis ' . euro($saved) . '. Energieübersicht öffnen'));
 
@@ -50,90 +61,108 @@ if (!$snap['connected']) {
     <p class="body-sm muted storage-activity" data-live="battery.activity_text"><?= e((string) ($live['battery']['activity_text'] ?? '')) ?></p>
     <button type="button" class="btn btn-secondary" data-open-dialog="battery-limits"><?= icon('sliders-horizontal', 'icon-16') ?>Grenzen ändern</button>
   </section>
-  <div class="stack">
-    <section class="card" aria-labelledby="zones-title">
-      <h2 class="card-title" id="zones-title">So wird geladen</h2>
-      <ul class="zone-list" role="list">
-        <li class="zone-item"><span class="zone-icon zone-icon-house"><?= icon('house', 'icon-20') ?></span>
-          <p class="body">Bis <?= $limit('priority', $priority) ?> geht Sonnenüberschuss zuerst in den Hausspeicher. Das Auto bekommt nur, was der Speicher gerade nicht aufnimmt.</p></li>
-        <li class="zone-item"><span class="zone-icon zone-icon-car"><?= icon('car', 'icon-20') ?></span>
-          <p class="body">Von <?= $read('priority', $priority) ?> bis <?= $limit('buffer', $buffer) ?> hat das Auto den Überschuss. Im Modus Intelligent bleibt der Speicher in diesem Bereich fürs Haus.</p></li>
-        <li class="zone-item"><span class="zone-icon zone-icon-boost"><?= icon('zap', 'icon-20') ?></span>
-          <p class="body"><span data-zone-when="buffer-on"<?= $buffer >= 100 ? ' hidden' : '' ?>>Ab <?= $read('buffer', $buffer) ?> darf gespeicherte Energie das Auto stützen.</span><span data-zone-when="buffer-off"<?= $buffer >= 100 ? '' : ' hidden' ?>>Gespeicherte Energie stützt das Auto nicht, die Grenze steht auf 100<?= NNBSP ?>%.</span>
-            <span data-zone-when="auto-on"<?= $auto >= 100 ? ' hidden' : '' ?>>Ab <?= $limit('auto', $auto) ?> startet die Ladung auch ohne Sonne.</span><span data-zone-when="auto-off"<?= $auto >= 100 ? '' : ' hidden' ?>>Ohne Sonne startet keine Ladung.</span></p></li>
-        <li class="zone-item"><span class="zone-icon zone-icon-reserve"><?= icon('shield', 'icon-20') ?></span>
-          <p class="body"><span data-live="reserve.text"><?= e((string) $snap['reserve']['text']) ?></span> <?= ui_inline('Puffer einstellen', ['href' => url('/einstellungen/speicher')]) ?></p></li>
-      </ul>
-    </section>
-    <section class="card stack" aria-labelledby="outlook-title">
-      <h2 class="card-title" id="outlook-title">Ausblick</h2>
-      <ul class="plain-list stack-tight body" role="list">
-        <li data-live="battery_full"><?= e((string) $live['battery_full']) ?></li>
-        <li data-live="battery_priority" data-live-hide="battery_priority"<?= $live['battery_priority'] === '' ? ' hidden' : '' ?>><?= e((string) $live['battery_priority']) ?></li>
-        <li data-live="battery_buffer"><?= e((string) $live['battery_buffer']) ?></li>
-        <li class="muted" data-live="battery_surplus"><?= e((string) $live['battery_surplus']) ?></li>
-      </ul>
-      <p class="caption muted">Hausverbrauch der letzten 30 Tage ohne Wallbox: <span class="num" data-live="house_mean"><?= e((string) $live['house_mean']) ?></span></p>
-      <?= ui_divider('Die nächsten Tage') ?>
-      <div class="table-wrap" tabindex="0" role="region" aria-label="Sonne und Haus in den nächsten Tagen">
-        <table class="compare-table">
-          <thead><tr><th scope="col">Tag</th><th scope="col">Sonne<span class="sub">kWh</span></th><th scope="col">Haus<span class="sub">kWh</span></th><th scope="col">Bilanz<span class="sub">kWh</span></th></tr></thead>
-          <tbody>
+  <section class="card storage-history" aria-labelledby="history-title">
+    <h2 class="card-title" id="history-title">Speicherverlauf</h2>
+    <?= ui_chart('time', '/api/series?chart=battery', 'Ladestand des Hausspeichers', [
+        'window' => '3',
+        'anchor' => 'now',
+        'class' => 'chart-tall',
+        // Wie die Solarprognose: Fläche in Amber, Tageswerte als Kapseln.
+        'style' => ['soc' => ['color' => 'solar', 'type' => 'area', 'curve' => 'linear', 'unit' => '%', 'decimals' => 0], 'cap' => ['color' => 'solar', 'type' => 'area', 'curve' => 'linear', 'unit' => 'kWh', 'decimals' => 1]],
+        'tools' => '<div class="chart-tools">'
+            . ui_segment('battery-window', 'Zeitraum', ['3' => '3 Tage', '7' => '7 Tage'], '3', ['compact' => true, 'fit' => true, 'id' => 'bw', 'attrs' => ['data-chart-window' => true]])
+            . ui_segment('battery-unit', 'Einheit', ['soc' => '%', 'cap' => 'kWh'], 'soc', ['compact' => true, 'fit' => true, 'id' => 'bu', 'attrs' => ['data-chart-unit' => true]])
+            . '</div>',
+        'empty' => 'Noch kein Verlauf. Der Ladestand braucht die Statistik von Home Assistant.',
+    ]) ?>
+  </section>
+  <section class="card storage-wide" aria-labelledby="zones-title">
+    <h2 class="card-title" id="zones-title">So wird geladen</h2>
+    <ul class="zone-list" role="list">
+      <li class="zone-item"><span class="zone-icon zone-icon-house"><?= icon('house', 'icon-20') ?></span>
+        <p class="body">Bis <?= $limit('priority', $priority) ?> geht Sonnenüberschuss zuerst in den Hausspeicher. Das Auto bekommt nur, was der Speicher gerade nicht aufnimmt.</p></li>
+      <li class="zone-item"><span class="zone-icon zone-icon-car"><?= icon('car', 'icon-20') ?></span>
+        <p class="body">Von <?= $read('priority', $priority) ?> bis <?= $limit('buffer', $buffer) ?> hat das Auto den Überschuss. Im Modus Intelligent bleibt der Speicher in diesem Bereich fürs Haus.</p></li>
+      <li class="zone-item"><span class="zone-icon zone-icon-boost"><?= icon('zap', 'icon-20') ?></span>
+        <p class="body"><span data-zone-when="buffer-on"<?= $buffer >= 100 ? ' hidden' : '' ?>>Ab <?= $read('buffer', $buffer) ?> darf gespeicherte Energie das Auto stützen.</span><span data-zone-when="buffer-off"<?= $buffer >= 100 ? '' : ' hidden' ?>>Gespeicherte Energie stützt das Auto nicht, die Grenze steht auf 100<?= NNBSP ?>%.</span>
+          <span data-zone-when="auto-on"<?= $auto >= 100 ? ' hidden' : '' ?>>Ab <?= $limit('auto', $auto) ?> startet die Ladung auch ohne Sonne.</span><span data-zone-when="auto-off"<?= $auto >= 100 ? '' : ' hidden' ?>>Ohne Sonne startet keine Ladung.</span></p></li>
+      <li class="zone-item"><span class="zone-icon zone-icon-reserve"><?= icon('shield', 'icon-20') ?></span>
+        <p class="body"><span data-live="reserve.text"><?= e((string) $snap['reserve']['text']) ?></span> <?= ui_inline('Puffer einstellen', ['href' => url('/einstellungen/speicher')]) ?></p></li>
+    </ul>
+  </section>
+  <section class="card stack storage-wide" aria-labelledby="outlook-title">
+    <h2 class="card-title" id="outlook-title">Ausblick</h2>
+    <dl class="kv outlook-list">
+      <div><dt>Speicher-Vorrang <?= e(pct((float) $priority)) ?></dt><dd data-live="outlook.priority"><?= e((string) $outlook['priority']) ?></dd></div>
+      <div><dt>Batteriegestützt ab <?= e(pct((float) $buffer)) ?></dt><dd data-live="outlook.buffer"><?= e((string) $outlook['buffer']) ?></dd></div>
+      <div><dt>Voll, 100<?= NNBSP ?>%</dt><dd data-live="outlook.full"><?= e((string) $outlook['full']) ?></dd></div>
+      <div><dt>Überschuss bis Mitternacht</dt><dd data-live="outlook.surplus"><?= e((string) $outlook['surplus']) ?></dd></div>
+      <div><dt>Hausverbrauch</dt><dd><span data-live="outlook.house"><?= e((string) $outlook['house']) ?></span><span class="sub">Üblicher Tag ohne Wallbox: je Stunde der Median der letzten 30 Tage, damit einzelne Tage mit Laden nicht zählen.</span></dd></div>
+    </dl>
+    <?= ui_divider('Die nächsten Tage') ?>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Sonne und Haus in den nächsten Tagen">
+      <table class="compare-table">
+        <thead><tr><th scope="col">Tag</th><th scope="col">Sonne<span class="sub">kWh</span></th><th scope="col">Haus<span class="sub">kWh</span></th><th scope="col">Bilanz<span class="sub">kWh</span></th></tr></thead>
+        <tbody>
 <?php foreach ($snap['days_outlook'] as $day): ?>
 <?php $balance = $day['balance_kwh']; ?>
-            <tr><th scope="row"><?= e((string) $day['label']) ?></th><td><?= e(num($day['sun_kwh'], 1)) ?></td><td><?= e(num($day['house_kwh'], 1)) ?></td>
-              <td><?= e($balance === null ? '—' : ($balance >= 0 ? '+' : '−') . num(abs((float) $balance), 1)) ?></td></tr>
+          <tr><th scope="row"><?= e((string) $day['label']) ?></th><td><?= e(num($day['sun_kwh'], 1)) ?></td><td><?= e(num($day['house_kwh'], 1)) ?></td>
+            <td><?= e($balance === null ? '—' : ($balance >= 0 ? '+' : '−') . num(abs((float) $balance), 1)) ?></td></tr>
 <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-      <p class="caption muted">Sonne laut Prognose, Haus mit dem Mittel der letzten 30 Tage ohne Wallbox. Was fehlt, deckt der Speicher, solange er reicht, danach das Netz.</p>
-      <?= ui_divider('Aus dem Netz laden') ?>
-      <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack" data-autosubmit>
-        <?= csrf_field() ?>
-        <input type="hidden" name="section" value="battery_grid"><input type="hidden" name="back" value="/speicher">
-        <div class="form-rows"><?= ui_form_row('In Ladefenstern laden, wenn die Sonne nicht reicht', ui_toggle('grid_charge', $gridSettings['on'], 'Speicher in Ladefenstern aus dem Netz laden'), ['for' => 'f-grid_charge']) ?></div>
-        <noscript><div class="form-actions"><button class="btn btn-secondary" type="submit">Speichern</button></div></noscript>
-      </form>
-      <p class="body"><?= e($gridText['head']) ?></p>
-<?php if ($gridText['lines']): ?>
-      <ul class="plain-list stack-tight body-sm muted" role="list">
-<?php foreach ($gridText['lines'] as $line): ?>
+        </tbody>
+      </table>
+    </div>
+    <p class="caption muted">Sonne laut Prognose, Haus aus dem üblichen Tagesverlauf; heute nur noch der Rest des Tages. Was fehlt, deckt der Speicher, solange er reicht, danach das Netz.</p>
+    <?= ui_divider('Energie-Boost') ?>
+<?php if (!$enabled): ?>
+    <p class="body-sm muted">Den Speicher einmalig in einem Ladefenster aus dem Netz laden. Ladefenster gibt es nur mit dynamischem Tarif; mit deinem statischen kostet jede Viertelstunde gleich viel, und Laden aus dem Netz brächte nur Verluste. Eine Vorschau der Fenster steht unter <?= ui_inline('Prognose → Strompreis', ['href' => url('/prognose/strompreis') . '#windows-title']) ?>.</p>
+<?php else: ?>
+    <div class="boost-advice<?= $advice['charge'] ? ' boost-advice-charge' : '' ?>">
+      <p class="body boost-advice-head"><?= icon($advice['charge'] ? 'battery-charging' : 'info', 'icon-20') ?><span><?= e($advice['head']) ?></span></p>
+<?php if ($advice['lines']): ?>
+      <ul class="plain-list stack-tight body-sm" role="list">
+<?php foreach ($advice['lines'] as $line): ?>
         <li><?= e($line) ?></li>
 <?php endforeach; ?>
       </ul>
 <?php endif; ?>
-<?php if ($gridSettings['on'] && $gridBlocker !== '' && $gridBlocker !== 'aus'): ?>
-      <?= ui_notice('info', e('Noch schaltet EMS nicht: ' . $gridBlocker)) ?>
+<?php if ($advice['charge'] && $boost === null): ?>
+      <form method="post" action="<?= e(url('/einstellungen')) ?>"><?= $post('recommend') ?><button class="btn btn-primary" type="submit">Empfehlung übernehmen</button></form>
+<?php endif; ?>
+    </div>
+<?php if ($boost !== null): ?>
+    <div class="boost-active">
+      <p class="body"><strong>Energie-Boost:</strong> <?= e(ucfirst(PriceWindows::label($boost, $now)) . ' bis ' . pct($boost['target_soc'])) ?>, <?= e(!empty($gridState['active']) ? 'lädt gerade.' : ($boost['start'] <= $now ? 'wartet auf den Start.' : 'geplant.')) ?></p>
+      <form method="post" action="<?= e(url('/einstellungen')) ?>"><?= $post('clear') ?><button class="btn btn-secondary" type="submit">Boost abbrechen</button></form>
+    </div>
+<?php elseif ($offered): ?>
+    <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack">
+      <?= $post('set') ?>
+      <div class="form-rows">
+        <?= ui_form_row('Fenster', ui_select('window', array_combine(array_map(static fn (array $w): string => $w['start'] . '-' . $w['end'], $offered), array_map(static fn (array $w): string => ucfirst(PriceWindows::label($w, $now)) . ($w['ct'] !== null ? ' · Ø ' . ct((float) $w['ct']) : ''), $offered)), (string) (($plan['window']['start'] ?? '') . '-' . ($plan['window']['end'] ?? '')), ['id' => 'f-boost-window']), ['for' => 'f-boost-window', 'stack' => true]) ?>
+      </div>
+      <?= ui_range('target_soc', 'Laden bis', $boostTarget, 20, 100, 5, '%', 'Einmalig: Ist der Stand erreicht oder das Fenster vorbei, endet der Boost.') ?>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Boost aktivieren</button></div>
+    </form>
+<?php else: ?>
+    <p class="body-sm muted">Gerade gibt es kein aktives Ladefenster. Die Fenster stehen unter <?= ui_inline('Prognose → Strompreis', ['href' => url('/prognose/strompreis') . '#windows-title']) ?>.</p>
+<?php endif; ?>
+<?php if ($boost !== null && $gridBlocker !== ''): ?>
+    <?= ui_notice('info', e('Noch schaltet EMS nicht: ' . $gridBlocker)) ?>
 <?php endif; ?>
 <?php if (!empty($gridState['error'])): ?>
-      <?= ui_notice('triangle-alert', e((string) $gridState['error']), 'warn') ?>
+    <?= ui_notice('triangle-alert', e((string) $gridState['error']), 'warn') ?>
 <?php endif; ?>
-      <p class="caption muted">EMS lädt nur in aktiven <?= ui_inline('Ladefenstern', ['href' => url('/prognose/strompreis') . '#windows-title']) ?> und nur so viel, wie bis einen Tag danach fehlt, wenn der Preisunterschied Verluste und Verschleiß übersteigt. Ins Netz geht davon nichts zurück. Leistung, Grenzen und Entitäten unter <?= ui_inline('Einstellungen → Speicher', ['href' => url('/einstellungen/speicher')]) ?>.</p>
+    <p class="caption muted">Der Boost lädt den Speicher einmalig im gewählten Fenster aus dem Netz, bis zum gewählten Stand; ins Netz geht davon nichts zurück. Ladeleistung, Wirkungsgrad, Verschleiß und die Entitäten stehen unter <?= ui_inline('Einstellungen → Speicher', ['href' => url('/einstellungen/speicher')]) ?>.</p>
+<?php endif; ?>
 <?php if (!empty($gridState['log'])): ?>
-      <ul class="plain-list stack-tight body-sm" role="list" aria-label="Zuletzt aus dem Netz geladen">
+    <ul class="plain-list stack-tight body-sm" role="list" aria-label="Zuletzt aus dem Netz geladen">
 <?php foreach (array_slice((array) $gridState['log'], 0, 4) as $row): ?>
-        <li><span class="num muted"><?= e(date('d.m. H:i', (int) $row['t'])) ?></span> <?= e((string) $row['text']) ?></li>
+      <li><span class="num muted"><?= e(date('d.m. H:i', (int) $row['t'])) ?></span> <?= e((string) $row['text']) ?></li>
 <?php endforeach; ?>
-      </ul>
+    </ul>
 <?php endif; ?>
-    </section>
-    <section class="card" aria-labelledby="history-title">
-      <h2 class="card-title" id="history-title">Speicherverlauf</h2>
-      <?= ui_chart('time', '/api/series?chart=battery', 'Ladestand des Hausspeichers', [
-          'window' => '3',
-          'anchor' => 'now',
-          'class' => 'chart-tall',
-          // Wie die Solarprognose: Fläche in Amber, Tageswerte als Kapseln.
-          'style' => ['soc' => ['color' => 'solar', 'type' => 'area', 'curve' => 'linear', 'unit' => '%', 'decimals' => 0], 'cap' => ['color' => 'solar', 'type' => 'area', 'curve' => 'linear', 'unit' => 'kWh', 'decimals' => 1]],
-          'tools' => '<div class="chart-tools">'
-              . ui_segment('battery-window', 'Zeitraum', ['3' => '3 Tage', '7' => '7 Tage'], '3', ['compact' => true, 'fit' => true, 'id' => 'bw', 'attrs' => ['data-chart-window' => true]])
-              . ui_segment('battery-unit', 'Einheit', ['soc' => '%', 'cap' => 'kWh'], 'soc', ['compact' => true, 'fit' => true, 'id' => 'bu', 'attrs' => ['data-chart-unit' => true]])
-              . '</div>',
-          'empty' => 'Noch kein Verlauf. Der Ladestand braucht die Statistik von Home Assistant.',
-      ]) ?>
-    </section>
-  </div>
+  </section>
 </div>
 <?php
 // Ebene 2: Grenzen

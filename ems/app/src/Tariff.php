@@ -389,6 +389,32 @@ final class Tariff
     }
 
     /**
+     * Ende der bekannten Preise: Börse oder die aufgezeichnete Preis-Entität des Anbieters (Tibber, Octopus …), je
+     * nachdem, was weiter in die Zukunft reicht. Ladefenster, Ladeplan, Speicher und Diagramm rechnen bis hierhin.
+     */
+    public function horizon(): int
+    {
+        $provider = (int) ($this->store->pdo()->query('SELECT MAX("end") FROM provider_prices')->fetchColumn() ?: 0);
+        return max($this->market()->lastEnd(), $provider);
+    }
+
+    /**
+     * Viertelstunden mit aufgezeichnetem Anbieterpreis zwischen $from und $to.
+     *
+     * @return list<int>
+     */
+    public function providerQuarters(int $from, int $to): array
+    {
+        $out = [];
+        for ($q = intdiv($from, 900) * 900; $q < $to; $q += 900) {
+            if ($this->providerAt($q) !== null) {
+                $out[] = $q;
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Viertelstunden des aufgezeichneten Anbieterpreises (ct/kWh brutto).
      */
     public function providerAt(int $q): ?float

@@ -161,7 +161,7 @@ final class Energy
      * Speicher und Einspeisung. Die Sonne deckt zuerst den Verbrauch, dann lädt sie den Speicher, der Rest geht ins
      * Netz; danach deckt der Speicher den Verbrauch, das Netz den Rest und, was der Speicher sonst noch lädt. Haus und
      * Auto teilen sich die Quellen anteilig. $forecast: today_kwh und remaining_kwh der Prognose, done_kwh gemessen.
-     * $facts für die zweite Zeile unter den Namen: house_mean_kw (Ø 30 Tage), import_ct, export_ct, car_range_km.
+     * $facts für die zweite Zeile unter den Namen: house_mean_kw (üblicher Verbrauch, Median je Stunde über 30 Tage), import_ct, export_ct, car_range_km.
      */
     public static function flowGraph(array $values, array $balance, ?array $forecast = null, array $facts = []): array
     {
@@ -341,6 +341,55 @@ final class Energy
             $n++;
         }
         return $n > 0 ? $sum / $n : null;
+    }
+
+    /**
+     * Üblicher Hausverbrauch ohne Wallbox je Stunde des Tages (0–23, kW): der Median der Stundenwerte zur selben
+     * Uhrzeit. Einzelne Tage mit Lasten, die nicht zum Haus gehören, etwa Laden, bevor die Wallbox gemessen wurde,
+     * schlagen so nicht durch. Uhrzeiten mit weniger als drei Werten bekommen den Median aller Stunden. mean ist das
+     * Mittel des Profils, also ein üblicher Tag geteilt durch 24. null ohne Werte.
+     *
+     * @param array<int, array{start?:int, kw?:float}> $house
+     * @param array<int, array{start?:int, kw?:float}> $wallbox
+     * @return ?array{profile: array<int, float>, mean: float}
+     */
+    public static function houseProfile(array $house, array $wallbox, bool $includesWallbox): ?array
+    {
+        $wall = [];
+        foreach ($wallbox as $row) {
+            if (isset($row['start'])) {
+                $wall[(int) $row['start']] = max(0, (float) ($row['kw'] ?? 0));
+            }
+        }
+        $byHour = array_fill(0, 24, []);
+        $all = [];
+        $tz = new DateTimeZone('Europe/Berlin');
+        foreach ($house as $row) {
+            if (!isset($row['start'])) {
+                continue;
+            }
+            $base = max(0.0, (float) ($row['kw'] ?? 0));
+            if ($includesWallbox) {
+                $base = max(0.0, $base - (float) ($wall[(int) $row['start']] ?? 0));
+            }
+            $hour = (int) (new DateTimeImmutable('@' . (int) $row['start']))->setTimezone($tz)->format('G');
+            $byHour[$hour][] = $base;
+            $all[] = $base;
+        }
+        if ($all === []) {
+            return null;
+        }
+        $median = static function (array $values): float {
+            sort($values);
+            $n = count($values);
+            return $n % 2 === 1 ? $values[intdiv($n, 2)] : ($values[$n / 2 - 1] + $values[$n / 2]) / 2;
+        };
+        $fallback = $median($all);
+        $profile = [];
+        for ($h = 0; $h < 24; $h++) {
+            $profile[$h] = round(count($byHour[$h]) >= 3 ? $median($byHour[$h]) : $fallback, 3);
+        }
+        return ['profile' => $profile, 'mean' => round(array_sum($profile) / 24, 3)];
     }
 
     private static function nullable(mixed $value): ?float
@@ -694,8 +743,8 @@ final class Energy
     public static function gridText(string $grid): string
     {
         return match ($grid) {
-            'now' => 'Volle Leistung aus dem Netz, bis das Ziel erreicht ist oder das Auto abgesteckt wird. Der Speicher gibt nichts ab.',
-            'windows' => 'In deinen Ladefenstern volle Leistung aus dem Netz, bis das Ziel erreicht ist. Dazwischen gilt der Modus oben.',
+            'now' => 'Volle Leistung aus dem Netz, bis das Ziel fürs Netzladen erreicht ist oder das Auto abgesteckt wird. Der Speicher gibt nichts ab.',
+            'windows' => 'In den Fenstern, die du hier wählst, volle Leistung aus dem Netz, bis das Ziel fürs Netzladen erreicht ist. Dazwischen gilt der Modus oben.',
             default => 'Es gilt nur der Modus oben.',
         };
     }
