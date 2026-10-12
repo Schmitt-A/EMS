@@ -31,6 +31,18 @@ final class HaClient implements HaSource
         }
     }
 
+    public function coordinates(): ?array
+    {
+        try {
+            $config = $this->get('/api/config');
+        } catch (Throwable) {
+            return null;
+        }
+        $lat = $config['latitude'] ?? null;
+        $lon = $config['longitude'] ?? null;
+        return is_numeric($lat) && is_numeric($lon) ? ['lat' => (float) $lat, 'lon' => (float) $lon] : null;
+    }
+
     public function states(): array
     {
         $cache = data_dir() . '/states-cache.json';

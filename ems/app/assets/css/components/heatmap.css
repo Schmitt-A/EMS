@@ -349,3 +349,23 @@
   max-height: 24rem;
   overflow-y: auto;
 }
+
+/* „Lohnt sich dynamisch?“ unter Strompreis: Kalenderwochen als Felder, ab 36rem in vier Reihen zu 13 Wochen. */
+.wk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(2.25rem, 1fr));
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@container hm (min-width: 36rem) {
+  .wk-grid {
+    grid-template-columns: repeat(13, minmax(0, 1fr));
+  }
+}
+
+.wk-cell {
+  cursor: default;
+}

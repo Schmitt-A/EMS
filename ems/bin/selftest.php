@@ -148,7 +148,7 @@ $guardHa = new class implements HaSource {
     public function notifyServices(): array { return []; }
     public function notify(string $service, array $payload): void {}
     public function configured(): bool { return true; }
-    public function ping(): array { return ['ok' => true]; }
+    public function ping(): array { return ['ok' => true]; } public function coordinates(): ?array { return null; }
     public function states(): array { return []; }
     public function state(string $entityId): ?array { return null; }
     public function index(): array { return []; }
@@ -289,7 +289,7 @@ $wallHa = new class implements HaSource {
     public function notifyServices(): array { return []; }
     public function notify(string $service, array $payload): void {}
     public function configured(): bool { return true; }
-    public function ping(): array { return ['ok' => true]; }
+    public function ping(): array { return ['ok' => true]; } public function coordinates(): ?array { return null; }
     public function states(): array { return []; }
     public function state(string $entityId): ?array { return null; }
     public function index(): array { return []; }
@@ -764,7 +764,7 @@ $notifyHa = new class implements HaSource {
         $this->sent[] = [$service, $payload];
     }
     public function configured(): bool { return true; }
-    public function ping(): array { return ['ok' => true]; }
+    public function ping(): array { return ['ok' => true]; } public function coordinates(): ?array { return null; }
     public function states(): array { return []; }
     public function state(string $entityId): ?array { return null; }
     public function index(): array { return ['device_tracker.pixel_8' => ['attributes' => ['friendly_name' => 'Pixel von Kim']]]; }
@@ -808,7 +808,7 @@ $hmHa = new class implements HaSource {
     public function notifyServices(): array { return []; }
     public function notify(string $service, array $payload): void {}
     public function configured(): bool { return true; }
-    public function ping(): array { return ['ok' => true]; }
+    public function ping(): array { return ['ok' => true]; } public function coordinates(): ?array { return null; }
     public function states(): array { return []; }
     public function state(string $entityId): ?array { return null; }
     public function index(): array { return ['sensor.pv' => ['attributes' => ['unit_of_measurement' => 'W']]]; }
@@ -866,7 +866,7 @@ if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
         public function notifyServices(): array { return []; }
         public function notify(string $service, array $payload): void {}
         public function configured(): bool { return true; }
-        public function ping(): array { return ['ok' => true]; }
+        public function ping(): array { return ['ok' => true]; } public function coordinates(): ?array { return null; }
         public function states(): array { return []; }
         public function state(string $entityId): ?array { return null; }
         public function index(): array { return []; }
@@ -1095,6 +1095,36 @@ for ($d = 0; $d < 10; $d++) {
 $profile = Energy::houseProfile($profileHouse, $profileWall, true);
 check(abs($profile['profile'][13] - 0.3) < 1e-9 && abs($profile['profile'][20] - 0.3) < 1e-9 && abs($profile['mean'] - 0.3) < 1e-9 && Energy::houseProfile([], [], true) === null, 'Hausverbrauch je Stunde als Median: Ladetage ohne Messung zählen nicht');
 check(abs(BatteryPlan::houseKwh(array_fill(0, 24, 0.5), $base0, $base0 + 86400) - 12.0) < 1e-9 && abs(BatteryPlan::houseKwh(array_fill(0, 24, 0.5), $base0 + 22 * 3600, $base0 + 86400) - 1.0) < 1e-9, 'Haus in kWh aus dem Tagesprofil, heute nur der Rest');
+
+// Lohnt sich dynamisch: ein Jahr Tag für Tag mit Sonne, Speicher, Haus und Auto.
+$calcJson = json_encode(['outputs' => ['monthly' => ['fixed' => array_map(static fn (int $m): array => ['month' => $m, 'E_d' => $m * 1.0, 'E_m' => $m * 30.0], range(1, 12))], 'totals' => ['fixed' => ['E_y' => 2340.0]]]]);
+$monthly = YearCheck::parsePvgis($calcJson);
+check($monthly['daily'][3] === 3.0 && $monthly['year'] === 2340.0, 'PVGIS: kWh am Tag je Monat und im Jahr');
+$seriesRows = [];
+for ($t = (int) strtotime('2023-01-01 00:10:00 UTC'); $t < (int) strtotime('2024-01-01 00:00:00 UTC'); $t += 3600) {
+    $seriesRows[] = ['time' => gmdate('Ymd:Hi', $t), 'P' => (int) gmdate('G', $t) === 11 ? 2000.0 : 0.0];
+}
+$series = YearCheck::parseSeries(json_encode(['outputs' => ['hourly' => $seriesRows]]));
+check(count($series['hours']) === 365 && $series['hours']['01-15'][12] === 2.0 && $series['hours']['07-15'][13] === 2.0 && $series['daily'][6] === 2.0 && $series['year'] === 730.0, 'PVGIS-Stunden in Berliner Zeit (11 Uhr UTC ist im Winter 12, im Sommer 13 Uhr)');
+$shapeSun = YearCheck::sunShape(new DateTimeImmutable('2026-06-21 12:00:00', new DateTimeZone('Europe/Berlin')), 50.0, 8.0, 180.0);
+$shapeWinter = YearCheck::sunShape(new DateTimeImmutable('2026-12-21 12:00:00', new DateTimeZone('Europe/Berlin')), 50.0, 8.0, 180.0);
+check(abs(array_sum($shapeSun) - 1) < 1e-9 && $shapeSun[2] === 0.0 && $shapeSun[13] > $shapeSun[8] && $shapeWinter[7] === 0.0 && count(array_filter($shapeWinter)) < count(array_filter($shapeSun)), 'Sonnenbogen: im Sommer länger als im Winter, nachts null');
+$yearDays = [];
+for ($i = 0; $i < 7; $i++) {
+    $yearDays[] = ['date' => sprintf('2026-01-%02d', 5 + $i), 'week' => 2, 'month' => 1, 'hours' => array_map(static fn (int $h): float => $h >= 17 && $h < 21 ? 40.0 : 25.0, range(0, 23)), 'avg' => 27.5, 'window' => 20.0];
+}
+$yearIn = ['house_kwh' => 365 * 10.0, 'car_kwh' => 365 * 5.0, 'profile' => array_fill(0, 24, 1.0), 'battery_kwh' => 0.0, 'battery_kw' => 3.0, 'efficiency' => 0.9, 'wear_ct' => 2.0, 'car_kw' => 11.0,
+    'static_ct' => 35.0, 'base_eur' => 0.0, 'dyn_base_eur' => 0.0, 'lat' => 50.0, 'lon' => 8.0, 'azimuth' => 180.0];
+$dark = YearCheck::simulate($yearDays, ['daily' => array_fill(1, 12, 0.0)], $yearIn);
+// Ohne Sonne und Speicher: 10 kWh Haus und 5 kWh Auto am Tag aus dem Netz. Statisch 15 × 35 ct, dynamisch das Haus zum
+// Preis der Stunde (4 h zu 40, 20 h zu 25 ct) und das Auto im Fenster (20 ct); hochgerechnet aufs Jahr.
+$houseCt = 10 * (4 * 40 + 20 * 25) / 24;
+check($dark['weeks'][2]['cover'] === 0.0 && $dark['weeks'][2]['save'] === 15.0 && $dark['weeks'][2]['day'] === 27.5 && $dark['year']['grid_kwh'] === 105.0
+    && abs($dark['year']['static_eur'] - 15 * 35 / 100 * 365) < 0.01 && abs($dark['year']['dynamic_eur'] - ($houseCt + 5 * 20) / 100 * 365) < 0.01, 'Ohne Sonne: alles aus dem Netz, Haus zum Preis der Stunde, Auto im Fenster');
+$stored = YearCheck::simulate($yearDays, ['daily' => array_fill(1, 12, 0.0)], ['battery_kwh' => 10.0] + $yearIn);
+check($stored['year']['shift_kwh'] > 0 && $stored['year']['dynamic_eur'] < $dark['year']['dynamic_eur'], 'Mit Speicher lädt er im Fenster vor, wenn der Netzbezug des Hauses teurer ist als Fenster, Verlust und Verschleiß');
+$sunny = YearCheck::simulate($yearDays, ['daily' => array_fill(1, 12, 40.0)], ['battery_kwh' => 10.0] + $yearIn);
+check($sunny['weeks'][2]['cover'] > 60 && $sunny['year']['grid_car_kwh'] === 0.0 && $sunny['year']['export_kwh'] > 0, 'Viel Sonne: das Auto lädt aus dem Überschuss, der Speicher hilft über die Nacht, der Rest geht ins Netz');
 
 // Einmal umstellen: Netzladen als Modus wird zu Intelligent mit Netzladen „Jetzt“.
 $migrateFile = tempnam(sys_get_temp_dir(), 'ems-test');

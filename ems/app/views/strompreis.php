@@ -7,7 +7,7 @@ declare(strict_types=1);
  * die Entscheidungshilfe je Monat mit eigenen Annahmen und der Vergleich mit dem gemessenen Netzbezug. Daten aus
  * PriceView.
  * @var array $price
- * @var array $inputs fenster und rest in kWh je Jahr
+ * @var array $year YearCheck::build(): Wochen, Jahr, Sonne, Vorschläge und Annahmen
  * @var array $overview
  */
 $now = $price['now'];
@@ -33,8 +33,6 @@ foreach (PriceView::SPANS as $key => $label) {
     $spanLinks['/prognose/strompreis?vergleich=' . $key] = $label;
 }
 $wc = $price['windows_config'];
-$months = $price['months'];
-$decision = PriceView::decision($months, (float) $inputs['fenster'], (float) $inputs['rest']);
 $post = static fn (string $section): string => '<input type="hidden" name="section" value="' . e($section) . '"><input type="hidden" name="back" value="/prognose/strompreis">' . csrf_field();
 
 echo ui_page_head('Prognose', ui_head_chip('zap', e($active === null ? '—' : ct((float) $active)), 'Strompreis jetzt ' . ($active === null ? 'unbekannt' : ct((float) $active)) . '. Energieübersicht öffnen'));
@@ -190,53 +188,82 @@ $boostWindow = $price['users']['battery'];
   <p class="caption muted">Ab jetzt am günstigsten: <?= e($range($price['cheap']['hour'])) ?><?= $price['cheap']['hour'] ? ' · ' . e(ct((float) $price['cheap']['hour']['ct'])) : '' ?>, am teuersten: <?= e($range($price['cheap']['dear'])) ?><?= $price['cheap']['dear'] ? ' · ' . e(ct((float) $price['cheap']['dear']['ct'])) : '' ?>, je eine Stunde, dynamisch. Preise bis <?= e($price['horizon'] > 0 ? $until($price['horizon']) : '—') ?>.<?= $tomorrowKnown ? '' : ' Die Preise für morgen gibt es ab etwa 13 Uhr.' ?></p>
 </section>
 
-<section class="card stack" aria-labelledby="decide-title"<?= ui_attrs($decision === null ? [] : [
-    'data-decide' => true,
-    'data-flat' => $decision['flat_ct'],
-    'data-window' => $decision['window_ct'],
-    'data-static' => $decision['static_ct'],
-    'data-base' => round($decision['base_eur'], 2),
-    'data-dyn-base' => round($decision['dyn_base_eur'], 2),
-]) ?>>
+<?php
+// Heatmap nach Kalenderwochen: je Kennzahl Farbstärke (0…1 über alle Wochen), kurze Zahl und Text für Screenreader.
+$metrics = [
+    'day' => ['label' => 'Ø Tag', 'color' => 'price', 'unit' => 'ct/kWh', 'decimals' => 1, 'caption' => 'Ø dynamischer Preis über den ganzen Tag, mit deinen Aufschlägen von heute.'],
+    'window' => ['label' => 'Fenster', 'color' => 'price', 'unit' => 'ct/kWh', 'decimals' => 1, 'caption' => 'Ø dynamischer Preis im günstigsten Fenster des Tages (' . $year['length_h'] . ' h).'],
+    'save' => ['label' => 'Spart', 'color' => 'success', 'unit' => 'ct/kWh', 'decimals' => 1, 'caption' => 'Ersparnis je kWh im Ladefenster gegenüber deinem statischen Preis von ' . ct($year['static_ct']) . '.'],
+    'sun' => ['label' => 'Sonne', 'color' => 'solar', 'unit' => 'kWh', 'decimals' => 0, 'caption' => 'Ertrag deiner Anlage je Woche in einem üblichen Jahr.'],
+    'cover' => ['label' => 'Deckung', 'color' => 'grid-out', 'unit' => '%', 'decimals' => 0, 'caption' => 'Anteil von Haus und Auto, den Sonne und Speicher in der Woche decken.'],
+];
+$weeks = $year['weeks'];
+$range = [];
+foreach (array_keys($metrics) as $key) {
+    $values = array_values(array_filter(array_column($weeks, $key), static fn (mixed $v): bool => $v !== null));
+    $range[$key] = $values ? [min($values), max($values)] : [0.0, 0.0];
+}
+$cellAttrs = static function (int $week, array $row) use ($metrics, $range): array {
+    $attrs = ['data-week' => $week];
+    foreach ($metrics as $key => $m) {
+        $value = $row[$key];
+        [$lo, $hi] = $range[$key];
+        $attrs['data-v-' . $key] = $value === null ? '' : (string) round($hi - $lo > 1e-9 ? ($value - $lo) / ($hi - $lo) : 0.5, 3);
+        $attrs['data-n-' . $key] = $value === null ? '' : num((float) $value, 0);
+        $attrs['data-t-' . $key] = 'KW ' . $week . ': ' . ($value === null ? 'ohne Preis' : with_unit((float) $value, $m['decimals'], $m['unit']));
+    }
+    return $attrs;
+};
+$y = $year['year'];
+$pvNote = match ($year['pv']['source']) {
+    'pvgis' => $year['pv']['weather_year'] ? 'PVGIS, Wetter von ' . $year['pv']['weather_year'] . ' an deinem Standort, Stunde für Stunde' : 'PVGIS, übliches Jahr an deinem Standort',
+    'demo' => 'Beispielwerte',
+    'pending' => 'Schätzung, PVGIS wird gerade abgefragt',
+    default => 'Schätzung aus 950 kWh je kWp' . ($year['pv']['error'] ? ', ' . $year['pv']['error'] : ''),
+};
+?>
+<section class="card stack" aria-labelledby="decide-title">
   <h2 class="card-title" id="decide-title">Lohnt sich dynamisch?</h2>
-<?php if ($decision === null): ?>
-  <p class="body muted">Dafür braucht EMS mindestens einen ganzen Monat Börsenpreise; es lädt sie nach und nach bis zwei Jahre zurück.</p>
-<?php else: ?>
-  <p class="body-sm muted">Mit deinen Preisen von heute und den echten Börsenpreisen <?= $decision['months'] === 1 ? 'des letzten Monats' : 'der letzten ' . e((string) $decision['months']) . ' Monate' ?>: Eine kWh im Ladefenster (je Tag die günstigsten <?= (int) $months['length_h'] ?> h) kostet dynamisch Ø <?= e(ct($decision['window_ct'])) ?>, über den ganzen Tag Ø <?= e(ct($decision['flat_ct'])) ?>, statisch <?= e(ct($decision['static_ct'])) ?>. Trag ein, wie viel du ins Ladefenster legen kannst, etwa das Auto und den Speicher, und was sonst aus dem Netz kommt.</p>
-  <form method="get" action="<?= e(url('/prognose/strompreis')) ?>#decide-title" class="stack" data-decide-form>
+  <p class="body-sm muted">Ein Jahr Woche für Woche: Börsenpreise der letzten 12 Monate mit deinen Preisen von heute aus <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?> und der Ertrag deiner Anlage in einem üblichen Jahr.</p>
+  <?= ui_segment('wk-metric', 'Kennzahl', array_map(static fn (array $m): string => $m['label'], $metrics), 'save', ['compact' => true, 'id' => 'wkm', 'attrs' => ['data-week-metric' => true]]) ?>
+  <figure class="hm wk" data-weekmap data-color="success"<?= ui_attrs(['data-metrics' => ui_json(array_map(static fn (array $m): array => ['color' => $m['color'], 'caption' => $m['caption']], $metrics))]) ?>>
+    <ol class="wk-grid" role="list" aria-label="Kalenderwochen">
+<?php foreach ($weeks as $week => $row): ?>
+      <li class="hm-cell wk-cell"<?= ui_attrs($cellAttrs((int) $week, $row)) ?>><span class="hm-d" aria-hidden="true"><?= (int) $week ?></span><span class="hm-n" aria-hidden="true" data-wk-n><?= e($row['save'] === null ? '' : num((float) $row['save'], 0)) ?></span><span class="sr-only" data-wk-t><?= e('KW ' . $week . ': ' . ($row['save'] === null ? 'ohne Preis' : with_unit((float) $row['save'], 1, 'ct/kWh'))) ?></span></li>
+<?php endforeach; ?>
+    </ol>
+    <figcaption class="caption muted" data-wk-caption><?= e($metrics['save']['caption']) ?></figcaption>
+  </figure>
+  <form method="get" action="<?= e(url('/prognose/strompreis')) ?>#decide-title" class="stack">
     <input type="hidden" name="vergleich" value="<?= e((string) $price['span']) ?>">
     <div class="form-rows">
-      <?= ui_number_row('fenster', 'Im Ladefenster', (float) $inputs['fenster'], 0, 'kWh im Jahr, Auto und Speicher', ['inputmode' => 'numeric']) ?>
-      <?= ui_number_row('rest', 'Übriger Netzbezug', (float) $inputs['rest'], 0, 'kWh im Jahr, zu jeder Tageszeit', ['inputmode' => 'numeric']) ?>
+      <?= ui_number_row('haus', 'Haus', (float) $year['inputs']['house_kwh'], 0, 'kWh im Jahr. Vorschlag ' . kwh($year['suggest']['house_kwh'], 0) . ': ' . $year['suggest']['notes']['house'], ['inputmode' => 'numeric']) ?>
+      <?= ui_number_row('km', 'Auto', (float) $year['inputs']['car_km'], 0, 'km im Jahr. Vorschlag ' . num($year['suggest']['car_km'], 0) . ' km: ' . $year['suggest']['notes']['km'], ['inputmode' => 'numeric']) ?>
+      <?= ui_number_row('verbrauch', 'Verbrauch Auto', (float) $year['inputs']['car_kwh100'], 1, 'kWh je 100 km. Vorschlag ' . num($year['suggest']['car_kwh100'], 1) . ': ' . $year['suggest']['notes']['use']) ?>
     </div>
-    <div class="form-actions"><button class="btn btn-secondary" type="submit" data-decide-submit>Rechnen</button></div>
+    <div class="form-actions"><button class="btn btn-secondary" type="submit">Neu rechnen</button></div>
   </form>
-  <p class="compare-verdict" data-decide-verdict aria-live="polite"><?= e($decision['difference'] >= 0
-      ? 'Dynamisch wäre im Jahr etwa ' . euro($decision['difference']) . ' günstiger.'
-      : 'Statisch wäre im Jahr etwa ' . euro(-$decision['difference']) . ' günstiger.') ?></p>
-  <p class="body-sm" data-decide-detail><?= e('Dynamisch ' . euro($decision['dynamic_eur']) . ', statisch ' . euro($decision['static_eur']) . ' im Jahr, mit Grundpreisen. '
-      . match (true) {
-          $decision['break_even_kwh'] === null => 'Das Ladefenster liegt nicht unter deinem statischen Preis, Verschieben bringt dynamisch nichts.',
-          $decision['break_even_kwh'] <= 0.0 => 'Dynamisch ist hier schon ohne Verschieben günstiger.',
-          default => 'Dynamisch lohnt sich ab etwa ' . kwh($decision['break_even_kwh'], 0) . ' im Ladefenster.',
-      }) ?></p>
-  <div class="table-wrap" tabindex="0" role="region" aria-label="Dynamischer Preis je Monat">
-  <table class="compare-table">
-    <thead><tr><th scope="col">Monat</th><th scope="col">Ø Tag<span class="sub">ct/kWh</span></th><th scope="col">Ø Fenster<span class="sub">ct/kWh</span></th><th scope="col">Spart<span class="sub">ct/kWh</span></th></tr></thead>
-    <tbody>
-<?php foreach (array_reverse($months['rows']) as $row): ?>
-      <tr><th scope="row"><?= e((string) $row['label']) ?><?= (int) $row['negative'] > 0 ? '<span class="sub">' . e((int) $row['negative'] . ' Viertelstunden unter 0') . '</span>' : '' ?></th>
-        <td><?= e(num((float) $row['flat_ct'], 1)) ?></td><td><?= e(num((float) $row['window_ct'], 1)) ?></td><td><?= e(num($decision['static_ct'] - (float) $row['window_ct'], 1)) ?></td></tr>
-<?php endforeach; ?>
-    </tbody>
-  </table>
-  </div>
+<?php if ($y['priced_days'] < 30): ?>
+  <p class="body muted">Für das Jahr fehlen noch Börsenpreise; EMS lädt sie nach und nach bis zwei Jahre zurück.</p>
+<?php else: ?>
+  <p class="compare-verdict"><?= e($y['difference'] >= 0 ? 'Dynamisch wäre im Jahr etwa ' . euro($y['difference']) . ' günstiger.' : 'Statisch wäre im Jahr etwa ' . euro(-$y['difference']) . ' günstiger.') ?></p>
+  <dl class="kv">
+    <div><dt>Sonne im Jahr</dt><dd><?= e(kwh((float) $y['pv_kwh'], 0)) ?><span class="sub"><?= e($pvNote) ?></span></dd></div>
+    <div><dt>Haus und Auto</dt><dd><?= e(kwh((float) $y['demand_kwh'], 0)) ?><span class="sub"><?= e('Haus ' . kwh((float) $y['house_kwh'], 0) . ', Auto ' . kwh((float) $y['car_kwh'], 0) . ' an der Wallbox') ?></span></dd></div>
+    <div><dt>Sonne und Speicher decken</dt><dd><?= e(pct($y['cover_pct'] === null ? null : (float) $y['cover_pct'])) ?><span class="sub"><?= e('Mit ' . kwh($year['battery_kwh'], 1) . ' Speicher, der nur von einem Tag auf den nächsten hilft; Überschuss im Sommer geht ins Netz (' . kwh((float) $y['export_kwh'], 0) . ').') ?></span></dd></div>
+    <div><dt>Aus dem Netz</dt><dd><?= e(kwh((float) $y['grid_kwh'], 0)) ?><span class="sub"><?= e('Haus ' . kwh((float) $y['grid_house_kwh'], 0) . ', Auto ' . kwh((float) $y['grid_car_kwh'], 0)) ?></span></dd></div>
+    <div><dt>Statisch</dt><dd><?= e(euro((float) $y['static_eur'])) ?><span class="sub"><?= e(ct($year['static_ct']) . ' je kWh, mit Grundpreis') ?></span></dd></div>
+    <div><dt>Dynamisch</dt><dd><?= e(euro((float) $y['dynamic_eur'])) ?><span class="sub"><?= e('Haus zum Preis der Stunde, Auto im Ladefenster' . ((float) $y['shift_kwh'] >= 1 ? ', der Speicher lädt ' . kwh((float) $y['shift_kwh'], 0) . ' im Fenster vor und spart ' . euro((float) $y['shift_eur']) : '') . ', mit Grundpreis') ?></span></dd></div>
+  </dl>
   <ul class="plain-list stack-tight body-sm muted" role="list">
-    <li>„Spart“: statischer Preis minus Ladefenster, je kWh. Der übrige Netzbezug ist über den Tag gleich verteilt; abends ist Strom meist teurer, nachts und mittags günstiger.</li>
-<?php if ($decision['base_missing']): ?>
+    <li>Haus und Auto verbrauchen gleichmäßig über das Jahr, das Haus nach seinem üblichen Tagesverlauf. Das Auto nimmt Sonnenüberschuss, den Rest aus dem Netz.</li>
+<?php if ($year['base_missing']): ?>
     <li>Ein Grundpreis fehlt noch und zählt mit 0 €; eintragen unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</li>
 <?php endif; ?>
-    <li>Dein gemessener Netzbezug steht im Vergleich darunter.</li>
+<?php if ($y['priced_days'] < 360): ?>
+    <li><?= e('Börsenpreise gibt es erst für ' . $y['priced_days'] . ' der letzten 365 Tage; die Kosten sind von diesen Tagen aufs Jahr hochgerechnet.') ?></li>
+<?php endif; ?>
+    <li>Für die Sonne schickt EMS Standort, kWp, Neigung und Ausrichtung an PVGIS. <?= e(YearCheck::SOURCE) ?>. Börsenpreise: <?= e(MarketPrices::SOURCE) ?>.</li>
   </ul>
 <?php endif; ?>
 </section>

@@ -22,7 +22,7 @@ function luminance(color) {
 }
 
 // Schwarz oder Weiß, je nachdem, was auf dem Feld mehr Kontrast hat (Umschlag bei Helligkeit 0,179).
-function ink(cells) {
+export function ink(cells) {
   for (const cell of cells) {
     const color = channels(getComputedStyle(cell).backgroundColor);
     if (color) cell.dataset.ink = luminance(color) > 0.179 ? 'dark' : 'light';

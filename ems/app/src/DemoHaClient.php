@@ -156,6 +156,12 @@ final class DemoHaClient implements HaSource
         return ['ok' => true, 'error' => null, 'version' => 'Demo', 'location' => 'Beispielhaus', 'timezone' => 'Europe/Berlin'];
     }
 
+    /** Das Beispielhaus steht im Hunsrück, nahe der DWD-Station Soonwald. */
+    public function coordinates(): ?array
+    {
+        return ['lat' => 49.93, 'lon' => 7.62];
+    }
+
     public function states(): array
     {
         return array_values($this->index());

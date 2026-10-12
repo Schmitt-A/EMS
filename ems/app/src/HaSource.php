@@ -24,6 +24,9 @@ interface HaSource
 
     public function ping(): array;
 
+    /** Standort aus der Konfiguration von Home Assistant, null ohne. @return ?array{lat: float, lon: float} */
+    public function coordinates(): ?array;
+
     public function states(): array;
 
     public function state(string $entityId): ?array;

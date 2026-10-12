@@ -252,14 +252,10 @@ if ($path === '/ladevorgaenge') {
 if ($path === '/prognose/strompreis') {
     // Strompreis: Preis jetzt, Diagramm (über /api/series?chart=price), Ladefenster, Entscheidungshilfe und Vergleich.
     $price = (new PriceView(store(), ha()))->build((string) ($_GET['vergleich'] ?? 'jahr'), time());
-    // Annahmen der Entscheidungshilfe aus der Adresse: kWh im Ladefenster und übriger Netzbezug je Jahr.
-    $kwh = static function (string $key, float $fallback): float {
-        $raw = str_replace(',', '.', trim((string) ($_GET[$key] ?? '')));
-        return $raw !== '' && is_numeric($raw) ? clamp_float((float) $raw, 0, 100000) : $fallback;
-    };
-    $inputs = ['fenster' => $kwh('fenster', 2000.0), 'rest' => $kwh('rest', 2500.0)];
+    // „Lohnt sich dynamisch?“: ein Jahr Tag für Tag, Haus, Kilometer und Verbrauch aus der Adresse, sonst Vorschläge.
+    $year = (new YearCheck(store(), ha()))->build($snap, $_GET, time());
     $overview = energy_overview();
-    page('strompreis', ['price' => $price, 'inputs' => $inputs, 'overview' => $overview, 'title' => 'Strompreis']);
+    page('strompreis', ['price' => $price, 'year' => $year, 'overview' => $overview, 'title' => 'Strompreis']);
 }
 if ($path === '/prognose') {
     $yield = safe_yield();

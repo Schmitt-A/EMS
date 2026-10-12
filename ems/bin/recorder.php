@@ -62,6 +62,13 @@ while (true) {
                     file_put_contents(data_dir() . '/recorder.log', date('c') . ' Preis-Entität: ' . $e->getMessage() . PHP_EOL, FILE_APPEND);
                 }
             }
+            // Ertrag der Anlage von PVGIS für „Lohnt sich dynamisch?“, nur wenn er fehlt, veraltet ist oder sich die
+            // Anlage geändert hat; nach einem Fehler frühestens am nächsten Tag wieder.
+            try {
+                (new YearCheck(store(), ha()))->pv($snap['cfg']['plant'], time(), true);
+            } catch (Throwable $e) {
+                file_put_contents(data_dir() . '/recorder.log', date('c') . ' PVGIS: ' . $e->getMessage() . PHP_EOL, FILE_APPEND);
+            }
             // Ältere Zyklen ohne Ansteckzeit aus dem Statusverlauf zuordnen, höchstens einmal pro Stunde.
             $sessions->backfillPlugs(ha(), (string) ($snap['cfg']['mapping']['wallbox_car'] ?? ''), time());
             if ((int) date('G') >= 1) {
