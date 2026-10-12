@@ -209,6 +209,8 @@ final class ConfigStore
                 // Nach einem erreichten Ladeziel und nach dem Abstecken ('' = Modus behalten).
                 'then_mode' => 'smart',
                 'after_unplug' => '',
+                // Preisgrenze brutto in ct/kWh (null: aus): darunter lädt das Auto in Solar und Min+Solar voll aus dem Netz.
+                'price_limit_ct' => null,
             ],
             // Hauptschalter: Nur wenn aktiv, schreibt EMS an Wallbox und Speicher.
             'control' => ['active' => false],

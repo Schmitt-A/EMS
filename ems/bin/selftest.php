@@ -941,4 +941,42 @@ $merged = GridMeter::merge([0 => 1.0, 3600 => 2.0], [3600 => ['import' => 0.4, '
 check($merged === [0 => [1.0, 3600], 3600 => [0.4, 900], 4500 => [0.4, 900], 5400 => [0.4, 900], 6300 => [0.4, 900]], 'Gemessene Stunden als Viertelstunden, die übrigen aus Home Assistant');
 check(PriceView::cheapest([0 => 30.0, 900 => 10.0, 1800 => 12.0, 2700 => 40.0, 7200 => 1.0], 2) == ['start' => 900, 'end' => 2700, 'ct' => 11.0] && PriceView::cheapest([0 => 30.0, 900 => 10.0], 2, true)['ct'] === 20.0, 'Günstigste zusammenhängende Zeit, Lücken unterbrechen');
 
+// Laden nach Preis: Plan aus den günstigsten Viertelstunden, Sonne zuerst, Warten auf morgen, knapp, Preisgrenze.
+$p0 = (int) strtotime('2026-10-12 18:00:00 Europe/Berlin');
+$deadline = $p0 + 52 * 900;
+$night = [];
+for ($i = 0; $i < 52; $i++) {
+    $night[$p0 + $i * 900] = $i >= 24 && $i < 32 ? 15.0 : 30.0;
+}
+$cheapPlan = ChargePlan::plan(11.0, 11.0, $p0, $deadline, $night);
+check($cheapPlan['status'] === 'ok' && $cheapPlan['slots'] === [$p0 + 28 * 900, $p0 + 29 * 900, $p0 + 30 * 900, $p0 + 31 * 900] && $cheapPlan['avg_ct'] === 15.0, 'Plan: 11 kWh bei 11 kW sind vier Viertelstunden, die günstigsten, bei gleichem Preis die späteren');
+check(ChargePlan::plan(2.75, 11.0, $p0, $deadline, array_fill_keys(array_keys($night), 30.0))['slots'] === [$p0 + 51 * 900], 'Statischer Tarif: die späteste Viertelstunde, damit die Sonne vorher helfen kann');
+$sunny = ChargePlan::plan(11.0, 11.0, $p0, $deadline, $night, [$p0 => 11.0, $p0 + 900 => 11.0]);
+check(abs($sunny['sun_kwh'] - 5.5) < 1e-9 && count($sunny['slots']) === 2 && abs($sunny['grid_kwh'] - 5.5) < 1e-9, 'Erwartete Sonne zieht vom Netz ab');
+$unknownNight = $night;
+foreach (array_keys($unknownNight) as $i => $q) {
+    if ($i >= 24) {
+        $unknownNight[$q] = null;
+    }
+}
+check(ChargePlan::plan(11.0, 11.0, $p0, $deadline, $unknownNight)['status'] === 'waiting' && ChargePlan::plan(11.0, 11.0, $p0, $deadline, $unknownNight)['slots'] === [], 'Reicht die Zeit ohne Preis, wartet der Plan auf die Preise für morgen');
+$partial = ChargePlan::plan(88.0, 11.0, $p0, $deadline, $unknownNight);
+check($partial['status'] === 'partial' && count($partial['slots']) === 4, 'Reicht sie nicht, kommt jetzt nur der Rest aus den bekannten Preisen');
+$tight = ChargePlan::plan(200.0, 11.0, $p0, $p0 + 3600, $night);
+check($tight['status'] === 'tight' && count($tight['slots']) === 4 && ChargePlan::plan(0.0, 11.0, $p0, $p0 + 3600, $night)['status'] === 'done', 'Zu wenig Zeit: jede Viertelstunde bis zur Uhrzeit; nichts mehr zu laden: fertig');
+$slotPlan = ['slots' => [$p0 + 24 * 900]];
+check(ChargePlan::effective('smart', $slotPlan, null, null, false, true, $p0 + 24 * 900 + 100) === ['mode' => 'netz', 'reason' => 'plan']
+    && ChargePlan::effective('smart', $slotPlan, null, null, false, true, $p0) === ['mode' => 'smart', 'reason' => null]
+    && ChargePlan::effective('aus', $slotPlan, null, null, false, true, $p0 + 24 * 900)['reason'] === null
+    && ChargePlan::effective('smart', $slotPlan, null, null, false, false, $p0 + 24 * 900)['reason'] === null, 'Netzladen nur in einer geplanten Viertelstunde, nur in Solar und Min+Solar und mit Auto');
+check(ChargePlan::effective('smart_dauerhaft', null, 18.0, 20.0, true, true, $p0) === ['mode' => 'netz', 'reason' => 'limit']
+    && ChargePlan::effective('smart', null, 21.0, 20.0, true, true, $p0)['reason'] === null
+    && ChargePlan::effective('smart', null, 18.0, 20.0, false, true, $p0)['reason'] === null, 'Preisgrenze nur mit dynamischem Tarif und nur darunter');
+check(ChargePlan::windows([900, 0, 2700]) === [[0, 1800], [2700, 3600]] && ChargePlan::limit(['price_limit_ct' => '19.5']) === 19.5 && ChargePlan::limit([]) === null, 'Zeitfenster aus Viertelstunden, Preisgrenze aus den Ladeparametern');
+$ready = Target::build(['type' => 'soc', 'soc' => '80', 'ready_by' => '07:00', 'then' => 'smart'], $p0, 40.0);
+check(($ready['target']['ready_by'] ?? null) === (int) strtotime('2026-10-13 07:00:00 Europe/Berlin') && Target::build(['type' => 'soc', 'soc' => '80', 'ready_by' => '7 Uhr'], $p0, 40.0)['error'] !== null
+    && !isset(Target::build(['type' => 'time', 'until' => '20:00', 'ready_by' => '07:00'], $p0, null)['target']['ready_by']), 'Fertig bis: die nächste 7:00, Unsinn wird abgelehnt, ein Ziel nach Uhrzeit braucht es nicht');
+check(abs(Target::neededKwh(['type' => 'soc', 'value' => 80], ['car_soc' => 40, 'capacity_kwh' => 75]) - 30 / 0.92) < 1e-9 && Target::neededKwh(['type' => 'energy', 'value' => 20], ['session_kwh' => 5]) === 15.0 && Target::neededKwh(['type' => 'soc', 'value' => 80], []) === null, 'Was bis zum Ziel noch fehlt, mit Ladeverlust');
+check(str_contains(ChargePlan::text($cheapPlan + ['deadline' => $deadline]), 'aus dem Netz') && str_contains(ChargePlan::text(['status' => 'waiting', 'slots' => [], 'deadline' => $deadline, 'sun_kwh' => 0, 'avg_ct' => null]), '13 Uhr') && ChargePlan::text(null) === '', 'Satz zum Plan für die Karte');
+
 echo "alle prüfungen bestanden\n";

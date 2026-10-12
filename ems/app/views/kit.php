@@ -582,7 +582,9 @@ function ui_chargepoint(array $cp, array $opts = []): string
         . '<div class="cp-target-body"><p class="cp-target-head"><span class="cp-target-label"' . ui_attrs(['data-live' => $p('target.label')]) . '>' . e((string) $t['label']) . '</span>'
         . '<span class="caption muted"' . ui_attrs(['data-live' => $p('target.then_text')]) . '>' . e((string) $t['then_text']) . '</span></p>'
         . '<span class="cp-target-bar" aria-hidden="true"><span class="cp-target-fill"></span></span>'
-        . '<p class="caption cp-target-text"' . ui_attrs(['data-live' => $p('target.text')]) . '>' . e((string) $t['text']) . '</p></div>'
+        . '<p class="caption cp-target-text"' . ui_attrs(['data-live' => $p('target.text')]) . '>' . e((string) $t['text']) . '</p>'
+        // Ladeplan für ein Ziel mit „fertig bis“, leer ohne.
+        . '<p class="caption muted cp-target-plan"' . ui_attrs(['data-live' => $p('target.plan_text')]) . '>' . e((string) ($t['plan_text'] ?? '')) . '</p></div>'
         . ui_inline('Ändern', ['data-open-dialog' => $id . '-target', 'aria-label' => 'Ladeziel ändern'])
         . '</div>'
         . '<button type="button" class="text-action cp-target-set" data-open-dialog="' . e($id) . '-target" data-target-none' . ($target !== null ? ' hidden' : '') . '>' . icon('target', 'icon-16') . '<span>Ladeziel setzen</span></button>';

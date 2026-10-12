@@ -52,9 +52,18 @@ Unter Einstellungen → Tarif stehen beide Tarife und welcher aktiv ist: statisc
 
 Ein dynamischer Tarif braucht ein Smart Meter und rechnet je Viertelstunde ab. Home Assistant hebt Leistungen nur als Stundenmittel auf; darum misst EMS den Netzbezug seit 1.11 selbst je Viertelstunde und nimmt diese Werte, wo es sie gibt.
 
+## Laden nach Preis
+
+In den Modi Solar und Min+Solar lädt das Auto zeitweise voll aus dem Netz, wie bei Netzladen (der Speicher gibt nichts ab), ohne dass sich die Modusauswahl ändert:
+
+- **Preisgrenze** (Einstellungen → Ladepunkt, nur mit dynamischem Tarif): Liegt der Strompreis jetzt höchstens bei der Grenze, lädt das Auto voll aus dem Netz.
+- **Ladeplan**: Ein Ladeziel nach Energie, Ladestand oder Reichweite kann ein „fertig bis“ bekommen. EMS rechnet, was bis dahin noch fehlt (mit 8 % Ladeverlust), zieht die erwartete Sonne ab (Prognose minus Ø Haus, davon 70 %) und wählt für den Rest die günstigsten Viertelstunden vor der Uhrzeit, bei gleichem Preis die späteren. Kennt EMS die Preise für morgen noch nicht und reicht die Zeit danach, wartet der Plan auf sie (gegen 13 Uhr); reicht sie nicht, lädt es jetzt nur den Rest. Der Plan steht in der Ladepunkt-Karte und ist im Strompreis-Diagramm hinterlegt; EMS rechnet ihn alle 15 min neu.
+
+Die Regelung zeigt dann „Netzladen (Ladeplan)“ oder „Netzladen (Preisgrenze)“ mit dem Grund.
+
 ## Ladeziele
 
-In der Ladepunkt-Karte setzt „Ladeziel setzen“ ein Ziel für den laufenden Ladevorgang: eine Energiemenge seit dem Anstecken (mit geschätzter Dauer), eine Uhrzeit (mit Countdown und bisher geladenen kWh), einen Ladestand oder eine Reichweite des Autos. Jedes Ziel nennt auch die Kilometer: was es bringt, was bis zur Uhrzeit zusammenkommt, die Reichweite danach; schon beim Eintippen rechnet das Sheet sie mit. Den Verbrauch dafür trägt man unter Einstellungen → Fahrzeug ein (kWh/100 km), sonst nimmt EMS den, mit dem das Auto seine Reichweite rechnet, und zieht 8 % Ladeverlust ab. Ist es erreicht, wechselt EMS in den Folgemodus; Aus stoppt die Wallbox. Beim Abstecken verfällt das Ziel. Unter Einstellungen → Ladepunkt stehen der vorgeschlagene Folgemodus und, was nach dem Abstecken gelten soll.
+In der Ladepunkt-Karte setzt „Ladeziel setzen“ ein Ziel für den laufenden Ladevorgang: eine Energiemenge seit dem Anstecken (mit geschätzter Dauer), eine Uhrzeit (mit Countdown und bisher geladenen kWh), einen Ladestand oder eine Reichweite des Autos, die ersten drei optional mit „fertig bis“ (siehe Laden nach Preis). Jedes Ziel nennt auch die Kilometer: was es bringt, was bis zur Uhrzeit zusammenkommt, die Reichweite danach; schon beim Eintippen rechnet das Sheet sie mit. Den Verbrauch dafür trägt man unter Einstellungen → Fahrzeug ein (kWh/100 km), sonst nimmt EMS den, mit dem das Auto seine Reichweite rechnet, und zieht 8 % Ladeverlust ab. Ist es erreicht, wechselt EMS in den Folgemodus; Aus stoppt die Wallbox. Beim Abstecken verfällt das Ziel. Unter Einstellungen → Ladepunkt stehen der vorgeschlagene Folgemodus und, was nach dem Abstecken gelten soll.
 
 ## Netzladen und Backup-Puffer
 

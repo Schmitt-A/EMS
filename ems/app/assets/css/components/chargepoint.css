@@ -356,6 +356,15 @@
   display: grid;
 }
 
+/* „Fertig bis“ gilt nicht für ein Ziel nach Uhrzeit. */
+.target-form:has(#tg-type-time:checked) .target-ready {
+  display: none;
+}
+
+.cp-target-plan:empty {
+  display: none;
+}
+
 .target-quick .btn {
   flex: 1 1 0;
 }

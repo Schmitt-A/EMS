@@ -29,7 +29,14 @@ final class PriceView
         }
         $span = isset(self::SPANS[$span]) ? $span : 'jahr';
         [$from, $to] = self::spanRange($span, $now);
+        $plan = ChargePlan::get($this->store);
+        $target = Target::get($this->store);
+        if ($plan !== null && ($target === null || (int) ($plan['target_set_at'] ?? 0) !== (int) ($target['set_at'] ?? -1))) {
+            $plan = null;
+        }
         return [
+            'plan' => $plan,
+            'limit' => ChargePlan::limit((array) ($this->store->all()['charge'] ?? [])),
             'now' => $tariff->now($now),
             'today' => self::stats($tariff, $today->getTimestamp(), $tomorrow->getTimestamp()),
             'tomorrow' => self::stats($tariff, $tomorrow->getTimestamp(), $tomorrow->modify('+1 day')->getTimestamp()),

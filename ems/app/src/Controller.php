@@ -587,7 +587,8 @@ final class Controller
             return $state;
         }
         $values = $snap['values'];
-        $mode = (string) $cfg['charge']['mode'];
+        // Ladeplan und Preisgrenze machen aus Solar und Min+Solar zeitweise Netzladen (ChargePlan::effective()).
+        $mode = (string) ($cfg['charge']['effective_mode'] ?? $cfg['charge']['mode']);
         // Ziel erreicht oder Auto abgesteckt: Folgemodus, Ziel löschen.
         $switch = Target::check($this->store, $snap, $now, $state['connected']);
         if ($switch !== null) {

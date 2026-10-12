@@ -22,7 +22,8 @@ final class Target
 
     /**
      * Ziel aus Formular oder JSON: type energy (kwh), time (until „HH:MM“ oder hours), soc (soc) oder range (km),
-     * dazu then.
+     * dazu then. Energie, Ladestand und Reichweite nehmen optional ready_by („HH:MM“, fertig bis): dann plant
+     * ChargePlan die günstigsten Viertelstunden davor.
      *
      * @return array{target: ?array, error: ?string}
      */
@@ -82,7 +83,48 @@ final class Target
         } else {
             return ['target' => null, 'error' => 'Unbekannte Zielart.'];
         }
+        $ready = trim((string) ($input['ready_by'] ?? ''));
+        if ($type !== 'time' && $ready !== '') {
+            $at = self::nextTime($ready, $now);
+            if ($at === null) {
+                return ['target' => null, 'error' => 'Bitte bei „fertig bis“ eine Uhrzeit wie 07:00 angeben.'];
+            }
+            $extra['ready_by'] = $at;
+        }
         return ['target' => ['type' => $type, 'value' => $value, 'then' => $then, 'set_at' => $now] + $extra, 'error' => null];
+    }
+
+    /** Die nächste Uhrzeit „HH:MM“ ab jetzt: heute, wenn sie noch kommt, sonst morgen. */
+    public static function nextTime(string $clock, int $now): ?int
+    {
+        if (!preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', trim($clock), $m)) {
+            return null;
+        }
+        $tz = new DateTimeZone('Europe/Berlin');
+        $at = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime((int) $m[1], (int) $m[2]);
+        if ($at->getTimestamp() <= $now) {
+            $at = $at->modify('+1 day');
+        }
+        return $at->getTimestamp();
+    }
+
+    /**
+     * Was bis zum Ziel noch an der Wallbox geladen werden muss, in kWh mit Ladeverlust; null, wenn es sich nicht
+     * rechnen lässt (Ladestand, Akku oder Verbrauch fehlen) oder das Ziel eine Uhrzeit ist.
+     */
+    public static function neededKwh(array $target, array $in): ?float
+    {
+        $value = (float) $target['value'];
+        $use = isset($in['consumption_kwh']) && is_numeric($in['consumption_kwh']) ? (float) $in['consumption_kwh'] : null;
+        $soc = isset($in['car_soc']) && is_numeric($in['car_soc']) ? (float) $in['car_soc'] : null;
+        $range = isset($in['range_km']) && is_numeric($in['range_km']) ? (float) $in['range_km'] : null;
+        $capacity = isset($in['capacity_kwh']) && is_numeric($in['capacity_kwh']) && (float) $in['capacity_kwh'] > 0 ? (float) $in['capacity_kwh'] : null;
+        return match ((string) $target['type']) {
+            'energy' => max(0.0, $value - max(0.0, (float) ($in['session_kwh'] ?? 0))),
+            'soc' => $soc === null || $capacity === null ? null : max(0.0, $value - $soc) / 100 * $capacity / Energy::CHARGE_EFFICIENCY,
+            'range' => $range === null ? null : Energy::kwhForKm(max(0.0, $value - $range), $use),
+            default => null,
+        };
     }
 
     /**
@@ -157,6 +199,9 @@ final class Target
                 $text = ($soc === null ? 'Ladestand unbekannt' : 'jetzt ' . pct($soc))
                     . ($reached ? '' : ($add !== null ? ' · noch ≈ ' . with_unit($add, 0, 'km') : '') . ($remaining === null ? '' : ', ca. ' . duration_clock($remaining)));
         }
+        if (!empty($target['ready_by'])) {
+            $label .= ' · fertig bis ' . date('H:i', (int) $target['ready_by']);
+        }
         return [
             'type' => (string) $target['type'],
             'label' => $label,
@@ -166,6 +211,7 @@ final class Target
             'progress' => round(max(0.0, min(1.0, $progress)), 3),
             'remaining_s' => $remaining,
             'reached' => $reached,
+            'ready_by' => isset($target['ready_by']) ? (int) $target['ready_by'] : null,
         ];
     }
 

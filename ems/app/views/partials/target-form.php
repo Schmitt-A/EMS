@@ -4,6 +4,7 @@ declare(strict_types=1);
  * Ladeziel-Sheet: nach Energiemenge, Uhrzeit, Ladestand oder Reichweite, dazu der Folgemodus. Die Felder der
  * gewählten Art zeigt CSS über :has() am Segment, ohne Skript. Unter jedem Feld rechnet components/target.js beim
  * Tippen die Kilometer und die Dauer aus den data-Werten des Formulars. Gespeichert wird per Formular (section target).
+ * Energie, Ladestand und Reichweite haben optional „fertig bis“: Dann plant ChargePlan die günstigsten Viertelstunden.
  * @var ?array $target gespeichertes Ziel
  * @var array $snap
  * @var string $back
@@ -22,6 +23,7 @@ $energy = $type === 'energy' && $value !== null ? $value : ceil($kwhNow + 20);
 $until = $type === 'time' && $value !== null ? date('H:i', (int) $value) : date('H:i', (int) (ceil((time() + 3600) / 900) * 900));
 $soc = $type === 'soc' && $value !== null ? $value : (float) ($vehicle['limit'] ?? 80);
 $km = $type === 'range' && $value !== null ? $value : ($range === null ? 300.0 : ceil(((float) $range + 100) / 10) * 10);
+$ready = isset($target['ready_by']) ? date('H:i', (int) $target['ready_by']) : '';
 $hint = static fn (string $panel): string => '<p class="caption target-km" data-target-km="' . $panel . '" aria-live="polite"></p>';
 ?>
 <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack target-form"<?= ui_attrs([
@@ -74,6 +76,7 @@ $hint = static fn (string $panel): string => '<p class="caption target-km" data-
     <?= $hint('range') ?>
 <?php endif; ?>
   </div>
+  <div class="form-rows target-ready"><?= ui_form_row('Fertig bis', ui_input('ready_by', $ready, ['id' => 'f-ready_by', 'type' => 'time', 'class' => 'field-num']), ['for' => 'f-ready_by', 'hint' => 'Optional. Dann lädt EMS in Solar und Min+Solar in den günstigsten Viertelstunden davor voll aus dem Netz, was die Sonne bis dahin nicht schafft.']) ?></div>
   <div class="form-rows"><?= ui_form_row('Danach', ui_select('then', ['smart' => 'Solar', 'smart_dauerhaft' => 'Min+Solar', 'aus' => 'Aus (Wallbox stoppt)'], $then), ['for' => 'f-then']) ?></div>
   <div class="form-actions">
     <button class="btn btn-primary" type="submit"><?= icon('target', 'icon-16') ?>Ziel setzen</button>

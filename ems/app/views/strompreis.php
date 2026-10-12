@@ -52,12 +52,14 @@ if (!empty($price['meta']['error']) && $price['horizon'] < time()) {
           . '<button type="button" class="toggle-chip c-v1" aria-pressed="true" data-chart-series="static"><span class="swatch swatch-dot"></span>Statisch</button>'
           . '<button type="button" class="toggle-chip c-muted" aria-pressed="true" data-chart-series="spot"><span class="swatch swatch-dot"></span>Börse</button>'
           . '<button type="button" class="toggle-chip c-grid-out" aria-pressed="true" data-chart-series="export"><span class="swatch swatch-dot"></span>Einspeisung</button>'
+          . ($price['limit'] !== null ? '<button type="button" class="toggle-chip c-ink" aria-pressed="true" data-chart-series="limit"><span class="swatch swatch-dot"></span>Preisgrenze</button>' : '')
           . '</div></div>',
       'style' => [
           'dynamic' => ['type' => 'step', 'width' => $dynamicActive ? 'bold' : null, 'dash' => !$dynamicActive, 'unit' => 'ct/kWh', 'decimals' => 1],
           'static' => ['type' => 'step', 'width' => $dynamicActive ? null : 'bold', 'dash' => $dynamicActive, 'unit' => 'ct/kWh', 'decimals' => 1],
           'spot' => ['type' => 'step', 'width' => 'thin', 'unit' => 'ct/kWh', 'decimals' => 1],
           'export' => ['type' => 'step', 'width' => 'thin', 'unit' => 'ct/kWh', 'decimals' => 1],
+          'limit' => ['type' => 'step', 'width' => 'thin', 'dash' => true, 'unit' => 'ct/kWh', 'decimals' => 1],
       ],
       'empty' => 'Noch keine Börsenpreise. Der Recorder holt sie gleich.',
   ]) ?>
@@ -73,6 +75,13 @@ if (!empty($price['meta']['error']) && $price['horizon'] < time()) {
     <li><span>Teuerste Stunde</span><strong class="num"><?= e($range($price['cheap']['dear'])) ?><?= $price['cheap']['dear'] ? ' · ' . e(ct((float) $price['cheap']['dear']['ct'])) : '' ?></strong></li>
   </ul>
   <p class="caption muted">Dynamischer Preis von jetzt bis <?= e($price['horizon'] > 0 ? $until($price['horizon']) : '—') ?>.<?= $tomorrowKnown ? '' : ' Die Preise für morgen gibt es ab etwa 13 Uhr.' ?></p>
+  <?= ui_divider('Laden nach Preis') ?>
+  <ul class="plain-list stack-tight body-sm" role="list">
+    <li><?= $price['limit'] !== null
+        ? e('Preisgrenze ' . ct((float) $price['limit']) . ': Darunter lädt das Auto in Solar und Min+Solar voll aus dem Netz' . ($dynamicActive ? '.' : ', sobald der dynamische Tarif aktiv ist.'))
+        : e('Keine Preisgrenze gesetzt.') ?> <?= ui_inline('Einstellungen → Ladepunkt', ['href' => url('/einstellungen/ladepunkt')]) ?></li>
+    <li><?= $price['plan'] !== null ? e(ChargePlan::text($price['plan'])) . ' Im Diagramm hinterlegt.' : e('Kein Ladeplan. Ein Ladeziel mit „fertig bis“ in der Ladepunkt-Karte lädt in den günstigsten Viertelstunden davor.') ?></li>
+  </ul>
 </section>
 
 <section class="card stack" aria-labelledby="compare-title">

@@ -33,6 +33,7 @@ if ($path === '/api/live') {
         (new Notify(store(), ha()))->tick($snap, time());
         (new GridMeter(store()))->record($snap['values'], time());
         (new MarketPrices(store()))->refresh(time());
+        ChargePlan::refresh(store(), $snap, time());
     }
     json_out($snapshot->livePayload($snap));
 }

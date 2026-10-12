@@ -20,6 +20,7 @@ declare(strict_types=1);
   <div class="form-rows">
     <?= ui_form_row('Phasen', ui_select('phase_mode', ['auto' => 'Automatisch', '1p' => '1-phasig', '3p' => '3-phasig'], (string) $charge['phase_mode']), ['for' => 'f-phase_mode']) ?>
     <?= ui_form_row('Nach dem Ladeziel', ui_select('then_mode', ['smart' => 'Solar', 'smart_dauerhaft' => 'Min+Solar', 'aus' => 'Aus'], (string) ($charge['then_mode'] ?? 'smart')), ['for' => 'f-then_mode', 'hint' => 'Vorschlag im Ladeziel-Sheet.']) ?>
+    <?= ui_form_row('Preisgrenze', ui_input('price_limit_ct', is_numeric($charge['price_limit_ct'] ?? null) ? ui_field_num((float) $charge['price_limit_ct'], 1) : '', ['id' => 'f-price_limit_ct', 'class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off', 'placeholder' => 'aus']), ['for' => 'f-price_limit_ct', 'hint' => 'ct/kWh, nur mit dynamischem Tarif. Liegt der Strompreis darunter, lädt das Auto in Solar und Min+Solar voll aus dem Netz, der Speicher gibt nichts ab. Leer heißt aus.']) ?>
     <?= ui_form_row('Nach dem Abstecken', ui_select('after_unplug', ['' => 'Modus behalten'] + array_map(static fn (array $o): string => $o['label'], ui_mode_options()), (string) ($charge['after_unplug'] ?? '')), ['for' => 'f-after_unplug']) ?>
   </div>
   <div class="form-actions">

@@ -38,6 +38,8 @@ while (true) {
             );
             // Netzbezug und Einspeisung je Viertelstunde, wie ein Smart Meter abrechnet.
             $meter->record($snap['values'], time());
+            // Ladeplan für ein Ziel mit „fertig bis“: alle 15 min, nach neuen Preisen oder einem neuen Ziel.
+            ChargePlan::refresh(store(), $snap, time());
             // Regelung der Wallbox wie evcc: Timer alle 10 s, Schritt alle 30 s, schreibt nur bei aktivem EMS.
             $controller->tick($snap, time());
             // Backup-Puffer: beim Netzladen anheben, danach zurücksetzen (auch nach einem Neustart mittendrin).

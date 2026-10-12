@@ -193,9 +193,33 @@ final class Snapshot
             (float) ($cfg['battery_strategy']['car_auto_soc'] ?? 100),
         );
         $reported = Energy::reportedPhases($values['wallbox_phases_raw'] ?? null);
+        // Laden nach Preis: in einer Viertelstunde des Ladeplans oder unter der Preisgrenze gilt für Regelung und
+        // Backup-Puffer Netzladen; die Modusauswahl zeigt weiter den eingestellten Modus (charge.mode).
+        $pricing = new Tariff($this->store);
+        $price = $pricing->now($now);
+        $plan = ChargePlan::get($this->store);
+        $target = Target::get($this->store);
+        if ($plan !== null && ($target === null || (int) ($plan['target_set_at'] ?? 0) !== (int) ($target['set_at'] ?? -1))) {
+            $plan = null;
+        }
+        $effective = ChargePlan::effective(
+            (string) ($cfg['charge']['mode'] ?? 'smart'),
+            $plan,
+            $price['dynamic_ct'] === null ? null : (float) $price['dynamic_ct'],
+            ChargePlan::limit($cfg['charge']),
+            $price['mode'] === 'dynamic',
+            Sessions::carConnected($values['wallbox_car_raw'] ?? null, isset($values['wallbox_kw']) ? (float) $values['wallbox_kw'] : null) !== false,
+            $now
+        );
+        $cfg['charge']['effective_mode'] = $effective['mode'];
+        $cfg['charge']['effective_reason'] = $effective['reason'];
+        $base['cfg'] = $cfg;
+        $base['price'] = $price;
+        $base['plan'] = $plan;
+        $charge = ['mode' => $effective['mode']] + $cfg['charge'];
         // Backup-Puffer, Schonen beim Netzladen und Entladeleistung: woher dem Auto fehlende Leistung käme.
         $battery = Reserve::battery($cfg);
-        $suggestion = Energy::suggest($live, $cfg['charge'], $reported, $strategy, $battery);
+        $suggestion = Energy::suggest($live, $charge, $reported, $strategy, $battery);
         // Was die Modi jetzt täten, für die Regelung unter der Ladepunkt-Karte.
         $modes = [];
         foreach (['smart', 'smart_dauerhaft', 'schnell', 'netz'] as $mode) {
@@ -204,7 +228,7 @@ final class Snapshot
         // Regelung: der Zustand, den der Recorder alle 30 s fortschreibt. Ist er nicht frisch oder gilt schon ein
         // anderer Modus, rechnet die Anzeige einen Schritt voraus, ohne ihn zu speichern.
         $controller = (new Controller($this->store, $this->ha))->state();
-        $controlIn = Controller::input($values, $cfg, $suggestion);
+        $controlIn = Controller::input($values, ['charge' => $charge] + $cfg, $suggestion);
         if ($controller['step_at'] === null || $now - (int) $controller['step_at'] > 90 || $controller['mode'] !== $controlIn['mode']) {
             $controller = Controller::step($controller, $controlIn, $now)['state'];
         }
@@ -334,15 +358,15 @@ final class Snapshot
             $base['warnings'][] = 'Backup-Puffer: ' . $base['reserve']['error'];
         }
         $base['target'] = Target::view(Target::get($this->store), Target::inputs($base), $now);
+        if ($base['target'] !== null) {
+            $base['target']['plan_text'] = ChargePlan::text($plan);
+        }
         if ($base['target'] !== null && $base['target']['remaining_s'] !== null && !$base['target']['reached']) {
             // Mit Ziel zählt die Restzeit bis zum Ziel, nicht bis zum Limit.
             $base['chargepoint']['remaining_s'] = $base['target']['remaining_s'];
             $base['chargepoint']['remaining_text'] = duration_clock((int) $base['target']['remaining_s']);
         }
-        $pricing = new Tariff($this->store);
         $base['session_view'] = self::sessionView($base, $cfg['tariffs'], $now, $pricing);
-        // Preis jetzt im aktiven Tarif (dynamisch je Viertelstunde), für Energie-Flow, Rein/Raus und Übersicht.
-        $base['price'] = $pricing->now($now);
         $base['control'] = self::control($live, $cfg['charge'], $strategy, $latched, $modes, $battery, $base['reserve'], $ems);
         $base['warnings'] = array_values(array_unique($base['warnings']));
         return $base;
@@ -564,9 +588,20 @@ final class Snapshot
         $batteryText = $soc === null ? 'ohne Ladestand' : pct($soc) . ($in > 0.05 ? ', lädt ' . kw($in) : ($out > 0.05 ? ', entlädt ' . kw($out) : ', ruht'));
         $own = Energy::batteryFor($active, $battery);
         $target = $setpoint['target_kw'] ?? null;
+        // Laden nach Preis: warum gerade Netzladen gilt, obwohl Solar oder Min+Solar eingestellt ist.
+        $limit = ChargePlan::limit($charge);
+        $override = match ($charge['effective_reason'] ?? null) {
+            'plan' => 'Ladeplan: Jetzt ist eine geplante Viertelstunde, das Auto lädt voll aus dem Netz.',
+            'limit' => 'Preisgrenze: Der Strompreis liegt bei höchstens ' . ct($limit) . ', das Auto lädt voll aus dem Netz.',
+            default => null,
+        };
         return [
             'mode' => $active,
-            'mode_label' => Energy::modeLabel($active),
+            'mode_label' => Energy::modeLabel($active) . match ($charge['effective_reason'] ?? null) {
+                'plan' => ' (Ladeplan)',
+                'limit' => ' (Preisgrenze)',
+                default => '',
+            },
             'zone' => $zone,
             'amps' => $amps,
             'phases' => $amps === 0 ? 0 : $phases,
@@ -575,7 +610,7 @@ final class Snapshot
             'kw_text' => kw($amps === 0 ? 0.0 : $kw),
             'headline' => self::headline($amps, $ems),
             'level_text' => $amps === 0 ? '' : self::levelText($amps, $phases),
-            'reason' => self::zoneText($active, $zone, $strategy, $soc, $minA, $reserve),
+            'reason' => ($override !== null ? $override . ' ' : '') . self::zoneText($active, $zone, $strategy, $soc, $minA, $reserve),
             'pending' => self::pendingText($setpoint),
             // Hauptschalter: regelt EMS die Wallbox oder zeigt es nur an?
             'ems_label' => !empty($ems['active']) ? (!empty($ems['paused']) ? 'pausiert' : 'regelt') : 'nur Anzeige',

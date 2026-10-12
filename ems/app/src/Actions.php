@@ -656,6 +656,7 @@ final class Actions
                 'off_delay_s' => (int) round(self::clamped($charge['off_delay_s'] ?? null, 60, 600, 180)),
                 'then_mode' => in_array($charge['then_mode'] ?? '', Target::THEN, true) ? (string) $charge['then_mode'] : 'smart',
                 'after_unplug' => in_array($charge['after_unplug'] ?? '', ['', ...Energy::MODES], true) ? (string) $charge['after_unplug'] : '',
+                'price_limit_ct' => is_numeric($charge['price_limit_ct'] ?? null) ? clamp_float((float) $charge['price_limit_ct'], -50, 200) : null,
             ]);
         }
         if (isset($data['battery_strategy']) && is_array($data['battery_strategy'])) {
@@ -778,6 +779,9 @@ final class Actions
             $then = (string) $_POST['then_mode'];
             $patch['then_mode'] = in_array($then, Target::THEN, true) ? $then : 'smart';
         }
+        if (array_key_exists('price_limit_ct', $_POST)) {
+            $patch['price_limit_ct'] = self::optional('price_limit_ct', -50, 200);
+        }
         if (array_key_exists('after_unplug', $_POST)) {
             $after = (string) $_POST['after_unplug'];
             $patch['after_unplug'] = in_array($after, ['', ...Energy::MODES], true) ? $after : '';
@@ -845,6 +849,7 @@ final class Actions
         $controller = new Controller(store(), ha());
         if (!empty($_POST['clear'])) {
             store()->put(Target::KEY, []);
+            store()->put(ChargePlan::KEY, []);
             $controller->kick(time());
             return 'Ladeziel gelöscht.';
         }
@@ -854,9 +859,12 @@ final class Actions
             return $built['error'];
         }
         store()->put(Target::KEY, $built['target']);
+        // Mit „fertig bis“ steht der Plan gleich, nicht erst beim nächsten Recorder-Schritt.
+        $plan = ChargePlan::refresh(store(), $snap, time(), true);
         $controller->kick(time());
         $view = Target::view($built['target'], Target::inputs($snap), time());
-        return 'Ladeziel gesetzt: ' . $view['label'] . ', danach ' . Energy::modeLabel((string) $built['target']['then']) . '.';
+        $planText = ChargePlan::text($plan);
+        return 'Ladeziel gesetzt: ' . $view['label'] . ', danach ' . Energy::modeLabel((string) $built['target']['then']) . '.' . ($planText !== '' ? ' ' . $planText : '');
     }
 
     /** Modus aus dem Segment-Umschalter (POST /api/modus). */

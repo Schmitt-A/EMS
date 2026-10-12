@@ -400,7 +400,29 @@ final class Series
                 $extrema[] = ['max' => $day['max'], 'min' => $day['min']];
             }
         }
+        // Ladeplan als hinterlegte Fenster, die Preisgrenze als Linie.
+        $bands = [];
+        $plan = ChargePlan::get($this->store);
+        $target = Target::get($this->store);
+        if ($plan !== null && $target !== null && (int) ($plan['target_set_at'] ?? 0) === (int) ($target['set_at'] ?? -1)) {
+            foreach (ChargePlan::windows((array) $plan['slots']) as [$a, $b]) {
+                $bands[] = ['from' => $a * 1000, 'to' => $b * 1000, 'label' => 'Ladeplan'];
+            }
+        }
+        $limit = ChargePlan::limit((array) ($this->store->all()['charge'] ?? []));
+        $limitSeries = [];
+        if ($limit !== null && $spots) {
+            // Je Viertelstunde ein Punkt, damit der Tooltip die Grenze überall nennt.
+            foreach ($series['spot'] as $point) {
+                $limitSeries[] = ['x' => $point['x'], 'y' => $point['y'] === null ? null : round($limit, 2)];
+            }
+            $lo = min($lo, $limit);
+            $hi = max($hi, $limit);
+            $yMin = $lo < 0 ? floor($lo / $step) * $step : 0.0;
+            $yMax = ceil(($hi * 1.05) / $step) * $step;
+        }
         $payload = [
+            'bands' => $bands,
             'days' => max(1, (int) round(($windowEnd - $from) / 86400)),
             'today' => [$today->getTimestamp() * 1000, $today->modify('+1 day')->getTimestamp() * 1000],
             'view' => [$today->getTimestamp() * 1000, $windowEnd * 1000],
@@ -420,6 +442,7 @@ final class Series
                 ['key' => 'static', 'label' => 'Statisch', 'color' => 'v1', 'axis' => 'y', 'data' => $series['static']],
                 ['key' => 'spot', 'label' => 'Börse netto', 'color' => 'muted', 'axis' => 'y', 'data' => $series['spot']],
                 ['key' => 'export', 'label' => 'Einspeisung', 'color' => 'export', 'axis' => 'y', 'data' => $series['export']],
+                ...($limitSeries ? [['key' => 'limit', 'label' => 'Preisgrenze', 'color' => 'ink', 'axis' => 'y', 'data' => $limitSeries]] : []),
             ],
         ];
         if (!$spots) {

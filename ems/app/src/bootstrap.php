@@ -25,6 +25,7 @@ require EMS_APP . '/src/GridMeter.php';
 require EMS_APP . '/src/Tariff.php';
 require EMS_APP . '/src/Reserve.php';
 require EMS_APP . '/src/Target.php';
+require EMS_APP . '/src/ChargePlan.php';
 require EMS_APP . '/src/Controller.php';
 require EMS_APP . '/src/Notify.php';
 require EMS_APP . '/src/Snapshot.php';

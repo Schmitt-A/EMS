@@ -94,7 +94,9 @@ final class Reserve
         $raw = isset($values['wallbox_car_raw']) ? (string) $values['wallbox_car_raw'] : null;
         $charging = ($power ?? 0.0) > 0.2 || Sessions::carState($raw) === 'charging';
         $soc = isset($values['battery_soc']) ? (float) $values['battery_soc'] : null;
-        $plan = self::decide($settings, $state, (string) ($cfg['charge']['mode'] ?? 'smart'), $soc, $charging, $open, Sessions::carConnected($raw, $power));
+        // Auch in einer Viertelstunde des Ladeplans und unter der Preisgrenze gilt Netzladen (ChargePlan::effective()).
+        $mode = (string) ($cfg['charge']['effective_mode'] ?? $cfg['charge']['mode'] ?? 'smart');
+        $plan = self::decide($settings, $state, $mode, $soc, $charging, $open, Sessions::carConnected($raw, $power));
         if ($plan['action'] === 'none') {
             return $state;
         }
