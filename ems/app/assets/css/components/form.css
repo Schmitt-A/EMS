@@ -342,6 +342,27 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   padding-block-start: var(--s-4);
 }
 
+/* Einstellungen → Darstellung, In Home Assistant: Knöpfe direkt unter dem Text, Links mit Kopierknopf daneben. */
+.ha-actions {
+  padding-block-start: 0;
+}
+
+.ha-actions:not(:has(> :not([hidden]))) {
+  display: none;
+}
+
+.ha-link {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.ha-link .field {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Fehlermeldungen und Feldgruppen */
 .fieldset {
   display: grid;

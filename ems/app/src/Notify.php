@@ -161,6 +161,21 @@ final class Notify
         ],
     ];
 
+    /**
+     * Seite von EMS, die ein Tippen auf die Mitteilung öffnet (ab Home Assistant 2026.2, /app/<slug>/<seite>); was hier
+     * fehlt, öffnet Laden. Die Probe einer Meldung öffnet deren Seite, der allgemeine Test die Mitteilungen.
+     */
+    public const PAGES = [
+        'battery_full' => '/speicher',
+        'battery_low' => '/speicher',
+        'boost' => '/speicher',
+        'sunny' => '/prognose',
+        'daily' => '/prognose',
+        'prices' => '/prognose/strompreis',
+        'monthly' => '/ladevorgaenge',
+        'test' => '/einstellungen/mitteilungen',
+    ];
+
     /** Vorlage der Test-Mitteilung. */
     public const TEST = ['title' => 'EMS Test', 'message' => 'Mitteilungen kommen an. Sonne {pv}, Speicher {speicher}, {uhrzeit}.'];
 
@@ -1277,7 +1292,7 @@ final class Notify
     {
         $targets = array_values($targets ?? $settings['targets']);
         $silent = !$test && !$important && self::quiet($settings, $now);
-        $payload = ['title' => $title, 'message' => $message, 'data' => self::data($event, $important, $silent, !empty($settings['open_app']) ? $this->appPath($now) : null)];
+        $payload = ['title' => $title, 'message' => $message, 'data' => self::data($event, $important, $silent, !empty($settings['open_app']) ? $this->appPath($now, self::PAGES[$event] ?? '/') : null)];
         $sent = [];
         $errors = [];
         foreach ($targets as $service) {
@@ -1426,11 +1441,11 @@ final class Notify
     }
 
     /**
-     * Was ein Tippen auf die Mitteilung in der App öffnet: die Oberfläche dieser App in Home Assistant. Ihren Namen
-     * (slug) fragt EMS einmal beim Supervisor nach (addons/self/info, für jede App frei) und merkt ihn sich in
-     * kv.notify_slug; ohne Supervisor öffnet ein Tippen nur die Home-Assistant-App.
+     * Was ein Tippen auf die Mitteilung in der App öffnet: die Oberfläche dieser App in Home Assistant, auf der Seite
+     * $page. Ihren Namen (slug) fragt EMS einmal beim Supervisor nach (addons/self/info, für jede App frei) und merkt
+     * ihn sich in kv.notify_slug; ohne Supervisor öffnet ein Tippen nur die Home-Assistant-App.
      */
-    public function appPath(int $now): ?string
+    public function appPath(int $now, string $page = '/'): ?string
     {
         $slug = $this->store->get('notify_slug', '');
         if (!is_string($slug) || $slug === '') {
@@ -1440,19 +1455,22 @@ final class Notify
             }
             $this->store->put('notify_slug', $slug);
         }
-        return self::panelPath($slug, $this->coreVersion($now));
+        return self::panelPath($slug, $this->coreVersion($now), $page);
     }
 
     /**
      * Seit Home Assistant 2026.2 öffnet /app/<slug> die Oberfläche einer App, /hassio/ingress/<slug> antwortet dort
-     * mit 404. Ältere Versionen kennen nur diesen Weg. Ist die Version unbekannt, gilt der neue.
+     * mit 404. Ältere Versionen kennen nur diesen Weg. Ist die Version unbekannt, gilt der neue. Eine Seite dahinter
+     * (/app/<slug>/speicher) öffnet EMS selbst (components/homeassistant.js); der alte Weg bleibt ohne, weil er den
+     * Rest der Adresse zum Namen der App zählen würde.
      */
-    public static function panelPath(string $slug, ?string $version): string
+    public static function panelPath(string $slug, ?string $version, string $page = '/'): string
     {
         if ($version !== null && preg_match('/^(\d+)\.(\d+)/', $version, $m) && ((int) $m[1] < 2026 || ((int) $m[1] === 2026 && (int) $m[2] < 2))) {
             return '/hassio/ingress/' . $slug;
         }
-        return '/app/' . $slug;
+        $page = '/' . trim($page, '/');
+        return '/app/' . $slug . ($page === '/' ? '' : $page);
     }
 
     /** Version von Home Assistant aus /api/config, je Prozess höchstens einmal in der Stunde gefragt. */

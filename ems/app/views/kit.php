@@ -37,7 +37,9 @@ function ui_json(mixed $data): string
 
 function ui_page_head(string $title, string $chip = ''): string
 {
-    return '<header class="page-head"><h1 class="page-title">' . e($title) . '</h1>' . $chip . '</header>';
+    // Im Vollbild in Home Assistant fehlt dessen Menü; diesen Knopf zeigt components/homeassistant.js nur dann.
+    $menu = ui_icon_button('menu', 'Menü von Home Assistant', ['class' => 'page-menu', 'data-ha-menu' => true, 'hidden' => true]);
+    return '<header class="page-head">' . $menu . '<h1 class="page-title">' . e($title) . '</h1>' . $chip . '</header>';
 }
 
 /** Kennzahl-Chip rechts im Kopf, öffnet die Energieübersicht. */

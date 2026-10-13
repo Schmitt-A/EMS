@@ -33,6 +33,19 @@
   flex: none;
 }
 
+/* Im Vollbild in Home Assistant: der Knopf fürs Menü von Home Assistant links vom Titel, das Icon bündig mit dem Rand. */
+.page-head:has(> .page-menu:not([hidden])) {
+  justify-content: flex-start;
+}
+
+.page-menu {
+  margin-inline-start: -0.75rem;
+}
+
+.page-menu:not([hidden]) + .page-title {
+  margin-inline-end: auto;
+}
+
 /* Mehrere Chips: auf dem Handy eine eigene Zeile über die ganze Breite, ab 480 px rechts neben dem Titel. */
 .page-head:has(.head-chips) {
   flex-wrap: wrap;

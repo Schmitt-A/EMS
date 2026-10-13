@@ -153,7 +153,7 @@ $ruleSheet = static function (array $rule, bool $fresh) use ($open, $condRow, $c
   </fieldset>
 <?php endif; ?>
   <div class="form-rows">
-    <?= ui_form_row('Tippen öffnet EMS', ui_toggle('open_app', $settings['open_app'], 'Tippen öffnet EMS', ['id' => 'f-nt-open']), ['hint' => 'Ein Tippen auf die Mitteilung öffnet EMS in der App, wenn EMS als App in Home Assistant läuft.']) ?>
+    <?= ui_form_row('Tippen öffnet EMS', ui_toggle('open_app', $settings['open_app'], 'Tippen öffnet EMS', ['id' => 'f-nt-open']), ['hint' => 'Ein Tippen auf die Mitteilung öffnet EMS in der App auf der passenden Seite, etwa Speicher bei „Speicher voll“, wenn EMS als App in Home Assistant läuft.']) ?>
     <?= ui_form_row('Ruhezeit', ui_toggle('quiet', $settings['quiet'], 'Ruhezeit', ['id' => 'f-nt-quiet']), ['hint' => 'In der Ruhezeit kommen Mitteilungen ohne Ton, wichtige wie immer.']) ?>
     <?= ui_form_row('Ruhezeit ab', $time('quiet_from', $settings['quiet_from'], 'f-nt-quiet-from'), ['for' => 'f-nt-quiet-from']) ?>
     <?= ui_form_row('Ruhezeit bis', $time('quiet_to', $settings['quiet_to'], 'f-nt-quiet-to'), ['for' => 'f-nt-quiet-to']) ?>
