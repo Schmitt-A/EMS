@@ -1,7 +1,8 @@
 <?php
 declare(strict_types=1);
 /**
- * Einstellungen → Prognose: Anlagenwerte, Eichfaktor und Regression, Adresse der DWD-Datei.
+ * Einstellungen → Prognose: Anlagenwerte, Eichfaktor und Regression, der Jahresertrag von PVGIS (Standort, Verluste,
+ * Wetterjahr) und die Adresse der DWD-Datei.
  * @var array $cfg
  * @var string $back
  */
@@ -33,6 +34,46 @@ $catalog = 'https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_station
       <button class="btn btn-secondary" type="submit" name="unlock_regress" value="1">Regression neu schätzen</button>
     </div>
   </form>
+</section>
+<?php
+// Jahresertrag von PVGIS für „Lohnt sich dynamisch?“: Stand, Standort (von Hand oder aus Home Assistant), Verluste, Wetterjahr.
+$pvgis = (new YearCheck(store(), ha()))->status($p, time());
+$pvgisSet = YearCheck::settings($p);
+$ha = $pvgis['ha'];
+$manual = is_numeric($p['lat'] ?? null) && is_numeric($p['lon'] ?? null);
+$stand = match ($pvgis['source']) {
+    'pvgis' => kwh($pvgis['year_kwh'], 0) . ' im Jahr' . ($pvgis['weather_year'] ? ', Wetter von ' . $pvgis['weather_year'] . ', Stunde für Stunde' : ', Monatsmittel') . ($pvgis['at'] ? '. Abgefragt am ' . date('d.m.Y', $pvgis['at']) . '.' : '.'),
+    'demo' => 'Demo-Modus: Beispielwerte, ohne Abfrage.',
+    'pending' => 'Wird gleich im Hintergrund abgefragt; bis dahin gilt eine Schätzung von ' . kwh($pvgis['year_kwh'], 0) . ' im Jahr.',
+    default => 'Schätzung ' . kwh($pvgis['year_kwh'], 0) . ' im Jahr aus 950 kWh je kWp' . ($pvgis['error'] ? '. ' . $pvgis['error'] : '.'),
+};
+$years = [];
+for ($year = YearCheck::LAST_YEAR; $year >= YearCheck::FIRST_YEAR; $year--) {
+    $years[(string) $year] = (string) $year;
+}
+?>
+<section class="card stack" aria-labelledby="pvgis-title">
+  <h3 class="card-title" id="pvgis-title">Jahresertrag von PVGIS</h3>
+  <p class="body-sm muted">„Lohnt sich dynamisch?“ unter Prognose → Strompreis rechnet mit dem Ertrag deiner Anlage Stunde für Stunde in einem echten Wetterjahr. Den liefert PVGIS, ein Dienst der Gemeinsamen Forschungsstelle der EU-Kommission, aus Satellitendaten für jeden Ort in Europa, Afrika und großen Teilen Asiens und Amerikas. EMS schickt dafür den Standort, kWp, Neigung und Ausrichtung von oben und die Verluste dorthin, im Hintergrund, höchstens alle sechs Monate und wenn sich etwas davon ändert.</p>
+  <dl class="kv">
+    <div><dt>Stand</dt><dd><?= e($stand) ?></dd></div>
+    <div><dt>Standort</dt><dd><?= e($pvgis['location'] === null ? 'unbekannt, bitte unten eintragen' : YearCheck::place($pvgis['location']) . ($pvgis['location']['source'] === 'manual' ? ', von Hand' : ', aus Home Assistant')) ?></dd></div>
+  </dl>
+  <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack">
+    <?= csrf_field() ?>
+    <input type="hidden" name="section" value="pvgis"><input type="hidden" name="back" value="<?= e($back) ?>">
+    <div class="form-rows">
+      <?= ui_form_row('Breite', ui_input('lat', $manual ? ui_field_num((float) $p['lat'], 4) : '', ['id' => 'f-lat', 'class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off', 'placeholder' => $ha ? ui_field_num($ha['lat'], 4) : '']), ['for' => 'f-lat', 'hint' => 'Grad, Norden positiv. Leer: der Standort von Home Assistant.']) ?>
+      <?= ui_form_row('Länge', ui_input('lon', $manual ? ui_field_num((float) $p['lon'], 4) : '', ['id' => 'f-lon', 'class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off', 'placeholder' => $ha ? ui_field_num($ha['lon'], 4) : '']), ['for' => 'f-lon', 'hint' => 'Grad, Osten positiv. So lässt sich auch eine Anlage an einem anderen Ort rechnen.']) ?>
+      <?= ui_number_row('pvgis_loss', 'Systemverluste', $pvgisSet['loss'], 1, 'Prozent für Kabel, Wechselrichter, Verschmutzung und Alterung. PVGIS empfiehlt 14.') ?>
+      <?= ui_form_row('Wetterjahr', ui_select('pvgis_year', $years, (string) $pvgisSet['year'], ['id' => 'f-pvgis-year']), ['for' => 'f-pvgis-year', 'hint' => 'Das Wetter dieses Jahres, Stunde für Stunde, mit trüben und sonnigen Tagen.']) ?>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit" name="do" value="save">PVGIS speichern</button>
+      <button class="btn btn-secondary" type="submit" name="do" value="refresh">Neu abfragen</button>
+    </div>
+  </form>
+  <p class="caption muted"><?= e(YearCheck::SOURCE) ?>, re.jrc.ec.europa.eu.</p>
 </section>
 <section class="card stack" aria-labelledby="dwd-title">
   <h3 class="card-title" id="dwd-title">DWD-Prognose</h3>

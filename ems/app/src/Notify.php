@@ -5,8 +5,10 @@ declare(strict_types=1);
  * Mitteilungen über die Home-Assistant-App (notify.mobile_app_…): welche Ereignisse, an welche Geräte, mit Titel
  * und Text aus Vorlagen mit Platzhaltern wie {auto} oder {geladen}. tick() läuft im Recorder nach Ladevorgängen,
  * Regelung und Puffer. Es erkennt Ereignisse an Zustandswechseln (detect() ohne Seiteneffekte) und schickt sie an
- * die gewählten Geräte. Einstellungen in kv.notify, Zustand in kv.notify_state, gesendete Mitteilungen in der
- * Tabelle notifications. Mit dem Hauptschalter hat das nichts zu tun: Mitteilungen gehen auch, wenn EMS nur anzeigt.
+ * die gewählten Geräte. Dazu eigene Mitteilungen (custom): Bedingungen aus Messwerten, Preisen, Prognose, Auto,
+ * Modus und Uhrzeit (CONDITIONS), frei verknüpft, mit Titel und Text aus allen Platzhaltern (detectCustom()).
+ * Einstellungen in kv.notify, Zustand in kv.notify_state, gesendete Mitteilungen in der Tabelle notifications. Mit dem
+ * Hauptschalter hat das nichts zu tun: Mitteilungen gehen auch, wenn EMS nur anzeigt.
  */
 final class Notify
 {
@@ -26,6 +28,7 @@ final class Notify
         'wichtig' => 'Wichtig',
         'laden' => 'Laden',
         'speicher' => 'Speicher und Sonne',
+        'strompreis' => 'Strompreis',
         'berichte' => 'Berichte',
     ];
 
@@ -88,6 +91,18 @@ final class Notify
             'title' => 'Lademodus {modus}', 'message' => 'Vorher {vorher}. Sonne gerade {pv}, {auto} bei {ladestand}.',
             'vars' => ['modus', 'vorher', 'pv', 'ladestand'], 'params' => [],
         ],
+        'grid' => [
+            'group' => 'laden', 'label' => 'Netzladen geändert', 'icon' => 'plug-zap', 'on' => false, 'important' => false,
+            'hint' => 'Wenn Netzladen auf Aus, Jetzt oder In Ladefenstern wechselt, von Hand, nach einem Ziel oder beim Abstecken.',
+            'title' => 'Netzladen {netzladen}', 'message' => 'Vorher {vorher}. Lademodus {modus}, {auto} bei {ladestand}.',
+            'vars' => ['netzladen', 'vorher', 'modus', 'ladestand', 'fenster'], 'labels' => ['vorher' => 'Netzladen davor'], 'params' => [],
+        ],
+        'plan' => [
+            'group' => 'laden', 'label' => 'Ladeplan wird knapp', 'icon' => 'clock-alert', 'on' => true, 'important' => false,
+            'hint' => 'Wenn ein Ziel fürs Netzladen mit „fertig bis“ nur noch reicht, wenn das Auto durchgehend lädt; einmal je Ziel.',
+            'title' => '{auto}: Ladeplan knapp', 'message' => '{plan} Ziel: {ziel_netz}, Ladestand {ladestand}.',
+            'vars' => ['plan', 'ziel_netz', 'ladestand', 'geladen'], 'params' => [],
+        ],
         'control' => [
             'group' => 'laden', 'label' => 'Regelung ein oder aus', 'icon' => 'power', 'on' => false, 'important' => false,
             'hint' => 'Wenn der Hauptschalter „EMS regelt die Wallbox“ umgelegt wird.',
@@ -118,6 +133,18 @@ final class Notify
             'title' => 'Morgen viel Sonne', 'message' => 'Erwartet: {prognose_morgen}. Gute Gelegenheit, {auto} mit Sonne zu laden.',
             'vars' => ['prognose_morgen', 'prognose_heute', 'ertrag_heute'], 'params' => ['sunny_kwh', 'report_time'],
         ],
+        'boost' => [
+            'group' => 'speicher', 'label' => 'Energie-Boost', 'icon' => 'battery-charging', 'on' => true, 'important' => false,
+            'hint' => 'Wenn ein Energie-Boost den Speicher aus dem Netz zu laden beginnt und wenn er endet. Nur, wenn EMS regelt.',
+            'title' => 'Energie-Boost', 'message' => '{grund} Speicher {speicher}.',
+            'vars' => ['grund', 'speicher', 'speicher_kwh', 'preis'], 'labels' => ['grund' => 'Was der Boost tut'], 'params' => [],
+        ],
+        'prices' => [
+            'group' => 'strompreis', 'label' => 'Preise für morgen', 'icon' => 'badge-euro', 'on' => false, 'important' => false,
+            'hint' => 'Sobald die Preise für morgen da sind, meist gegen 13 Uhr, mit dem günstigsten Fenster. Nur mit dynamischem Tarif.',
+            'title' => 'Strom morgen Ø {preis_morgen}', 'message' => 'Am günstigsten {fenster_morgen}. Jetzt {preis}.',
+            'vars' => ['preis_morgen', 'fenster_morgen', 'preis', 'fenster'], 'params' => [],
+        ],
         'daily' => [
             'group' => 'berichte', 'label' => 'Tagesbericht', 'icon' => 'calendar', 'on' => false, 'important' => false,
             'hint' => 'Jeden Tag zur Berichtszeit.',
@@ -137,11 +164,12 @@ final class Notify
     /** Vorlage der Test-Mitteilung. */
     public const TEST = ['title' => 'EMS Test', 'message' => 'Mitteilungen kommen an. Sonne {pv}, Speicher {speicher}, {uhrzeit}.'];
 
-    /** Platzhalter und was sie bedeuten. grund, seit, monat und vorgaenge haben nur bei ihren Ereignissen einen Wert. */
+    /** Platzhalter und was sie bedeuten. grund, seit, vorher, monat, vorgaenge und regel haben nur bei ihren Ereignissen einen Wert. */
     public const VARS = [
         'auto' => 'Name des Autos',
         'ladepunkt' => 'Name des Ladepunkts',
         'modus' => 'Lademodus',
+        'netzladen' => 'Netzladen: Aus, Jetzt oder In Ladefenstern',
         'leistung' => 'Ladeleistung jetzt',
         'ladestand' => 'Ladestand des Autos',
         'reichweite' => 'Reichweite',
@@ -152,16 +180,28 @@ final class Notify
         'sonnenanteil' => 'Anteil aus der Sonne',
         'kosten' => 'Kosten des Ladevorgangs',
         'ersparnis' => 'Gespart gegenüber Netzstrom',
-        'ziel' => 'Ladeziel',
+        'ziel' => 'Ladeziel für Sonne und Speicher',
+        'ziel_netz' => 'Ladeziel fürs Netzladen',
+        'plan' => 'Ladeplan fürs Netzladen',
         'regelung' => 'EMS-Regelung an oder aus',
         'pv' => 'Sonne jetzt',
         'haus' => 'Haus jetzt',
+        'ueberschuss' => 'Sonnenüberschuss jetzt',
         'speicher' => 'Ladestand des Speichers',
+        'speicher_kwh' => 'Energie im Speicher',
+        'boost' => 'Energie-Boost des Speichers',
         'einspeisung' => 'Einspeisung jetzt',
         'netzbezug' => 'Netzbezug jetzt',
         'ertrag_heute' => 'Sonne heute erzeugt',
         'prognose_heute' => 'Prognose heute',
+        'sonne_rest' => 'Sonne heute noch erwartet',
         'prognose_morgen' => 'Prognose morgen',
+        'preis' => 'Strompreis jetzt im aktiven Tarif',
+        'preis_dynamisch' => 'Dynamischer Preis jetzt',
+        'boerse' => 'Börsenpreis jetzt, netto',
+        'preis_morgen' => 'Ø dynamischer Preis morgen',
+        'fenster' => 'Nächstes Ladefenster',
+        'fenster_morgen' => 'Günstigstes Fenster morgen',
         'geladen_heute' => 'Heute ins Auto geladen',
         'uhrzeit' => 'Uhrzeit',
         'datum' => 'Datum',
@@ -170,10 +210,64 @@ final class Notify
         'vorher' => 'Modus davor',
         'monat' => 'Monat',
         'vorgaenge' => 'Ladevorgänge im Monat',
+        'regel' => 'Name der eigenen Mitteilung',
     ];
 
     /** Platzhalter, die nur bei diesen Ereignissen einen Wert haben. */
-    private const ONLY = ['grund' => ['fault', 'offline'], 'seit' => ['offline', 'stuck'], 'vorher' => ['mode'], 'monat' => ['monthly'], 'vorgaenge' => ['monthly']];
+    private const ONLY = ['grund' => ['fault', 'offline', 'boost'], 'seit' => ['offline', 'stuck'], 'vorher' => ['mode', 'grid'], 'monat' => ['monthly'], 'vorgaenge' => ['monthly'], 'regel' => ['custom']];
+
+    /** Höchstens so viele eigene Mitteilungen und Bedingungen je Mitteilung. */
+    public const CUSTOM_MAX = 20;
+    public const CONDITIONS_MAX = 5;
+    public const NAME_MAX = 60;
+
+    /**
+     * Was eigene Mitteilungen prüfen können (conditionValues()): Gruppe fürs Auswahlfeld, Name, Art (num, bool, time,
+     * enum), Einheit und Nachkommastellen, bei enum die Auswahl.
+     */
+    public const CONDITIONS = [
+        'pv_kw' => ['group' => 'Sonne und Haus', 'label' => 'Sonne jetzt', 'type' => 'num', 'unit' => 'kW', 'decimals' => 1],
+        'house_kw' => ['group' => 'Sonne und Haus', 'label' => 'Haus jetzt', 'type' => 'num', 'unit' => 'kW', 'decimals' => 1],
+        'surplus_kw' => ['group' => 'Sonne und Haus', 'label' => 'Überschuss jetzt', 'type' => 'num', 'unit' => 'kW', 'decimals' => 1],
+        'export_kw' => ['group' => 'Sonne und Haus', 'label' => 'Einspeisung jetzt', 'type' => 'num', 'unit' => 'kW', 'decimals' => 1],
+        'import_kw' => ['group' => 'Sonne und Haus', 'label' => 'Netzbezug jetzt', 'type' => 'num', 'unit' => 'kW', 'decimals' => 1],
+        'yield_today' => ['group' => 'Sonne und Haus', 'label' => 'Sonne heute erzeugt', 'type' => 'num', 'unit' => 'kWh', 'decimals' => 1],
+        'forecast_rest' => ['group' => 'Sonne und Haus', 'label' => 'Sonne heute noch', 'type' => 'num', 'unit' => 'kWh', 'decimals' => 1],
+        'forecast_today' => ['group' => 'Sonne und Haus', 'label' => 'Prognose heute', 'type' => 'num', 'unit' => 'kWh', 'decimals' => 0],
+        'forecast_tomorrow' => ['group' => 'Sonne und Haus', 'label' => 'Prognose morgen', 'type' => 'num', 'unit' => 'kWh', 'decimals' => 0],
+        'battery_soc' => ['group' => 'Speicher', 'label' => 'Ladestand des Speichers', 'type' => 'num', 'unit' => '%', 'decimals' => 0],
+        'battery_kwh' => ['group' => 'Speicher', 'label' => 'Energie im Speicher', 'type' => 'num', 'unit' => 'kWh', 'decimals' => 1],
+        'car_connected' => ['group' => 'Auto und Wallbox', 'label' => 'Auto angesteckt', 'type' => 'bool'],
+        'car_charging' => ['group' => 'Auto und Wallbox', 'label' => 'Auto lädt', 'type' => 'bool'],
+        'wallbox_kw' => ['group' => 'Auto und Wallbox', 'label' => 'Ladeleistung', 'type' => 'num', 'unit' => 'kW', 'decimals' => 1],
+        'session_kwh' => ['group' => 'Auto und Wallbox', 'label' => 'Geladen seit dem Anstecken', 'type' => 'num', 'unit' => 'kWh', 'decimals' => 1],
+        'car_soc' => ['group' => 'Auto und Wallbox', 'label' => 'Ladestand des Autos', 'type' => 'num', 'unit' => '%', 'decimals' => 0],
+        'car_range' => ['group' => 'Auto und Wallbox', 'label' => 'Reichweite', 'type' => 'num', 'unit' => 'km', 'decimals' => 0],
+        'mode' => ['group' => 'Auto und Wallbox', 'label' => 'Lademodus', 'type' => 'enum', 'options' => ['aus' => 'Laden aus', 'smart' => 'Intelligent', 'smart_dauerhaft' => 'Min+Sonne', 'schnell' => 'Schnell']],
+        'grid' => ['group' => 'Auto und Wallbox', 'label' => 'Netzladen', 'type' => 'enum', 'options' => ['off' => 'Aus', 'now' => 'Jetzt', 'windows' => 'In Ladefenstern']],
+        'control' => ['group' => 'Auto und Wallbox', 'label' => 'EMS regelt die Wallbox', 'type' => 'bool'],
+        'price_ct' => ['group' => 'Strompreis', 'label' => 'Strompreis jetzt', 'type' => 'num', 'unit' => 'ct/kWh', 'decimals' => 1],
+        'dynamic_ct' => ['group' => 'Strompreis', 'label' => 'Dynamischer Preis jetzt', 'type' => 'num', 'unit' => 'ct/kWh', 'decimals' => 1],
+        'spot_ct' => ['group' => 'Strompreis', 'label' => 'Börsenpreis jetzt', 'type' => 'num', 'unit' => 'ct/kWh', 'decimals' => 1],
+        'in_window' => ['group' => 'Strompreis', 'label' => 'Ladefenster läuft', 'type' => 'bool'],
+        'time' => ['group' => 'Zeit', 'label' => 'Uhrzeit', 'type' => 'time'],
+        'weekday' => ['group' => 'Zeit', 'label' => 'Wochentag', 'type' => 'enum', 'options' => ['1' => 'Montag', '2' => 'Dienstag', '3' => 'Mittwoch', '4' => 'Donnerstag', '5' => 'Freitag', '6' => 'Samstag', '7' => 'Sonntag']],
+    ];
+
+    /** Vergleiche je Art: Schlüssel und wie er im Satz steht. */
+    public const OPERATORS = [
+        'num' => ['lt' => '<', 'le' => '≤', 'gt' => '>', 'ge' => '≥', 'eq' => '=', 'ne' => '≠'],
+        'bool' => ['yes' => 'ja', 'no' => 'nein'],
+        'time' => ['ge' => 'ab', 'lt' => 'vor'],
+        'enum' => ['eq' => 'ist', 'ne' => 'ist nicht'],
+    ];
+
+    /** Wann eine eigene Mitteilung wiederkommt. */
+    public const REPEAT = [
+        'edge' => 'Jedes Mal, wenn sie eintritt',
+        'hour' => 'Stündlich, solange sie gilt',
+        'day' => 'Einmal am Tag, wenn sie gilt',
+    ];
 
     /** Grenzen der Ereignisse: Name, Einheit, Bereich, Standard, Nachkommastellen, Hinweis. report_time ist eine Uhrzeit. */
     public const PARAMS = [
@@ -196,6 +290,9 @@ final class Notify
     private static int $slugTried = 0;
     /** @var ?array{0: int, 1: ?string} Zeitpunkt der Abfrage und Version von Home Assistant */
     private static ?array $coreVersion = null;
+
+    /** @var ?array{0: int, 1: array<string, string>} planContext() zu einem Zeitpunkt */
+    private ?array $planCache = null;
 
     public function __construct(private ConfigStore $store, private HaSource $ha) {}
 
@@ -220,6 +317,13 @@ final class Notify
             ];
         }
         $test = is_array($raw['test'] ?? null) ? $raw['test'] : [];
+        $custom = [];
+        foreach (is_array($raw['custom'] ?? null) ? $raw['custom'] : [] as $rule) {
+            $clean = self::cleanRule($rule);
+            if ($clean !== null && count($custom) < self::CUSTOM_MAX && !isset($custom[$clean['id']])) {
+                $custom[$clean['id']] = $clean;
+            }
+        }
         $out = [
             'targets' => self::targets($raw['targets'] ?? []),
             'open_app' => (bool) ($raw['open_app'] ?? true),
@@ -228,6 +332,7 @@ final class Notify
             'quiet_to' => self::clock($raw['quiet_to'] ?? null, '07:00'),
             'report_time' => self::clock($raw['report_time'] ?? null, (string) self::PARAMS['report_time']['default']),
             'events' => $events,
+            'custom' => array_values($custom),
             'test' => [
                 'title' => self::text($test['title'] ?? null, self::TITLE_MAX) ?? self::TEST['title'],
                 'message' => self::text($test['message'] ?? null, self::MESSAGE_MAX, true) ?? self::TEST['message'],
@@ -256,6 +361,7 @@ final class Notify
         }
         $out = array_intersect_key($settings, array_flip(['targets', 'open_app', 'quiet', 'quiet_from', 'quiet_to', 'report_time', 'full_soc', 'low_soc', 'surplus_kw', 'sunny_kwh']));
         $out['events'] = $events;
+        $out['custom'] = array_values($settings['custom'] ?? []);
         $out['test'] = [
             'title' => $settings['test']['title'] !== self::TEST['title'] ? $settings['test']['title'] : null,
             'message' => $settings['test']['message'] !== self::TEST['message'] ? $settings['test']['message'] : null,
@@ -275,7 +381,9 @@ final class Notify
         $s = self::settings($cfg);
         $on = count(array_filter($s['events'], static fn (array $event): bool => $event['on']));
         $devices = count($s['targets']);
-        return ($devices === 0 ? 'Kein Gerät gewählt' : ($devices === 1 ? '1 Gerät' : $devices . ' Geräte')) . ' · ' . $on . ' von ' . count(self::EVENTS) . ' Meldungen an';
+        $own = count(array_filter($s['custom'], static fn (array $rule): bool => $rule['on']));
+        return ($devices === 0 ? 'Kein Gerät gewählt' : ($devices === 1 ? '1 Gerät' : $devices . ' Geräte')) . ' · ' . $on . ' von ' . count(self::EVENTS) . ' Meldungen an'
+            . ($own > 0 ? ' · ' . $own . ' eigene' : '');
     }
 
     /** Vorlage aus dem Formular: ohne Steuerzeichen, der Titel einzeilig, gekürzt; leer heißt Standard (null). */
@@ -328,7 +436,11 @@ final class Notify
     /** Platzhalter fürs Sheet: erst die des Ereignisses, dann alle übrigen mit Wert. @return array{0: list<string>, 1: list<string>} */
     public static function varsFor(string $event): array
     {
-        $own = $event === 'test' ? ['pv', 'speicher', 'uhrzeit', 'auto'] : self::EVENTS[$event]['vars'];
+        $own = match ($event) {
+            'test' => ['pv', 'speicher', 'uhrzeit', 'auto'],
+            'custom' => ['regel', 'pv', 'speicher', 'ueberschuss', 'preis', 'uhrzeit'],
+            default => self::EVENTS[$event]['vars'] ?? [],
+        };
         $rest = [];
         foreach (array_keys(self::VARS) as $key) {
             if (!in_array($key, $own, true) && (!isset(self::ONLY[$key]) || in_array($event, self::ONLY[$key], true))) {
@@ -354,12 +466,14 @@ final class Notify
         $cfg = is_array($snap['cfg'] ?? null) ? $snap['cfg'] : [];
         $vehicle = is_array($snap['vehicle'] ?? null) ? $snap['vehicle'] : [];
         $forecast = is_array($snap['forecast'] ?? null) ? $snap['forecast'] : [];
+        $price = is_array($snap['price'] ?? null) ? $snap['price'] : [];
         $n = static fn (mixed $value): ?float => is_numeric($value) ? (float) $value : null;
         $local = (new DateTimeImmutable('@' . $now))->setTimezone(new DateTimeZone('Europe/Berlin'));
         $out = [
             'auto' => trim((string) ($vehicle['name'] ?? $cfg['vehicle']['name'] ?? '')) ?: 'Auto',
             'ladepunkt' => trim((string) ($snap['chargepoint']['name'] ?? $cfg['chargepoint']['name'] ?? '')) ?: 'Wallbox',
             'modus' => Energy::modeLabel((string) ($cfg['charge']['mode'] ?? 'smart')),
+            'netzladen' => Energy::gridLabel((string) ($cfg['charge']['grid'] ?? 'off')),
             'leistung' => kw($n($v['wallbox_kw'] ?? null)),
             'ladestand' => pct($n($vehicle['soc'] ?? null)),
             'reichweite' => with_unit($n($vehicle['range_km'] ?? null), 0, 'km'),
@@ -371,15 +485,27 @@ final class Notify
             'kosten' => '—',
             'ersparnis' => '—',
             'ziel' => (string) ($snap['target']['label'] ?? '') ?: '—',
+            'ziel_netz' => (string) ($snap['grid_target']['label'] ?? '') ?: '—',
+            'plan' => '—',
             'regelung' => Controller::active($cfg) ? 'an' : 'aus',
             'pv' => kw($n($v['pv_kw'] ?? null)),
             'haus' => kw($n($snap['balance']['house_base_kw'] ?? $v['house_kw'] ?? null)),
+            'ueberschuss' => kw($n($snap['balance']['surplus_kw'] ?? null)),
             'speicher' => pct($n($v['battery_soc'] ?? null)),
+            'speicher_kwh' => kwh($n($v['battery_capacity_kwh'] ?? null), 1),
+            'boost' => '—',
             'einspeisung' => kw($n($v['grid_export_kw'] ?? null)),
             'netzbezug' => kw($n($v['grid_import_kw'] ?? null)),
             'ertrag_heute' => kwh($n($snap['yield_today'] ?? null)),
             'prognose_heute' => kwh($n($forecast['today_kwh'] ?? null), 0),
+            'sonne_rest' => kwh($n($forecast['remaining_kwh'] ?? null), 1),
             'prognose_morgen' => kwh($n($forecast['tomorrow_kwh'] ?? null), 0),
+            'preis' => ct($n($price['import_ct'] ?? null)),
+            'preis_dynamisch' => ct($n($price['dynamic_ct'] ?? null)),
+            'boerse' => ct($n($price['spot_ct'] ?? null)),
+            'preis_morgen' => '—',
+            'fenster' => '—',
+            'fenster_morgen' => '—',
             'geladen_heute' => '—',
             'uhrzeit' => $local->format('H:i'),
             'datum' => short_day_label($local),
@@ -388,6 +514,7 @@ final class Notify
             'vorher' => '—',
             'monat' => '—',
             'vorgaenge' => '—',
+            'regel' => '—',
         ];
         if ($session !== null) {
             $cost = Sessions::cost($session, $pricing?->forRow($session) ?? (array) ($snap['cfg']['tariffs'] ?? []));
@@ -419,8 +546,9 @@ final class Notify
         } elseif (is_array($snap['session'] ?? null)) {
             $session = Sessions::merge([$snap['session']]);
         }
-        $extra = array_intersect_key($data, array_flip(['grund', 'seit', 'ziel', 'vorher']));
+        $extra = array_intersect_key($data, array_flip(['grund', 'seit', 'ziel', 'vorher', 'regel']));
         $local = (new DateTimeImmutable('@' . $now))->setTimezone(new DateTimeZone('Europe/Berlin'));
+        $extra += $this->planContext($now);
         $stmt = $this->store->pdo()->prepare('SELECT COALESCE(SUM(energy_kwh), 0) FROM sessions WHERE started_at >= ?');
         $stmt->execute([$local->setTime(0, 0)->format('c')]);
         $extra['geladen_heute'] = kwh((float) $stmt->fetchColumn());
@@ -450,6 +578,44 @@ final class Notify
         return self::context($snap, $now, $session, $extra, new Tariff($this->store));
     }
 
+    /**
+     * Ladeplan, Energie-Boost, Ladefenster und der Preis von morgen für die Platzhalter; je Aufruf-Zeitpunkt einmal
+     * gerechnet, weil die Seite Mitteilungen alle Meldungen auf einmal zeigt.
+     */
+    private function planContext(int $now): array
+    {
+        if ($this->planCache !== null && $this->planCache[0] === $now) {
+            return $this->planCache[1];
+        }
+        $tz = new DateTimeZone('Europe/Berlin');
+        $tariff = new Tariff($this->store);
+        $windows = new PriceWindows($this->store, $tariff);
+        $tomorrow = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0)->modify('+1 day');
+        $out = [];
+        $plan = ChargePlan::get($this->store);
+        $out['plan'] = $plan === null ? 'kein Ladeplan' : (ChargePlan::text($plan) ?: '—');
+        $state = (new BatteryPlan($this->store, $this->ha))->state();
+        $boost = BatteryPlan::boost($this->store, $now);
+        $out['boost'] = !empty($state['active'])
+            ? 'lädt bis ' . pct((float) $state['target_soc']) . ' aus dem Netz'
+            : ($boost !== null ? 'geplant ' . PriceWindows::label($boost, $now) . ' bis ' . pct((float) $boost['target_soc']) : 'keiner geplant');
+        if ($windows->enabled($now)) {
+            $next = $windows->offered($now, 1)[0] ?? null;
+            $out['fenster'] = $next === null ? 'keins' : PriceWindows::label($next, $now) . ($next['ct'] !== null ? ', Ø ' . ct((float) $next['ct']) : '');
+            foreach ($windows->list($now) as $w) {
+                if ($w['kind'] === 'auto' && $w['day'] === $tomorrow->format('Y-m-d')) {
+                    $out['fenster_morgen'] = PriceWindows::label($w, $now) . ($w['ct'] !== null ? ', Ø ' . ct((float) $w['ct']) : '');
+                }
+            }
+        }
+        $stats = PriceView::stats($tariff, $tomorrow->getTimestamp(), $tomorrow->modify('+1 day')->getTimestamp());
+        if ($stats !== null) {
+            $out['preis_morgen'] = ct((float) $stats['avg']);
+        }
+        $this->planCache = [$now, $out];
+        return $out;
+    }
+
     /** „≈ 80 km“ aus Energie ab Wallbox und Verbrauch, „—“ ohne Verbrauch. */
     private static function km(float $kwh, mixed $consumption): string
     {
@@ -465,6 +631,8 @@ final class Notify
             'offline' => ['grund' => 'Wallbox', 'seit' => date('H:i', $now - self::OFFLINE_S)],
             'stuck' => ['seit' => date('H:i', $now - self::STUCK_S)],
             'mode' => ['vorher' => Energy::modeLabel('aus')],
+            'grid' => ['vorher' => Energy::gridLabel('off')],
+            'boost' => ['grund' => 'Lädt den Speicher bis ' . pct(80.0) . ' aus dem Netz, längstens bis ' . date('H:i', intdiv($now, 3600) * 3600 + 3 * 3600) . '.'],
             default => [],
         };
     }
@@ -481,7 +649,8 @@ final class Notify
             'init' => false, 'plugged' => null, 'plug_at' => null, 'open_id' => null, 'stop' => null, 'done' => null,
             'target_t' => 0, 'faults' => [], 'offline_since' => null, 'offline_sent' => false, 'stuck_since' => null, 'stuck_sent' => false,
             'full_armed' => true, 'full_day' => null, 'low_armed' => true, 'low_day' => null, 'surplus_since' => null, 'surplus_day' => null,
-            'report_day' => null, 'mode' => null, 'control' => null,
+            'report_day' => null, 'mode' => null, 'control' => null, 'grid' => null, 'plan_tight' => null, 'prices_day' => null, 'boost' => null,
+            'custom' => [],
         ];
     }
 
@@ -490,7 +659,8 @@ final class Notify
      * übernimmt er nur den Stand. Erkannt werden alle Ereignisse; ob eines rausgeht, entscheiden die Einstellungen.
      *
      * @param array $in aus inputs(): connected (?bool), charging, full, open_id, latest_id, latest_at, battery_soc,
-     *                  export_kw, missing (Geräte), faults (Art => Text), stuck, target_done, tomorrow_kwh, mode, control
+     *                  export_kw, missing (Geräte), faults (Art => Text), stuck, target_done, tomorrow_kwh, mode, control,
+     *                  grid, plan_status, plan_key, dynamic, tomorrow_prices, boost_active, boost_text
      * @param array $p Grenzen aus settings(): full_soc, low_soc, surplus_kw, sunny_kwh, report_time
      * @return array{state: array, events: list<array{event: string, data: array}>}
      */
@@ -521,6 +691,10 @@ final class Notify
                 'report_day' => $minute >= $report ? $today : null,
                 'mode' => $in['mode'] ?? null,
                 'control' => isset($in['control']) ? (bool) $in['control'] : null,
+                'grid' => $in['grid'] ?? null,
+                'plan_tight' => ($in['plan_status'] ?? null) === 'tight' ? ($in['plan_key'] ?? null) : null,
+                'prices_day' => !empty($in['tomorrow_prices']) ? $today : null,
+                'boost' => isset($in['boost_active']) ? (bool) $in['boost_active'] : null,
             ]), 'events' => []];
         }
         $events = [];
@@ -597,6 +771,35 @@ final class Notify
             $emit('control');
         }
         $s['control'] = isset($in['control']) ? (bool) $in['control'] : $s['control'];
+
+        // Netzladen: jeder Wechsel zwischen Aus, Jetzt und In Ladefenstern.
+        $grid = isset($in['grid']) ? (string) $in['grid'] : null;
+        if ($grid !== null && $s['grid'] !== null && $grid !== $s['grid']) {
+            $emit('grid', ['vorher' => Energy::gridLabel((string) $s['grid'])]);
+        }
+        $s['grid'] = $grid ?? $s['grid'];
+
+        // Ladeplan fürs Netzladen: einmal je Ziel, wenn er nur noch mit durchgehendem Laden reicht.
+        $planKey = isset($in['plan_key']) ? (string) $in['plan_key'] : null;
+        if (($in['plan_status'] ?? null) === 'tight' && $planKey !== null && $s['plan_tight'] !== $planKey) {
+            $emit('plan');
+            $s['plan_tight'] = $planKey;
+        }
+
+        // Preise für morgen: einmal am Tag, sobald sie da sind, nur mit dynamischem Tarif.
+        if (!empty($in['tomorrow_prices']) && $s['prices_day'] !== $today) {
+            if (!empty($in['dynamic'])) {
+                $emit('prices');
+            }
+            $s['prices_day'] = $today;
+        }
+
+        // Energie-Boost: Beginn und Ende.
+        $boost = isset($in['boost_active']) ? (bool) $in['boost_active'] : null;
+        if ($boost !== null && $s['boost'] !== null && $boost !== (bool) $s['boost']) {
+            $emit('boost', ['grund' => (string) ($in['boost_text'] ?? '')]);
+        }
+        $s['boost'] = $boost ?? $s['boost'];
 
         // Störungen: jede Art einmal, wenn sie neu auftritt.
         foreach ($faults as $key => $text) {
@@ -718,6 +921,16 @@ final class Notify
             }
         }
         $done = $this->store->get(Target::DONE, null);
+        // Netzladen, Ladeplan, Preise für morgen, Ladefenster und Energie-Boost.
+        $plan = ChargePlan::get($this->store);
+        $gridTarget = Target::get($this->store, 'grid');
+        $tariff = new Tariff($this->store);
+        $windows = new PriceWindows($this->store, $tariff);
+        $tomorrowEnd = (new DateTimeImmutable('@' . $now))->setTimezone(new DateTimeZone('Europe/Berlin'))->setTime(0, 0)->modify('+2 day')->getTimestamp();
+        $boost = (new BatteryPlan($this->store, $this->ha))->state();
+        $boostText = !empty($boost['active'])
+            ? 'Lädt den Speicher bis ' . pct((float) $boost['target_soc']) . ' aus dem Netz' . (!empty($boost['until']) ? ', längstens bis ' . date('H:i', (int) $boost['until']) : '') . '.'
+            : 'Beendet: ' . (string) ($boost['log'][0]['text'] ?? 'abgeschaltet.');
         return [
             'connected' => $connected,
             'charging' => $charging,
@@ -734,7 +947,282 @@ final class Notify
             'tomorrow_kwh' => isset($snap['forecast']['tomorrow_kwh']) ? (float) $snap['forecast']['tomorrow_kwh'] : null,
             'mode' => (string) ($cfg['charge']['mode'] ?? 'smart'),
             'control' => $active,
+            'grid' => (string) ($cfg['charge']['grid'] ?? 'off'),
+            'plan_status' => is_array($plan) ? (string) ($plan['status'] ?? '') : null,
+            'plan_key' => is_array($gridTarget) && isset($gridTarget['set_at']) ? (string) $gridTarget['set_at'] : null,
+            'dynamic' => ($tariff->tariffAt($now)['mode'] ?? 'static') === 'dynamic',
+            'tomorrow_prices' => $tariff->horizon() >= $tomorrowEnd - 900,
+            'in_window' => PriceWindows::at($windows->offered($now), $now) !== null,
+            'boost_active' => !empty($boost['active']),
+            'boost_text' => $boostText,
         ];
+    }
+
+    /**
+     * Werte für die Bedingungen eigener Mitteilungen (CONDITIONS) aus Snapshot, inputs() und Einstellungen: Zahlen,
+     * ja/nein, Lademodus, Netzladen, Minute des Tages und Wochentag (1 Montag). Fehlt ein Messwert, ist er null.
+     */
+    public static function conditionValues(array $snap, array $in, array $cfg, int $now): array
+    {
+        $v = is_array($snap['values'] ?? null) ? $snap['values'] : [];
+        $n = static fn (mixed $value): ?float => is_numeric($value) ? (float) $value : null;
+        $local = (new DateTimeImmutable('@' . $now))->setTimezone(new DateTimeZone('Europe/Berlin'));
+        return [
+            'pv_kw' => $n($v['pv_kw'] ?? null),
+            'house_kw' => $n($snap['balance']['house_base_kw'] ?? $v['house_kw'] ?? null),
+            'surplus_kw' => $n($snap['balance']['surplus_kw'] ?? null),
+            'export_kw' => $n($v['grid_export_kw'] ?? null),
+            'import_kw' => $n($v['grid_import_kw'] ?? null),
+            'yield_today' => $n($snap['yield_today'] ?? null),
+            'forecast_rest' => $n($snap['forecast']['remaining_kwh'] ?? null),
+            'forecast_today' => $n($snap['forecast']['today_kwh'] ?? null),
+            'forecast_tomorrow' => $n($snap['forecast']['tomorrow_kwh'] ?? null),
+            'battery_soc' => $n($v['battery_soc'] ?? null),
+            'battery_kwh' => $n($v['battery_capacity_kwh'] ?? null),
+            'car_connected' => isset($in['connected']) ? (bool) $in['connected'] : null,
+            'car_charging' => isset($in['charging']) ? (bool) $in['charging'] : null,
+            'wallbox_kw' => $n($v['wallbox_kw'] ?? null),
+            'session_kwh' => $n($snap['chargepoint']['session_kwh'] ?? null),
+            'car_soc' => $n($snap['vehicle']['soc'] ?? null),
+            'car_range' => $n($snap['vehicle']['range_km'] ?? null),
+            'mode' => (string) ($cfg['charge']['mode'] ?? 'smart'),
+            'grid' => (string) ($cfg['charge']['grid'] ?? 'off'),
+            'control' => isset($in['control']) ? (bool) $in['control'] : null,
+            'price_ct' => $n($snap['price']['import_ct'] ?? null),
+            'dynamic_ct' => $n($snap['price']['dynamic_ct'] ?? null),
+            'spot_ct' => $n($snap['price']['spot_ct'] ?? null),
+            'in_window' => isset($in['in_window']) ? (bool) $in['in_window'] : null,
+            'time' => (int) $local->format('G') * 60 + (int) $local->format('i'),
+            'weekday' => $local->format('N'),
+        ];
+    }
+
+    /** Die Werte von conditionValues() lesbar, für „jetzt …“ neben jeder Bedingung. */
+    public static function conditionTexts(array $values): array
+    {
+        $out = [];
+        foreach (self::CONDITIONS as $key => $def) {
+            $value = $values[$key] ?? null;
+            $out[$key] = match ($def['type']) {
+                'num' => with_unit($value === null ? null : (float) $value, (int) $def['decimals'], (string) $def['unit']),
+                'bool' => $value === null ? '—' : ($value ? 'ja' : 'nein'),
+                'time' => $value === null ? '—' : sprintf('%02d:%02d', intdiv((int) $value, 60), (int) $value % 60),
+                default => (string) ($def['options'][(string) $value] ?? '—'),
+            };
+        }
+        return $out;
+    }
+
+    /** Gilt eine Bedingung bei diesen Werten? Ein fehlender Wert gilt nie. */
+    public static function holds(array $condition, array $values): bool
+    {
+        $def = self::CONDITIONS[$condition['var'] ?? ''] ?? null;
+        $value = $def === null ? null : ($values[$condition['var']] ?? null);
+        if ($value === null) {
+            return false;
+        }
+        $op = (string) ($condition['op'] ?? '');
+        $target = $condition['value'] ?? null;
+        switch ($def['type']) {
+            case 'num':
+                $a = round((float) $value, (int) $def['decimals']);
+                $b = round((float) $target, (int) $def['decimals']);
+                return match ($op) {
+                    'lt' => (float) $value < (float) $target,
+                    'le' => $a <= $b,
+                    'gt' => (float) $value > (float) $target,
+                    'ge' => $a >= $b,
+                    'eq' => abs($a - $b) < 1e-9,
+                    'ne' => abs($a - $b) >= 1e-9,
+                    default => false,
+                };
+            case 'bool':
+                return $op === 'yes' ? $value === true : $value === false;
+            case 'time':
+                $minute = self::minutes((string) $target);
+                return $op === 'ge' ? (int) $value >= $minute : (int) $value < $minute;
+            default:
+                return $op === 'eq' ? (string) $value === (string) $target : (string) $value !== (string) $target;
+        }
+    }
+
+    /** Gelten die Bedingungen einer eigenen Mitteilung, alle oder eine davon? */
+    public static function met(array $rule, array $values): bool
+    {
+        $results = array_map(static fn (array $condition): bool => self::holds($condition, $values), (array) ($rule['conditions'] ?? []));
+        if ($results === []) {
+            return false;
+        }
+        return ($rule['match'] ?? 'all') === 'any' ? in_array(true, $results, true) : !in_array(false, $results, true);
+    }
+
+    /**
+     * Ein Schritt der eigenen Mitteilungen ohne Seiteneffekte. Je Mitteilung im Zustand: Fingerabdruck der Bedingungen
+     * (sig), seit wann sie gelten (since), ob sie wieder melden darf (armed), wann zuletzt gemeldet (sent_at, sent_day).
+     * Neue oder geänderte übernehmen den Stand: „Jedes Mal, wenn sie eintritt“ meldet erst, nachdem sie einmal nicht
+     * galt, und frühestens 10 Minuten nach der letzten Meldung; „stündlich“ meldet jede Stunde, solange sie gilt,
+     * „einmal am Tag“ einmal je Kalendertag. Beides erst, wenn sie hold_min Minuten am Stück gilt. Ausgeschaltete
+     * vergessen ihren Stand.
+     *
+     * @return array{state: array<string, array>, events: list<array{event: string, data: array}>}
+     */
+    public static function detectCustom(array $rules, array $values, array $state, int $now): array
+    {
+        $today = (new DateTimeImmutable('@' . $now))->setTimezone(new DateTimeZone('Europe/Berlin'))->format('Y-m-d');
+        $out = [];
+        $events = [];
+        foreach ($rules as $rule) {
+            if (empty($rule['on'])) {
+                continue;
+            }
+            $id = (string) $rule['id'];
+            $met = self::met($rule, $values);
+            $sig = md5((string) json_encode([$rule['conditions'], $rule['match'], $rule['hold_min'], $rule['repeat']]));
+            $s = is_array($state[$id] ?? null) && ($state[$id]['sig'] ?? '') === $sig ? $state[$id] : null;
+            if ($s === null) {
+                $s = ['sig' => $sig, 'since' => $met ? $now : null, 'armed' => !$met || $rule['repeat'] !== 'edge', 'sent_at' => null, 'sent_day' => null];
+            }
+            if (!$met) {
+                $out[$id] = ['since' => null, 'armed' => true] + $s;
+                continue;
+            }
+            $s['since'] ??= $now;
+            $held = $now - (int) $s['since'] >= (int) $rule['hold_min'] * 60;
+            $due = match ($rule['repeat']) {
+                'hour' => $s['sent_at'] === null || $now - (int) $s['sent_at'] >= 3600,
+                'day' => $s['sent_day'] !== $today,
+                default => !empty($s['armed']) && ($s['sent_at'] === null || $now - (int) $s['sent_at'] >= 600),
+            };
+            if ($held && $due) {
+                $events[] = ['event' => 'custom', 'data' => ['rule' => $id, 'regel' => (string) $rule['name']]];
+                $s = array_merge($s, ['armed' => false, 'sent_at' => $now, 'sent_day' => $today]);
+            }
+            $out[$id] = $s;
+        }
+        return ['state' => $out, 'events' => $events];
+    }
+
+    /**
+     * Eine eigene Mitteilung aus Formular, Speicher oder Datei, geprüft; null ohne gültige Bedingung. Ohne Kennung
+     * bekommt sie eine neue.
+     */
+    public static function cleanRule(mixed $raw): ?array
+    {
+        if (!is_array($raw)) {
+            return null;
+        }
+        $conditions = [];
+        foreach (is_array($raw['conditions'] ?? null) ? $raw['conditions'] : [] as $condition) {
+            $clean = self::cleanCondition($condition);
+            if ($clean !== null && count($conditions) < self::CONDITIONS_MAX) {
+                $conditions[] = $clean;
+            }
+        }
+        if ($conditions === []) {
+            return null;
+        }
+        $id = is_string($raw['id'] ?? null) && preg_match('/^r[a-f0-9]{8}$/', $raw['id']) ? $raw['id'] : 'r' . bin2hex(random_bytes(4));
+        $hold = is_numeric($raw['hold_min'] ?? null) ? (int) round((float) $raw['hold_min']) : 0;
+        return [
+            'id' => $id,
+            'on' => (bool) ($raw['on'] ?? true),
+            'name' => self::text($raw['name'] ?? null, self::NAME_MAX) ?? 'Eigene Mitteilung',
+            'match' => ($raw['match'] ?? 'all') === 'any' ? 'any' : 'all',
+            'conditions' => $conditions,
+            'hold_min' => max(0, min(1440, $hold)),
+            'repeat' => isset(self::REPEAT[$raw['repeat'] ?? '']) ? (string) $raw['repeat'] : 'edge',
+            'important' => (bool) ($raw['important'] ?? false),
+            'title' => self::text($raw['title'] ?? null, self::TITLE_MAX) ?? '{regel}',
+            'message' => self::text($raw['message'] ?? null, self::MESSAGE_MAX, true) ?? 'Sonne {pv}, Speicher {speicher}, {uhrzeit}.',
+        ];
+    }
+
+    /** Eine Bedingung: bekannter Wert, passender Vergleich, Grenze in der Art des Werts; sonst null. */
+    public static function cleanCondition(mixed $raw): ?array
+    {
+        if (!is_array($raw)) {
+            return null;
+        }
+        $var = (string) ($raw['var'] ?? '');
+        $def = self::CONDITIONS[$var] ?? null;
+        if ($def === null) {
+            return null;
+        }
+        $ops = self::OPERATORS[$def['type']];
+        $op = isset($ops[(string) ($raw['op'] ?? '')]) ? (string) $raw['op'] : (string) array_key_first($ops);
+        $input = $raw['value'] ?? null;
+        switch ($def['type']) {
+            case 'num':
+                $text = str_replace(',', '.', trim((string) (is_scalar($input) ? $input : '')));
+                if ($text === '' || !is_numeric($text)) {
+                    return null;
+                }
+                $value = round((float) $text, 3);
+                break;
+            case 'bool':
+                $value = null;
+                break;
+            case 'time':
+                $value = self::clock($input, '');
+                if ($value === '') {
+                    return null;
+                }
+                break;
+            default:
+                $value = is_scalar($input) ? (string) $input : '';
+                if (!isset($def['options'][$value])) {
+                    return null;
+                }
+        }
+        return ['var' => $var, 'op' => $op, 'value' => $value];
+    }
+
+    /** Eine Bedingung als kurzer Satz, etwa „Speicher < 20 %“, „Auto angesteckt: ja“ oder „Uhrzeit ab 18:00“. */
+    public static function conditionText(array $condition): string
+    {
+        $def = self::CONDITIONS[$condition['var']] ?? null;
+        if ($def === null) {
+            return '';
+        }
+        $op = self::OPERATORS[$def['type']][$condition['op']] ?? '';
+        return match ($def['type']) {
+            'num' => $def['label'] . ' ' . $op . ' ' . with_unit((float) $condition['value'], max((int) $def['decimals'], self::decimalsOf((float) $condition['value'])), (string) $def['unit']),
+            'bool' => $def['label'] . ': ' . $op,
+            'time' => $def['label'] . ' ' . $op . ' ' . $condition['value'],
+            default => $def['label'] . ' ' . $op . ' ' . ($def['options'][(string) $condition['value']] ?? $condition['value']),
+        };
+    }
+
+    /** Nachkommastellen, die eine eingetragene Grenze braucht (höchstens drei). */
+    private static function decimalsOf(float $value): int
+    {
+        for ($d = 0; $d < 3; $d++) {
+            if (abs(round($value, $d) - $value) < 1e-9) {
+                return $d;
+            }
+        }
+        return 3;
+    }
+
+    /** Alle Bedingungen einer eigenen Mitteilung als Satz, mit Dauer und Wiederholung. */
+    public static function ruleSummary(array $rule): string
+    {
+        $parts = array_map([self::class, 'conditionText'], (array) $rule['conditions']);
+        $text = implode($rule['match'] === 'any' ? ' oder ' : ' und ', $parts);
+        if ((int) $rule['hold_min'] > 0) {
+            $text .= ', mindestens ' . (int) $rule['hold_min'] . ' min';
+        }
+        return $text . '. ' . self::REPEAT[$rule['repeat']] . '.';
+    }
+
+    /** Vorlage für eine neue eigene Mitteilung: mit dynamischem Tarif ein günstiger Preis, sonst Sonne übrig. */
+    public static function newRule(bool $dynamic): array
+    {
+        return $dynamic
+            ? ['id' => 'new', 'on' => true, 'name' => 'Strom günstig', 'match' => 'all', 'conditions' => [['var' => 'price_ct', 'op' => 'lt', 'value' => 20.0]], 'hold_min' => 0, 'repeat' => 'edge', 'important' => false,
+                'title' => 'Strom günstig: {preis}', 'message' => 'Jetzt {preis}, Börse {boerse}. Sonne {pv}, Speicher {speicher}.']
+            : ['id' => 'new', 'on' => true, 'name' => 'Sonne übrig', 'match' => 'all', 'conditions' => [['var' => 'surplus_kw', 'op' => 'gt', 'value' => 3.0], ['var' => 'battery_soc', 'op' => 'ge', 'value' => 90.0]], 'hold_min' => 10, 'repeat' => 'day', 'important' => false,
+                'title' => 'Sonne übrig: {ueberschuss}', 'message' => 'Speicher {speicher}, {einspeisung} gehen ins Netz. Ein guter Moment für Waschmaschine oder Auto.'];
     }
 
     /**
@@ -747,12 +1235,17 @@ final class Notify
         if (empty($snap['connected'])) {
             return [];
         }
-        $settings = self::settings($this->store->all());
+        $cfg = $this->store->all();
+        $settings = self::settings($cfg);
         $in = $this->inputs($snap, $now);
+        $values = self::conditionValues($snap, $in, $cfg, $now);
         $pdo = $this->store->pdo();
         $pdo->exec('BEGIN IMMEDIATE');
         try {
-            $result = self::detect($this->state(), $in, $settings, $now);
+            $state = $this->state();
+            $result = self::detect($state, $in, $settings, $now);
+            $custom = self::detectCustom($settings['custom'], $values, (array) ($state['custom'] ?? []), $now);
+            $result['state']['custom'] = $custom['state'];
             $this->store->put(self::STATE, $result['state']);
             $pdo->exec('COMMIT');
         } catch (Throwable $e) {
@@ -760,13 +1253,15 @@ final class Notify
             throw $e;
         }
         $out = [];
-        foreach ($result['events'] as $item) {
-            $conf = $settings['events'][$item['event']] ?? null;
+        $rules = array_column($settings['custom'], null, 'id');
+        foreach (array_merge($result['events'], $custom['events']) as $item) {
+            $conf = $item['event'] === 'custom' ? ($rules[$item['data']['rule'] ?? ''] ?? null) : ($settings['events'][$item['event']] ?? null);
             if ($conf === null || !$conf['on'] || $settings['targets'] === []) {
                 continue;
             }
             $context = $this->contextFor($item['event'], $item['data'], $snap, $now);
-            $out[] = $this->deliver($item['event'], self::render($conf['title'], $context), self::render($conf['message'], $context), $settings, $conf['important'], $now);
+            $event = $item['event'] === 'custom' ? 'custom-' . $conf['id'] : $item['event'];
+            $out[] = $this->deliver($event, self::render($conf['title'], $context), self::render($conf['message'], $context), $settings, $conf['important'], $now);
         }
         return $out;
     }
@@ -855,19 +1350,25 @@ final class Notify
         $pdo->exec('DELETE FROM notifications WHERE id <= (SELECT id FROM notifications ORDER BY id DESC LIMIT 1 OFFSET ' . self::LOG_KEEP . ')');
     }
 
-    /** Die letzten Mitteilungen, neueste zuerst, aufbereitet für die Liste. */
+    /** Die letzten Mitteilungen, neueste zuerst, aufbereitet für die Liste; eigene mit ihrem Namen. */
     public function log(int $limit = 15): array
     {
         $stmt = $this->store->pdo()->prepare('SELECT * FROM notifications ORDER BY id DESC LIMIT ?');
         $stmt->bindValue(1, $limit, PDO::PARAM_INT);
         $stmt->execute();
-        return array_map([self::class, 'logRow'], $stmt->fetchAll() ?: []);
+        $names = array_column(self::settings($this->store->all())['custom'], 'name', 'id');
+        return array_map(static fn (array $row): array => self::logRow($row, $names), $stmt->fetchAll() ?: []);
     }
 
-    public static function logRow(array $row): array
+    /** @param array<string, string> $names Namen der eigenen Mitteilungen nach Kennung */
+    public static function logRow(array $row, array $names = []): array
     {
         $event = (string) $row['event'];
-        $label = $event === 'test' ? 'Test-Mitteilung' : (self::EVENTS[$event]['label'] ?? $event);
+        $label = match (true) {
+            $event === 'test' => 'Test-Mitteilung',
+            str_starts_with($event, 'custom') => 'Eigene: ' . ($names[substr($event, 7)] ?? 'Mitteilung'),
+            default => self::EVENTS[$event]['label'] ?? $event,
+        };
         $targets = array_filter(explode(',', (string) $row['targets']));
         return [
             'time' => date('d.m. H:i', (int) $row['at']),

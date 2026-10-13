@@ -15,9 +15,13 @@ declare(strict_types=1);
 final class YearCheck
 {
     public const SOURCE = 'Sonne: PVGIS, © Europäische Union';
-    /** Stündlicher Ertrag eines Wetterjahres; das neueste, das die Version kennt. */
+    /** Stündlicher Ertrag eines Wetterjahres: PVGIS 5.3 kennt 2005 bis 2023, 5.2 als Ersatz bis 2020. */
     private const SERIES = [['https://re.jrc.ec.europa.eu/api/v5_3/seriescalc', 2023], ['https://re.jrc.ec.europa.eu/api/v5_2/seriescalc', 2020]];
     private const PVGIS = ['https://re.jrc.ec.europa.eu/api/v5_3/PVcalc', 'https://re.jrc.ec.europa.eu/api/v5_2/PVcalc'];
+    /** Wetterjahre zur Wahl unter Einstellungen → Prognose und die Systemverluste, die PVGIS empfiehlt. */
+    public const FIRST_YEAR = 2005;
+    public const LAST_YEAR = 2023;
+    public const LOSS_PCT = 14.0;
     /** Wie das Auto lädt: Sonnenüberschuss zuerst, den Rest im Fenster; oder nur im Fenster (tagsüber unterwegs). */
     public const CAR_MODES = ['sonne' => 'Sonne zuerst', 'fenster' => 'Nur im Fenster'];
     /** Anteil der Monate an einem Jahresertrag in Mitteldeutschland, wenn PVGIS nicht erreichbar ist. */
@@ -53,12 +57,15 @@ final class YearCheck
         $values = $snap['values'];
         $capacity = is_numeric($values['battery_total_kwh'] ?? null) && (float) $values['battery_total_kwh'] > 0 ? (float) $values['battery_total_kwh'] : 0.0;
         $battery = BatteryPlan::settings($cfg);
-        $coords = $this->coordinates($now) ?? ['lat' => 50.0, 'lon' => 8.0];
+        // Unter den Backup-Puffer (Notstrom) entlädt der Speicher nicht; nutzbar ist nur, was darüber liegt.
+        $floorSoc = BatteryPlan::floorSoc($cfg, $values);
+        $usable = $capacity * (1 - $floorSoc / 100);
+        $coords = $this->location((array) $cfg['plant'], $now) ?? ['lat' => 50.0, 'lon' => 8.0];
         $result = self::simulate($days, $pv, [
             'house_kwh' => $inputs['house_kwh'],
             'car_kwh' => $carKwh,
             'profile' => is_array($snap['house_profile'] ?? null) ? $snap['house_profile'] : array_fill(0, 24, 1.0),
-            'battery_kwh' => $capacity,
+            'battery_kwh' => $usable,
             'battery_kw' => $battery['power_kw'],
             'efficiency' => $battery['efficiency'],
             'wear_ct' => $battery['wear_ct'],
@@ -83,6 +90,9 @@ final class YearCheck
             'length_h' => $length,
             'car_kw' => ChargePlan::powerKw((array) $cfg['charge']),
             'battery_kwh' => $capacity,
+            'battery_usable_kwh' => round($usable, 1),
+            'floor_soc' => $floorSoc,
+            'location' => $coords,
         ];
     }
 
@@ -134,10 +144,11 @@ final class YearCheck
     }
 
     /**
-     * Ertrag der Anlage von PVGIS mit Standort, kWp, Neigung und Ausrichtung (14 % Systemverlust): Stunde für Stunde
-     * aus einem echten Wetterjahr, sonst als Monatsmittel; gespeichert in kv.pvgis, ein halbes Jahr lang oder bis sich
-     * etwas ändert. Abgefragt wird nur mit $fetch (der Recorder), damit die Seite nie auf PVGIS wartet; bis dahin und
-     * wenn PVGIS nicht erreichbar ist, gilt eine Schätzung aus 950 kWh je kWp und dem üblichen Verlauf über das Jahr.
+     * Ertrag der Anlage von PVGIS mit Standort (location()), kWp, Neigung, Ausrichtung und Systemverlusten
+     * (plant.pvgis_loss, sonst 14 %): Stunde für Stunde aus dem Wetterjahr plant.pvgis_year (sonst 2023), sonst als
+     * Monatsmittel; gespeichert in kv.pvgis, ein halbes Jahr lang oder bis sich etwas ändert. Abgefragt wird nur mit
+     * $fetch (der Recorder), damit die Seite nie auf PVGIS wartet; bis dahin und wenn PVGIS nicht erreichbar ist, gilt
+     * eine Schätzung aus 950 kWh je kWp und dem üblichen Verlauf über das Jahr.
      *
      * @return array{daily: array<int, float>, hours: ?array<string, list<float>>, weather_year: ?int, year: float, source: string, error: ?string}
      */
@@ -157,14 +168,15 @@ final class YearCheck
         if (demo_mode()) {
             return $estimate(null, 'demo');
         }
-        $coords = $this->coordinates($now);
+        $coords = $this->location($plant, $now);
         if ($coords === null) {
-            return $estimate('Home Assistant nennt keinen Standort.');
+            return $estimate('Home Assistant nennt keinen Standort; eintragen unter Einstellungen → Prognose.');
         }
+        $settings = self::settings($plant);
         // PVGIS zählt die Ausrichtung von Süden: 0 Süd, 90 West, -90 Ost; EMS von Norden im Uhrzeigersinn.
         $aspect = round(fmod($azimuth - 180 + 540, 360) - 180);
-        $params = ['lat' => round($coords['lat'], 3), 'lon' => round($coords['lon'], 3), 'peakpower' => round($kwp, 2), 'loss' => 14, 'angle' => round($tilt), 'aspect' => $aspect, 'outputformat' => 'json'];
-        $key = md5(json_encode($params) . '|2');
+        $params = ['lat' => round($coords['lat'], 3), 'lon' => round($coords['lon'], 3), 'peakpower' => round($kwp, 2), 'loss' => $settings['loss'], 'angle' => round($tilt), 'aspect' => $aspect, 'outputformat' => 'json'];
+        $key = md5(json_encode($params) . '|2|' . $settings['year']);
         $cache = $this->store->get('pvgis', []);
         if (is_array($cache) && ($cache['key'] ?? '') === $key) {
             if (is_array($cache['daily'] ?? null) && $now - (int) ($cache['at'] ?? 0) < 180 * 86400) {
@@ -179,7 +191,8 @@ final class YearCheck
         }
         $error = null;
         // Am liebsten Stunde für Stunde aus einem echten Wetterjahr, mit trüben und sonnigen Tagen.
-        foreach (self::SERIES as [$url, $weatherYear]) {
+        $series = [[self::SERIES[0][0], $settings['year']], [self::SERIES[1][0], min($settings['year'], self::SERIES[1][1])]];
+        foreach ($series as [$url, $weatherYear]) {
             try {
                 $parsed = self::parseSeries(self::download($url . '?' . http_build_query($params + ['pvcalculation' => 1, 'startyear' => $weatherYear, 'endyear' => $weatherYear])));
                 $this->store->put('pvgis', ['key' => $key, 'at' => $now, 'daily' => $parsed['daily'], 'hours' => $parsed['hours'], 'weather_year' => $weatherYear, 'year' => $parsed['year'], 'error' => null]);
@@ -271,8 +284,62 @@ final class YearCheck
         return (int) (new DateTimeImmutable(sprintf('2025-%02d-01', $month)))->format('t');
     }
 
+    /** Wetterjahr und Systemverluste für PVGIS aus plant, geprüft. @return array{year: int, loss: float} */
+    public static function settings(array $plant): array
+    {
+        $year = is_numeric($plant['pvgis_year'] ?? null) ? (int) $plant['pvgis_year'] : self::LAST_YEAR;
+        $loss = is_numeric($plant['pvgis_loss'] ?? null) ? (float) $plant['pvgis_loss'] : self::LOSS_PCT;
+        return ['year' => max(self::FIRST_YEAR, min(self::LAST_YEAR, $year)), 'loss' => round(clamp_float($loss, 0, 50), 1)];
+    }
+
+    /**
+     * Standort für PVGIS und den Sonnenbogen: von Hand unter Einstellungen → Prognose (plant.lat und plant.lon), sonst
+     * der von Home Assistant. Mit source manual oder ha.
+     *
+     * @return ?array{lat: float, lon: float, source: string}
+     */
+    public function location(array $plant, int $now): ?array
+    {
+        if (is_numeric($plant['lat'] ?? null) && is_numeric($plant['lon'] ?? null)) {
+            return ['lat' => (float) $plant['lat'], 'lon' => (float) $plant['lon'], 'source' => 'manual'];
+        }
+        $coords = $this->coordinates($now);
+        return $coords === null ? null : ['lat' => $coords['lat'], 'lon' => $coords['lon'], 'source' => 'ha'];
+    }
+
+    /** Ein Standort lesbar, etwa „50,12° N, 8,52° O“. */
+    public static function place(array $coords): string
+    {
+        return num(abs((float) $coords['lat']), 2) . '° ' . ((float) $coords['lat'] >= 0 ? 'N' : 'S') . ', ' . num(abs((float) $coords['lon']), 2) . '° ' . ((float) $coords['lon'] >= 0 ? 'O' : 'W');
+    }
+
+    /**
+     * Stand der Abfrage für Einstellungen → Prognose: was gilt (pvgis, pending, error, estimate, demo), wann abgefragt,
+     * Wetterjahr, kWh im Jahr, Fehler und Standort.
+     */
+    public function status(array $plant, int $now): array
+    {
+        $pv = $this->pv($plant, $now);
+        $cache = $this->store->get('pvgis', []);
+        return [
+            'source' => $pv['source'],
+            'at' => is_array($cache) && isset($cache['at']) ? (int) $cache['at'] : null,
+            'weather_year' => $pv['weather_year'],
+            'year_kwh' => (float) $pv['year'],
+            'error' => $pv['error'],
+            'location' => $this->location($plant, $now),
+            'ha' => $this->coordinates($now),
+        ];
+    }
+
+    /** Gespeicherten Ertrag verwerfen; der Recorder fragt PVGIS beim nächsten Schritt neu. */
+    public function forget(): void
+    {
+        $this->store->put('pvgis', []);
+    }
+
     /** Standort aus Home Assistant, einen Tag lang gemerkt. */
-    private function coordinates(int $now): ?array
+    public function coordinates(int $now): ?array
     {
         $cache = $this->store->get('ha_location', []);
         if (is_array($cache) && isset($cache['lat'], $cache['lon']) && $now - (int) ($cache['at'] ?? 0) < 86400) {

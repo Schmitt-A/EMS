@@ -47,12 +47,14 @@ if (!empty($price['meta']['error']) && $price['horizon'] < time()) {
   <?= ui_chart('time', '/api/series?chart=price', 'Strompreis je Viertelstunde: dynamisch, statisch, Börse und Einspeisung, die aktiven Ladefenster hinterlegt', [
       'window' => '2',
       'class' => 'chart-xl',
+      'id' => 'price-chart',
       'tools' => '<div class="chart-tools">' . ui_segment('price-window', 'Zeitraum', ['today' => 'Heute', '2' => '2 Tage', '7' => '7 Tage'], '2', ['compact' => true, 'id' => 'prw', 'attrs' => ['data-chart-window' => true]])
           . '<div class="chart-toggles">'
           . '<button type="button" class="toggle-chip c-price" aria-pressed="true" data-chart-series="dynamic"><span class="swatch swatch-dot"></span>Dynamisch</button>'
           . '<button type="button" class="toggle-chip c-v1" aria-pressed="true" data-chart-series="static"><span class="swatch swatch-dot"></span>Statisch</button>'
           . '<button type="button" class="toggle-chip c-muted" aria-pressed="true" data-chart-series="spot"><span class="swatch swatch-dot"></span>Börse</button>'
           . '<button type="button" class="toggle-chip c-grid-out" aria-pressed="true" data-chart-series="export"><span class="swatch swatch-dot"></span>Einspeisung</button>'
+          . '<button type="button" class="toggle-chip c-accent" aria-pressed="' . ($price['windows_enabled'] ? 'true' : 'false') . '" data-chart-bands><span class="swatch"></span>Ladefenster' . ($price['windows_enabled'] ? '' : '<span class="sr-only">, Vorschau</span>') . '</button>'
           . '</div></div>',
       'style' => [
           'dynamic' => ['type' => 'step', 'width' => $dynamicActive ? 'bold' : null, 'dash' => !$dynamicActive, 'unit' => 'ct/kWh', 'decimals' => 1],
@@ -62,7 +64,7 @@ if (!empty($price['meta']['error']) && $price['horizon'] < time()) {
       ],
       'empty' => 'Noch keine Börsenpreise. Der Recorder holt sie gleich.',
   ]) ?>
-  <p class="caption muted">Dick der Tarif, nach dem du bezahlst, gestrichelt der andere. Mit dynamischem Tarif sind die aktiven Ladefenster hinterlegt, kräftiger die Viertelstunden, die ein Ladeplan dazunimmt, und der Preisbereich als waagerechtes Band. Je Tag stehen der teuerste und der günstigste dynamische Preis. Ändern unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
+  <p class="caption muted">Dick der Tarif, nach dem du bezahlst, gestrichelt der andere. Hinterlegt sind die aktiven Ladefenster, kräftiger die Viertelstunden, die ein Ladeplan dazunimmt, und der Preisbereich als waagerechtes Band<?= $price['windows_enabled'] ? '' : '; mit deinem statischen Tarif als Vorschau, sobald du „Ladefenster“ antippst oder unten die Vorschau aufklappst' ?>. Je Tag stehen der teuerste und der günstigste dynamische Preis. Ändern unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
   <p class="caption muted"><?= e(MarketPrices::SOURCE) ?>.</p>
 </section>
 
@@ -161,8 +163,8 @@ $boostWindow = $price['users']['battery'];
 <section class="card stack" aria-labelledby="windows-title">
   <h2 class="card-title" id="windows-title">Ladefenster</h2>
 <?php if (!$price['windows_enabled']): ?>
-  <p class="body-sm muted">Mit deinem statischen Tarif kostet jede Viertelstunde gleich viel, Ladefenster gibt es deshalb erst mit dynamischem Tarif. Die Vorschau zeigt, wie sie mit deinen Aufschlägen aussähen; was du dort einstellst, gilt, sobald du unter Einstellungen → Tarif auf dynamisch wechselst.</p>
-  <details class="window-preview">
+  <p class="body-sm muted">Mit deinem statischen Tarif kostet jede Viertelstunde gleich viel, Ladefenster gibt es deshalb erst mit dynamischem Tarif. Die Vorschau zeigt, wie sie mit deinen Aufschlägen aussähen, aufgeklappt auch im Diagramm oben; was du dort einstellst, gilt, sobald du unter Einstellungen → Tarif auf dynamisch wechselst.</p>
+  <details class="window-preview" data-chart-bands-for="price-chart">
     <summary><?= icon('chevron-down', 'icon-16') ?><span>Vorschau</span></summary>
     <div class="stack window-preview-body"><?= $windowsUi ?></div>
   </details>
@@ -216,7 +218,7 @@ $quarters = [['Q1', 'Jan–Mär', 1, 13], ['Q2', 'Apr–Jun', 14, 26], ['Q3', 'J
 $y = $year['year'];
 $eur = static fn (float $v): string => with_unit($v, 0, '€');
 $pvNote = match ($year['pv']['source']) {
-    'pvgis' => $year['pv']['weather_year'] ? 'PVGIS, Wetter von ' . $year['pv']['weather_year'] . ' an deinem Standort, Stunde für Stunde' : 'PVGIS, übliches Jahr an deinem Standort',
+    'pvgis' => ($year['pv']['weather_year'] ? 'PVGIS, Wetter von ' . $year['pv']['weather_year'] : 'PVGIS, übliches Jahr') . ' bei ' . YearCheck::place($year['location']) . ($year['pv']['weather_year'] ? ', Stunde für Stunde' : ''),
     'demo' => 'Beispielwerte',
     'pending' => 'Schätzung, PVGIS wird gerade abgefragt',
     default => 'Schätzung aus 950 kWh je kWp' . ($year['pv']['error'] ? ', ' . $year['pv']['error'] : ''),
@@ -274,7 +276,7 @@ $carSun = $year['inputs']['car_mode'] !== 'fenster';
   <dl class="kv">
     <div><dt>Sonne im Jahr</dt><dd><?= e(kwh((float) $y['pv_kwh'], 0)) ?><span class="sub"><?= e($pvNote) ?></span></dd></div>
     <div><dt>Haus und Auto</dt><dd><?= e(kwh((float) $y['demand_kwh'], 0)) ?><span class="sub"><?= e('Haus ' . kwh((float) $y['house_kwh'], 0) . ', Auto ' . kwh((float) $y['car_kwh'], 0) . ' an der Wallbox') ?></span></dd></div>
-    <div><dt>Sonne und Speicher decken</dt><dd><?= e(pct($y['cover_pct'] === null ? null : (float) $y['cover_pct'])) ?><span class="sub"><?= e('Mit ' . kwh($year['battery_kwh'], 1) . ' Speicher, der nur von einem Tag auf den nächsten hilft; Überschuss im Sommer geht ins Netz (' . kwh((float) $y['export_kwh'], 0) . ').') ?></span></dd></div>
+    <div><dt>Sonne und Speicher decken</dt><dd><?= e(pct($y['cover_pct'] === null ? null : (float) $y['cover_pct'])) ?><span class="sub"><?= e('Mit ' . kwh($year['battery_kwh'], 1) . ' Speicher' . ($year['floor_soc'] > 0 ? ', davon ' . kwh((float) $year['battery_usable_kwh'], 1) . ' nutzbar über dem Backup-Puffer von ' . pct((float) $year['floor_soc']) : '') . '; er hilft nur von einem Tag auf den nächsten, Überschuss im Sommer geht ins Netz (' . kwh((float) $y['export_kwh'], 0) . ').') ?></span></dd></div>
     <div><dt>Aus dem Netz</dt><dd><?= e(kwh((float) $y['grid_kwh'], 0)) ?><span class="sub"><?= e('Haus ' . kwh((float) $y['grid_house_kwh'], 0) . ', Auto ' . kwh((float) $y['grid_car_kwh'], 0) . ($carSun ? '; das Auto lädt ' . kwh((float) $y['car_sun_kwh'], 0) . ' aus der Sonne' : '')) ?></span></dd></div>
   </dl>
   <ul class="plain-list stack-tight body-sm muted" role="list">
@@ -292,7 +294,7 @@ $carSun = $year['inputs']['car_mode'] !== 'fenster';
 <?php if ($y['priced_days'] >= 30 && $y['priced_days'] < 360): ?>
     <li><?= e('Börsenpreise gibt es erst für ' . $y['priced_days'] . ' der letzten 365 Tage; die übrigen Tage rechnen mit ihrem Ø Tagesverlauf.') ?></li>
 <?php endif; ?>
-    <li>Die Einspeisevergütung ist in beiden Tarifen gleich und zählt nicht mit. Für die Sonne schickt EMS Standort, kWp, Neigung und Ausrichtung an PVGIS. <?= e(YearCheck::SOURCE) ?>. Börsenpreise: <?= e(MarketPrices::SOURCE) ?>.</li>
+    <li>Die Einspeisevergütung ist in beiden Tarifen gleich und zählt nicht mit. Für die Sonne schickt EMS Standort, kWp, Neigung und Ausrichtung an PVGIS; Standort, Verluste und Wetterjahr stehen unter <?= ui_inline('Einstellungen → Prognose', ['href' => url('/einstellungen/prognose') . '#pvgis-title']) ?>. <?= e(YearCheck::SOURCE) ?>. Börsenpreise: <?= e(MarketPrices::SOURCE) ?>.</li>
   </ul>
 </section>
 </div>

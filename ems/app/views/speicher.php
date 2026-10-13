@@ -3,7 +3,8 @@ declare(strict_types=1);
 /**
  * Speicher (8): oben die Heimspeicher-Säule mit drei Zonen und daneben, gleich hoch, der Speicherverlauf; darunter in
  * voller Breite „So wird geladen“ und der Ausblick: wann Speicher-Vorrang, batteriegestütztes Laden und voll erreicht
- * sind, Überschuss und Hausverbrauch, die nächsten Tage und der Energie-Boost mit der Empfehlung.
+ * sind, Überschuss und Hausverbrauch, die nächsten Tage (Speicher am Anfang, Sonne, Haus, Bilanz, Netz und Speicher am
+ * Ende, BatteryPlan::days()) und der Energie-Boost mit der Empfehlung.
  * Ebene 2: Grenzen mit Reglern und die Zonen-Tabelle.
  * @var array $snap
  * @var array $live
@@ -100,19 +101,43 @@ if (!$snap['connected']) {
       <div><dt>Hausverbrauch</dt><dd><span data-live="outlook.house"><?= e((string) $outlook['house']) ?></span><span class="sub">Üblicher Tag ohne Wallbox: je Stunde der Median der letzten 30 Tage, damit einzelne Tage mit Laden nicht zählen.</span></dd></div>
     </dl>
     <?= ui_divider('Die nächsten Tage') ?>
-    <div class="table-wrap" tabindex="0" role="region" aria-label="Sonne und Haus in den nächsten Tagen">
-      <table class="compare-table">
-        <thead><tr><th scope="col">Tag</th><th scope="col">Sonne<span class="sub">kWh</span></th><th scope="col">Haus<span class="sub">kWh</span></th><th scope="col">Bilanz<span class="sub">kWh</span></th></tr></thead>
+<?php
+$days = $snap['days_outlook'];
+$withBattery = array_filter($days, static fn (array $d): bool => $d['start_kwh'] !== null) !== [];
+$signed = static fn (?float $v): string => $v === null ? '—' : ($v > 0.04 ? '+' : ($v < -0.04 ? '−' : '')) . num(abs($v), 1);
+$cells = static function (string $key, ?string $socKey = null, bool $sign = false) use ($days, $signed): string {
+    $html = '';
+    foreach ($days as $d) {
+        $value = $d[$key] === null ? null : (float) $d[$key];
+        $html .= '<td>' . e($sign ? $signed($value) : num($value, 1)) . ($socKey !== null && $d[$socKey] !== null ? '<span class="sub">' . e(pct((float) $d[$socKey])) . '</span>' : '') . '</td>';
+    }
+    return $html;
+};
+$floorSoc = (float) ($snap['floor_soc'] ?? 0);
+?>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Speicher, Sonne und Haus in den nächsten Tagen">
+      <table class="compare-table outlook-days">
+        <thead><tr><th scope="col">kWh</th><?php foreach ($days as $d): ?><th scope="col"><?= e($d['head']) ?><?= $d['sub'] !== '' ? '<span class="sub">' . e($d['sub']) . '</span>' : '' ?></th><?php endforeach; ?></tr></thead>
         <tbody>
-<?php foreach ($snap['days_outlook'] as $day): ?>
-<?php $balance = $day['balance_kwh']; ?>
-          <tr><th scope="row"><?= e((string) $day['label']) ?></th><td><?= e(num($day['sun_kwh'], 1)) ?></td><td><?= e(num($day['house_kwh'], 1)) ?></td>
-            <td><?= e($balance === null ? '—' : ($balance >= 0 ? '+' : '−') . num(abs((float) $balance), 1)) ?></td></tr>
-<?php endforeach; ?>
+<?php if ($withBattery): ?>
+          <tr><th scope="row">Im Speicher<span class="sub">nutzbar, am Anfang</span></th><?= $cells('start_kwh', 'start_soc') ?></tr>
+<?php endif; ?>
+          <tr><th scope="row">+ Sonne</th><?= $cells('sun_kwh') ?></tr>
+          <tr><th scope="row">− Haus</th><?= $cells('house_kwh') ?></tr>
+          <tr class="row-sum"><th scope="row">= Bilanz</th><?= $cells('balance_kwh', null, true) ?></tr>
+<?php if ($withBattery): ?>
+          <tr><th scope="row">Ins Netz<span class="sub">Speicher voll</span></th><?= $cells('export_kwh') ?></tr>
+          <tr><th scope="row">Aus dem Netz<span class="sub">Speicher leer</span></th><?= $cells('import_kwh') ?></tr>
+          <tr><th scope="row">Im Speicher<span class="sub">am Ende des Tages</span></th><?= $cells('end_kwh', 'end_soc') ?></tr>
+<?php endif; ?>
         </tbody>
       </table>
     </div>
-    <p class="caption muted">Sonne laut Prognose, Haus aus dem üblichen Tagesverlauf; heute nur noch der Rest des Tages. Was fehlt, deckt der Speicher, solange er reicht, danach das Netz.</p>
+<?php if ($withBattery): ?>
+    <p class="caption muted"><?= e('Im Speicher steht, was über dem Backup-Puffer' . ($floorSoc > 0 ? ' von ' . pct($floorSoc) : '') . ' nutzbar ist, heute das von jetzt, darunter der Ladestand. Bilanz: Speicher plus Sonne minus Haus. Viertelstunde für Viertelstunde lädt die Sonne den Speicher; was nicht mehr hineinpasst, geht ins Netz. Abends und nachts deckt der Speicher das Haus bis zum Puffer, den Rest das Netz. Was am Ende übrig ist, hat der nächste Tag am Anfang. Sonne laut Prognose, Haus aus dem üblichen Tagesverlauf, ohne Verluste beim Laden und Entladen.') ?></p>
+<?php else: ?>
+    <p class="caption muted">Sonne laut Prognose, Haus aus dem üblichen Tagesverlauf; heute nur noch der Rest des Tages. Was fehlt, deckt der Speicher, solange er reicht, danach das Netz. Mit Ladestand und Größe des Speichers stünde hier auch, was er dazu beiträgt.</p>
+<?php endif; ?>
     <?= ui_divider('Energie-Boost') ?>
 <?php if (!$enabled): ?>
     <p class="body-sm muted">Den Speicher einmalig in einem Ladefenster aus dem Netz laden. Ladefenster gibt es nur mit dynamischem Tarif; mit deinem statischen kostet jede Viertelstunde gleich viel, und Laden aus dem Netz brächte nur Verluste. Eine Vorschau der Fenster steht unter <?= ui_inline('Prognose → Strompreis', ['href' => url('/prognose/strompreis') . '#windows-title']) ?>.</p>

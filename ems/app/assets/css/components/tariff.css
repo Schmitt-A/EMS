@@ -212,6 +212,16 @@
   font-weight: 400;
 }
 
+/* Ausblick unter Speicher: die Tage als Spalten, die Bilanz fett zwischen Rechnung und Ergebnis. */
+.outlook-days thead th:first-child {
+  width: 36%;
+}
+
+.outlook-days .row-sum th,
+.outlook-days .row-sum td {
+  font-weight: 700;
+}
+
 .compare-verdict {
   font-size: 1.0625rem;
   font-weight: 600;

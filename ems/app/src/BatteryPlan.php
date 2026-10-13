@@ -223,13 +223,33 @@ final class BatteryPlan
     }
 
     /**
+     * Backup-Puffer (Notstrom) in Prozent, unter den der Speicher nicht entlädt: der Standardwert unter Einstellungen →
+     * Speicher, ohne ihn der Wert der Puffer-Entität, sonst 0.
+     */
+    public static function floorSoc(array $cfg, array $values): float
+    {
+        $set = $cfg['battery_strategy']['backup_soc'] ?? null;
+        if (is_numeric($set)) {
+            return clamp_float((float) $set, 0, 100);
+        }
+        $live = $values['battery_reserve_soc'] ?? null;
+        return is_numeric($live) && (float) $live > 0 ? clamp_float((float) $live, 0, 100) : 0.0;
+    }
+
+    /**
      * Die nächsten Tage für den Ausblick: Sonne laut Prognose (heute der Rest, wie auf der Seite Prognose), Haus aus dem
-     * üblichen Tagesprofil ohne Wallbox (heute ab jetzt) und was übrig bleibt oder fehlt.
+     * üblichen Tagesprofil ohne Wallbox (heute ab jetzt). Mit Ladestand und Größe des Speichers ($battery: stored_kwh,
+     * total_kwh, floor_soc) dazu, was er am Anfang nutzbar über dem Backup-Puffer hat (heute: jetzt), die Bilanz
+     * Speicher + Sonne − Haus und Viertelstunde für Viertelstunde, was ins Netz geht, weil er voll ist, was aus dem Netz
+     * kommt, weil er leer ist, und was am Ende übrig bleibt: der Anfang des nächsten Tages. Die Sonne folgt dem Verlauf
+     * der Prognose, auf die Tagessumme gebracht; Verluste beim Laden und Entladen zählen nicht. Ohne Speicherwerte ist
+     * die Bilanz Sonne − Haus.
      *
      * @param ?array<int, float> $profile Haus in kW je Stunde des Tages
-     * @return list<array{day: string, label: string, sun_kwh: ?float, house_kwh: ?float, balance_kwh: ?float}>
+     * @param ?array{stored_kwh: mixed, total_kwh: mixed, floor_soc: mixed} $battery
+     * @return list<array{day: string, label: string, head: string, sub: string, sun_kwh: ?float, house_kwh: ?float, balance_kwh: ?float, start_kwh: ?float, start_soc: ?float, export_kwh: ?float, import_kwh: ?float, end_kwh: ?float, end_soc: ?float}>
      */
-    public static function days(array $series, array $plant, ?array $profile, int $now, ?array $brief, int $count = 3): array
+    public static function days(array $series, array $plant, ?array $profile, int $now, ?array $brief, ?array $battery = null, int $count = 3): array
     {
         $tz = new DateTimeZone('Europe/Berlin');
         $today = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0);
@@ -237,25 +257,84 @@ final class BatteryPlan
         foreach (Forecast::dailyTotals($series, $plant) as $row) {
             $totals[$row['day']] = (float) $row['kwh'];
         }
+        $pv = [];
+        foreach ($series as $point) {
+            $pv[(int) $point['t']] = max(0.0, (float) $point['kw']);
+        }
+        $total = is_numeric($battery['total_kwh'] ?? null) && (float) $battery['total_kwh'] > 0 ? (float) $battery['total_kwh'] : null;
+        $stored = $total !== null && is_numeric($battery['stored_kwh'] ?? null) ? clamp_float((float) $battery['stored_kwh'], 0, $total) : null;
+        $floor = $total === null ? 0.0 : $total * clamp_float((float) ($battery['floor_soc'] ?? 0), 0, 100) / 100;
+        $weekdays = ['Mon' => 'Mo.', 'Tue' => 'Di.', 'Wed' => 'Mi.', 'Thu' => 'Do.', 'Fri' => 'Fr.', 'Sat' => 'Sa.', 'Sun' => 'So.'];
         $out = [];
         for ($i = 0; $i < $count; $i++) {
             $day = $today->modify('+' . $i . ' day');
             $next = $day->modify('+1 day');
             $key = $day->format('Y-m-d');
             $from = $i === 0 ? max($now, $day->getTimestamp()) : $day->getTimestamp();
+            $to = $next->getTimestamp();
             $sun = match ($i) {
                 0 => isset($brief['remaining_kwh']) ? (float) $brief['remaining_kwh'] : null,
                 1 => isset($brief['tomorrow_kwh']) ? (float) $brief['tomorrow_kwh'] : ($totals[$key] ?? null),
                 default => $totals[$key] ?? null,
             };
-            $house = $profile === null ? null : self::houseKwh($profile, $from, $next->getTimestamp());
-            $out[] = [
+            $house = $profile === null ? null : self::houseKwh($profile, $from, $to);
+            $row = [
                 'day' => $key,
                 'label' => $i === 0 ? 'Heute ab ' . date('H:i', intdiv($now, 900) * 900) : ($i === 1 ? 'Morgen' : short_day_label($day)),
+                'head' => $i === 0 ? 'Heute' : ($i === 1 ? 'Morgen' : ($weekdays[$day->format('D')] ?? $day->format('D'))),
+                'sub' => $i === 0 ? 'ab ' . date('H:i', intdiv($now, 900) * 900) : ($i === 1 ? '' : substr(short_day_label($day), 5)),
                 'sun_kwh' => $sun === null ? null : round($sun, 1),
                 'house_kwh' => $house === null ? null : round($house, 1),
                 'balance_kwh' => $sun === null || $house === null ? null : round($sun - $house, 1),
+                'start_kwh' => null, 'start_soc' => null, 'export_kwh' => null, 'import_kwh' => null, 'end_kwh' => null, 'end_soc' => null,
             ];
+            if ($stored !== null && $sun !== null && $house !== null && $profile !== null) {
+                // Verlauf der Sonne aus der stündlichen Prognose, ohne sie gleichmäßig von 8 bis 18 Uhr.
+                $slots = [];
+                $shape = 0.0;
+                for ($q = intdiv($from, 900) * 900; $q < $to; $q += 900) {
+                    $dt = (min($q + 900, $to) - max($q, $from)) / 3600;
+                    if ($dt <= 0) {
+                        continue;
+                    }
+                    $weight = $pv[intdiv($q, 3600) * 3600] ?? 0.0;
+                    $slots[] = [$q, $dt, $weight];
+                    $shape += $weight * $dt;
+                }
+                if ($shape <= 0) {
+                    foreach ($slots as $k => [$q, $dt]) {
+                        $hour = (int) (new DateTimeImmutable('@' . $q))->setTimezone($tz)->format('G');
+                        $slots[$k][2] = $hour >= 8 && $hour < 18 ? 1.0 : 0.0;
+                        $shape += $slots[$k][2] * $dt;
+                    }
+                }
+                $scale = $shape > 0 ? $sun / $shape : 0.0;
+                $start = max(0.0, $stored - $floor);
+                $startSoc = $stored / $total * 100;
+                $export = $import = 0.0;
+                foreach ($slots as [$q, $dt, $weight]) {
+                    $net = $weight * $scale * $dt - self::houseAt($profile, $q) * $dt;
+                    if ($net >= 0) {
+                        $in = min($net, $total - $stored);
+                        $stored += $in;
+                        $export += $net - $in;
+                    } else {
+                        $take = min(-$net, max(0.0, $stored - $floor));
+                        $stored -= $take;
+                        $import += -$net - $take;
+                    }
+                }
+                $row = array_merge($row, [
+                    'start_kwh' => round($start, 1),
+                    'start_soc' => round($startSoc),
+                    'balance_kwh' => round($start + $sun - $house, 1),
+                    'export_kwh' => round($export, 1),
+                    'import_kwh' => round($import, 1),
+                    'end_kwh' => round(max(0.0, $stored - $floor), 1),
+                    'end_soc' => round($stored / $total * 100),
+                ]);
+            }
+            $out[] = $row;
         }
         return $out;
     }

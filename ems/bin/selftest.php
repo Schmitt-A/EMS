@@ -750,6 +750,47 @@ $later = (int) strtotime('2026-11-02 10:00:00 Europe/Berlin');
 check($detect(['mode' => 'smart', 'control' => false], $later) === [], 'Modus und Hauptschalter aus einem alten Stand ohne Meldung übernommen');
 $modeChange = $detect(['mode' => 'schnell'], $later + 10);
 check($names($modeChange) === ['mode'] && $modeChange[0]['data']['vorher'] === 'Intelligent' && $detect([], $later + 20) === [] && $names($detect(['control' => true], $later + 30)) === ['control'], 'Lademodus geändert und Regelung ein');
+check($detect(['grid' => 'off', 'boost_active' => false, 'tomorrow_prices' => false, 'dynamic' => true], $later + 40) === [], 'Netzladen, Boost und Preise aus einem alten Stand ohne Meldung übernommen');
+$gridChange = $detect(['grid' => 'windows'], $later + 50);
+check($names($gridChange) === ['grid'] && $gridChange[0]['data']['vorher'] === 'Aus', 'Netzladen geändert');
+check($names($detect(['plan_status' => 'tight', 'plan_key' => '100'], $later + 60)) === ['plan'] && $detect([], $later + 70) === [] && $detect(['plan_status' => 'ok'], $later + 80) === []
+    && $detect(['plan_status' => 'tight'], $later + 90) === [] && $names($detect(['plan_key' => '200'], $later + 100)) === ['plan'], 'Ladeplan knapp: einmal je Ziel');
+check($names($detect(['tomorrow_prices' => true], $later + 110)) === ['prices'] && $detect([], $later + 120) === []
+    && $detect(['dynamic' => false], (int) strtotime('2026-11-03 14:00:00 Europe/Berlin')) === [], 'Preise für morgen einmal am Tag, nur mit dynamischem Tarif');
+$boostStart = $detect(['boost_active' => true, 'boost_text' => 'Lädt …'], $later + 130);
+check($names($boostStart) === ['boost'] && $boostStart[0]['data']['grund'] === 'Lädt …' && $names($detect(['boost_active' => false, 'boost_text' => 'Beendet.'], $later + 140)) === ['boost'], 'Energie-Boost: Beginn und Ende');
+
+// Eigene Mitteilungen: Bedingungen geprüft, Übernahme beim Anlegen, Dauer, Wiederholung.
+$rule = Notify::cleanRule(['id' => 'r0000abcd', 'name' => 'Günstig', 'conditions' => [['var' => 'price_ct', 'op' => 'lt', 'value' => '20,5'], ['var' => 'car_connected', 'op' => 'yes'], ['var' => 'nope', 'op' => 'lt', 'value' => 1], ['var' => 'time', 'op' => 'ge', 'value' => '25:00']], 'hold_min' => 5, 'repeat' => 'edge']);
+check($rule !== null && count($rule['conditions']) === 2 && $rule['conditions'][0]['value'] === 20.5 && Notify::cleanRule(['conditions' => [['var' => 'mode', 'op' => 'eq', 'value' => 'turbo']]]) === null
+    && Notify::ruleSummary($rule) === 'Strompreis jetzt < 20,5' . NNBSP . 'ct/kWh und Auto angesteckt: ja, mindestens 5 min. Jedes Mal, wenn sie eintritt.', 'Eigene Mitteilung geprüft: unbekannte und unvollständige Bedingungen fallen weg');
+$ruleValues = ['price_ct' => 18.0, 'car_connected' => true, 'time' => 18 * 60, 'mode' => 'smart', 'battery_soc' => 89.6];
+check(Notify::holds(['var' => 'battery_soc', 'op' => 'ge', 'value' => 90.0], $ruleValues) && !Notify::holds(['var' => 'battery_soc', 'op' => 'gt', 'value' => 90.0], $ruleValues)
+    && Notify::holds(['var' => 'time', 'op' => 'ge', 'value' => '18:00'], $ruleValues) && !Notify::holds(['var' => 'time', 'op' => 'lt', 'value' => '18:00'], $ruleValues)
+    && Notify::holds(['var' => 'mode', 'op' => 'ne', 'value' => 'schnell'], $ruleValues) && !Notify::holds(['var' => 'car_soc', 'op' => 'lt', 'value' => 50.0], $ruleValues)
+    && Notify::met(['match' => 'any', 'conditions' => [['var' => 'car_soc', 'op' => 'lt', 'value' => 50.0], ['var' => 'car_connected', 'op' => 'yes']]], $ruleValues), 'Bedingungen: gerundet wie angezeigt, Uhrzeit, Auswahl, ein fehlender Wert gilt nie, eine von mehreren');
+$customState = [];
+$runRule = static function (array $rules, array $values, int $now) use (&$customState): array {
+    $result = Notify::detectCustom($rules, $values, $customState, $now);
+    $customState = $result['state'];
+    return $result['events'];
+};
+$t0 = $at('09:00');
+$cheap = ['price_ct' => 18.0, 'car_connected' => true];
+$dear = ['price_ct' => 30.0, 'car_connected' => true];
+check($runRule([$rule], $cheap, $t0) === [], 'Gilt eine eigene Mitteilung beim Anlegen schon, meldet sie erst beim nächsten Eintreten');
+check($runRule([$rule], $dear, $t0 + 60) === [] && $runRule([$rule], $cheap, $t0 + 120) === [] && $runRule([$rule], $cheap, $t0 + 300) === []
+    && count($runRule([$rule], $cheap, $t0 + 420)) === 1 && $runRule([$rule], $cheap, $t0 + 1000) === [], 'Erst nach 5 Minuten am Stück, dann nicht noch einmal');
+check($runRule([$rule], $dear, $t0 + 1100) === [] && $runRule([$rule], $cheap, $t0 + 1200) === [] && count($runRule([$rule], $cheap, $t0 + 1500)) === 1, 'Nach einer Unterbrechung wieder');
+$customState = [];
+$dailyRule = ['id' => 'r0000beef', 'repeat' => 'day', 'hold_min' => 0] + $rule;
+check(count($runRule([$dailyRule], $cheap, $t0)) === 1 && $runRule([$dailyRule], $cheap, $t0 + 3600) === [] && count($runRule([$dailyRule], $cheap, $t0 + 86400)) === 1, 'Einmal am Tag, solange sie gilt');
+$customState = [];
+$hourlyRule = ['id' => 'r0000cafe', 'repeat' => 'hour', 'hold_min' => 0] + $rule;
+check(count($runRule([$hourlyRule], $cheap, $t0)) === 1 && $runRule([$hourlyRule], $cheap, $t0 + 1800) === [] && count($runRule([$hourlyRule], $cheap, $t0 + 3600)) === 1
+    && $runRule([['on' => false] + $hourlyRule], $cheap, $t0 + 7200) === [] && $customState === [], 'Stündlich, solange sie gilt; ausgeschaltet vergisst sie ihren Stand');
+$withRule = Notify::settings(['notify' => ['custom' => [$rule, ['conditions' => []], $rule]]]);
+check(count($withRule['custom']) === 1 && Notify::stored($withRule)['custom'][0]['id'] === 'r0000abcd' && str_ends_with(Notify::summary(['notify' => ['custom' => [$rule]]]), '· 1 eigene'), 'Eigene Mitteilungen gespeichert, doppelte und leere fallen weg');
 $notifyHa = new class implements HaSource {
     public array $sent = [];
     public bool $fail = false;
@@ -1090,6 +1131,21 @@ for ($d = 0; $d < 10; $d++) {
 $profile = Energy::houseProfile($profileHouse, $profileWall, true);
 check(abs($profile['profile'][13] - 0.3) < 1e-9 && abs($profile['profile'][20] - 0.3) < 1e-9 && abs($profile['mean'] - 0.3) < 1e-9 && Energy::houseProfile([], [], true) === null, 'Hausverbrauch je Stunde als Median: Ladetage ohne Messung zählen nicht');
 check(abs(BatteryPlan::houseKwh(array_fill(0, 24, 0.5), $base0, $base0 + 86400) - 12.0) < 1e-9 && abs(BatteryPlan::houseKwh(array_fill(0, 24, 0.5), $base0 + 22 * 3600, $base0 + 86400) - 1.0) < 1e-9, 'Haus in kWh aus dem Tagesprofil, heute nur der Rest');
+// Ausblick: 10 kWh Speicher mit 5 kWh, 10 % Backup-Puffer; Haus 0,5 kW; heute 12 kWh Sonne von 10 bis 14 Uhr, morgen 2.
+// Heute: nachts 4 kWh aus dem Speicher und 1 aus dem Netz, mittags voll (1 kWh ins Netz), abends wieder 5 heraus.
+$outlookStart = (int) strtotime('2026-10-13 00:00:00 Europe/Berlin');
+$outlookSeries = [];
+for ($h = 0; $h < 48; $h++) {
+    $outlookSeries[] = ['t' => $outlookStart + $h * 3600, 'kw' => $h % 24 >= 10 && $h % 24 < 14 ? 3.0 : 0.0];
+}
+$outlook = BatteryPlan::days($outlookSeries, ['kwp' => 10], array_fill(0, 24, 0.5), $outlookStart, ['remaining_kwh' => 12.0, 'tomorrow_kwh' => 2.0], ['stored_kwh' => 5.0, 'total_kwh' => 10.0, 'floor_soc' => 10.0], 2);
+check($outlook[0]['start_kwh'] === 4.0 && $outlook[0]['import_kwh'] === 1.0 && $outlook[0]['export_kwh'] === 1.0 && $outlook[0]['end_kwh'] === 4.0 && $outlook[0]['balance_kwh'] === 4.0
+    && $outlook[1]['start_kwh'] === 4.0 && $outlook[1]['import_kwh'] === 6.0 && $outlook[1]['end_kwh'] === 0.0 && $outlook[1]['balance_kwh'] === -6.0 && $outlook[1]['end_soc'] === 10.0,
+    'Ausblick: Speicher am Anfang, Sonne, Haus, Netz und was am Ende bleibt; unter den Backup-Puffer geht er nicht');
+check(BatteryPlan::floorSoc(['battery_strategy' => ['backup_soc' => 10]], ['battery_reserve_soc' => 40]) === 10.0 && BatteryPlan::floorSoc(['battery_strategy' => ['backup_soc' => null]], ['battery_reserve_soc' => 15]) === 15.0
+    && BatteryPlan::floorSoc([], ['battery_reserve_soc' => 0]) === 0.0, 'Backup-Puffer aus den Einstellungen, sonst von der Entität');
+check(YearCheck::settings([]) === ['year' => 2023, 'loss' => 14.0] && YearCheck::settings(['pvgis_year' => 1990, 'pvgis_loss' => 80]) === ['year' => 2005, 'loss' => 50.0]
+    && YearCheck::place(['lat' => 49.93, 'lon' => -7.6]) === '49,93° N, 7,60° W', 'PVGIS: Wetterjahr und Verluste begrenzt, Standort lesbar');
 
 // Lohnt sich dynamisch: ein Jahr Tag für Tag mit Sonne, Speicher, Haus und Auto.
 $calcJson = json_encode(['outputs' => ['monthly' => ['fixed' => array_map(static fn (int $m): array => ['month' => $m, 'E_d' => $m * 1.0, 'E_m' => $m * 30.0], range(1, 12))], 'totals' => ['fixed' => ['E_y' => 2340.0]]]]);

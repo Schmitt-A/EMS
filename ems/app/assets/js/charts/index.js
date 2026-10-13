@@ -52,8 +52,11 @@ async function load(figure) {
     return;
   }
   for (const series of payload.series || []) if (series.hidden && !payload.axes) state.hidden.add(series.key);
+  // Ladefenster ein- und ausblenden: der Knopf in den Werkzeugen, sonst immer an.
+  const bandsButton = $('[data-chart-bands]', figure);
   const draw = (jump) => {
     state.jump = jump;
+    state.bands = bandsButton ? bandsButton.getAttribute('aria-pressed') === 'true' : true;
     render(figure, payload, state);
     state.first = false;
     goodness(payload, state);
@@ -90,6 +93,11 @@ async function load(figure) {
       draw(false);
     });
   }
+  bandsButton?.addEventListener('click', () => {
+    bandsButton.setAttribute('aria-pressed', String(bandsButton.getAttribute('aria-pressed') !== 'true'));
+    draw(false);
+  });
+  figure.addEventListener('ems:redraw', () => draw(false));
   let width = $('.chart-frame', figure).clientWidth;
   let timer = 0;
   new ResizeObserver(() => {
@@ -101,7 +109,22 @@ async function load(figure) {
   }).observe($('.chart-frame', figure));
 }
 
+// Ein aufgeklapptes <details data-chart-bands-for="id"> (die Vorschau der Ladefenster) schaltet deren Knopf im
+// Diagramm mit, zugeklappt wieder aus. Das Diagramm zeichnet neu, wenn es schon geladen ist.
+function initBandToggles(root) {
+  for (const details of $$('details[data-chart-bands-for]', root)) {
+    details.addEventListener('toggle', () => {
+      const figure = document.getElementById(details.dataset.chartBandsFor);
+      const button = figure && $('[data-chart-bands]', figure);
+      if (!button) return;
+      button.setAttribute('aria-pressed', String(details.open));
+      figure.dispatchEvent(new Event('ems:redraw'));
+    });
+  }
+}
+
 export function initCharts(root = document) {
+  initBandToggles(root);
   const figures = $$('figure[data-chart]', root);
   if (!figures.length) return;
   const visible = new IntersectionObserver((entries) => {

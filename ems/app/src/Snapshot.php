@@ -341,7 +341,13 @@ final class Snapshot
                 $brief['tomorrow_sd'] = isset($captions[$tomorrowKey]['sd']) ? round((float) $captions[$tomorrowKey]['sd'], 2) : null;
             }
         }
-        $base['days_outlook'] = BatteryPlan::days($series, $cfg['plant'], $houseHours, $now, is_array($brief) ? $brief : null);
+        // Die nächsten Tage mit dem, was jetzt im Speicher ist, über dem Backup-Puffer.
+        $base['days_outlook'] = BatteryPlan::days($series, $cfg['plant'], $houseHours, $now, is_array($brief) ? $brief : null, [
+            'stored_kwh' => $values['battery_capacity_kwh'] ?? null,
+            'total_kwh' => $values['battery_total_kwh'] ?? null,
+            'floor_soc' => BatteryPlan::floorSoc($cfg, $values),
+        ]);
+        $base['floor_soc'] = BatteryPlan::floorSoc($cfg, $values);
         $base['house_profile'] = $houseHours;
         $sessions = new Sessions($this->store);
         $session = $sessions->open() ?: $sessions->latest();

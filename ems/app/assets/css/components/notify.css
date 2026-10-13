@@ -268,6 +268,91 @@ textarea.nt-text {
   line-height: 1.375rem;
 }
 
+/* Eigene Mitteilungen: je Bedingung ein Kasten mit dem Wert oben, darunter Vergleich, Grenze und Einheit und der Wert
+   von jetzt; darunter, ob sie gerade gilt. */
+.nt-conds {
+  display: grid;
+  gap: var(--s-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.nt-conds > legend {
+  margin-block-end: var(--s-2);
+  padding: 0;
+}
+
+.nt-cond-list {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.nt-cond {
+  display: grid;
+  gap: var(--s-2);
+  min-width: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+}
+
+.nt-cond-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.nt-cond-head > .select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.nt-cond-test {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.nt-cond-op {
+  flex: 0 0 7.5rem;
+}
+
+.nt-cond-value {
+  flex: 1 1 7rem;
+  min-width: 0;
+}
+
+.nt-cond-unit {
+  color: var(--text-2);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.nt-cond-unit:empty {
+  display: none;
+}
+
+.nt-cond-now {
+  margin: 0;
+}
+
+.nt-cond-now:empty {
+  display: none;
+}
+
+.nt-rule-status {
+  margin: 0;
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.nt-rule-status[data-met] {
+  color: var(--success);
+}
+
 /* Rückmeldung neben dem Knopf; leer nimmt sie keinen Platz. */
 .nt-status {
   flex: 1 1 12rem;

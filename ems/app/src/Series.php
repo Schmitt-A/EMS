@@ -425,27 +425,29 @@ final class Series
                 $extrema[] = ['max' => $day['max'], 'min' => $day['min']];
             }
         }
-        // Nur mit dynamischem Tarif: aktive Ladefenster hinterlegt, kräftiger die Viertelstunden, die der Ladeplan für
-        // „fertig bis“ dazunimmt, und der Preisbereich als waagerechtes Band.
+        // Aktive Ladefenster hinterlegt, kräftiger die Viertelstunden, die der Ladeplan für „fertig bis“ dazunimmt, und
+        // der Preisbereich als waagerechtes Band. Mit statischem Tarif sind Fenster und Preisbereich eine Vorschau, die
+        // das Diagramm erst zeigt, wenn man „Ladefenster“ antippt oder die Vorschau der Ladefenster aufklappt.
         $bands = [];
         $ranges = [];
         $windows = new PriceWindows($this->store, $tariff);
-        if ($windows->enabled($now)) {
-            foreach ($windows->list($now) as $w) {
-                if ($w['on']) {
-                    $bands[] = ['from' => $w['start'] * 1000, 'to' => $w['end'] * 1000, 'label' => 'Ladefenster', 'kind' => 'window'];
-                }
+        $enabled = $windows->enabled($now);
+        foreach ($windows->list($now) as $w) {
+            if ($w['on']) {
+                $bands[] = ['from' => $w['start'] * 1000, 'to' => $w['end'] * 1000, 'label' => 'Ladefenster', 'kind' => 'window'];
             }
+        }
+        $config = $windows->config();
+        if ($config['range_to'] !== null) {
+            $ranges[] = ['from' => $config['range_from'], 'to' => $config['range_to']];
+        }
+        if ($enabled) {
             $plan = ChargePlan::get($this->store);
             $target = Target::get($this->store, 'grid');
             if ($plan !== null && $target !== null && (int) ($plan['target_set_at'] ?? 0) === (int) ($target['set_at'] ?? -1)) {
                 foreach (ChargePlan::windows((array) ($plan['extra'] ?? [])) as [$a, $b]) {
                     $bands[] = ['from' => $a * 1000, 'to' => $b * 1000, 'label' => 'Ladeplan', 'kind' => 'extra'];
                 }
-            }
-            $config = $windows->config();
-            if ($config['range_to'] !== null) {
-                $ranges[] = ['from' => $config['range_from'], 'to' => $config['range_to']];
             }
         }
         $payload = [

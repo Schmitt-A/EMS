@@ -354,6 +354,26 @@ final class Actions
                 $mapping['house_includes_wallbox'] = $_POST['house_includes_wallbox'] === '1';
             }
             store()->put('mapping', $mapping);
+        } elseif ($section === 'pvgis') {
+            $check = new YearCheck(store(), ha());
+            if (($_POST['do'] ?? '') === 'refresh') {
+                $check->forget();
+                flash(demo_mode() ? 'Im Demo-Modus rechnet EMS mit Beispielwerten.' : 'PVGIS wird neu abgefragt, gleich im Hintergrund.');
+            } else {
+                $lat = self::optional('lat', -90, 90);
+                $lon = self::optional('lon', -180, 180);
+                if (($lat === null) !== ($lon === null)) {
+                    flash('Nicht gespeichert: Für einen eigenen Standort Breite und Länge eintragen, sonst beide leer lassen.');
+                } else {
+                    store()->merge('plant', [
+                        'lat' => $lat === null ? null : round($lat, 4),
+                        'lon' => $lon === null ? null : round($lon, 4),
+                        'pvgis_loss' => post_float('pvgis_loss', 0, 50, YearCheck::LOSS_PCT),
+                        'pvgis_year' => post_int('pvgis_year', YearCheck::FIRST_YEAR, YearCheck::LAST_YEAR, YearCheck::LAST_YEAR),
+                    ]);
+                    flash($lat === null ? 'Gespeichert. Der Standort kommt aus Home Assistant.' : 'Gespeichert. PVGIS rechnet für ' . YearCheck::place(['lat' => $lat, 'lon' => $lon]) . '.');
+                }
+            }
         } elseif ($section === 'weather') {
             $url = trim((string) ($_POST['weather_url'] ?? ''));
             try {
@@ -586,6 +606,17 @@ final class Actions
             store()->put(Notify::KEY, Notify::stored($settings));
             return 'Gespeichert: ' . count(array_intersect(array_keys(Notify::EVENTS), $on)) . ' von ' . count(Notify::EVENTS) . ' Meldungen an.';
         }
+        if ($section === 'notify_custom_on') {
+            $on = array_map('strval', (array) ($_POST['custom'] ?? []));
+            foreach ($settings['custom'] as $i => $rule) {
+                $settings['custom'][$i]['on'] = in_array($rule['id'], $on, true);
+            }
+            store()->put(Notify::KEY, Notify::stored($settings));
+            return 'Gespeichert: ' . count(array_filter($settings['custom'], static fn (array $rule): bool => $rule['on'])) . ' von ' . count($settings['custom']) . ' eigenen Mitteilungen an.';
+        }
+        if ($section === 'notify_custom') {
+            return self::saveCustomNotification($settings);
+        }
         $key = (string) ($_POST['event'] ?? '');
         if ($section !== 'notify_event' || !isset(Notify::EVENTS[$key])) {
             return 'Unbekannte Meldung.';
@@ -624,17 +655,92 @@ final class Actions
     }
 
     /**
-     * Test-Mitteilung (event test) oder Probe einer Meldung mit den Werten von jetzt, an die angekreuzten oder die
-     * gespeicherten Geräte (POST /api/mitteilung und die Formulare). Der Text der Test-Mitteilung bleibt gespeichert.
+     * Eigene Mitteilung aus dem Sheet (section notify_custom, rule ist die Kennung oder new): speichern, mit do=delete
+     * löschen, mit do=test als Probe senden. Die Bedingungen kommen als Listen cond_var[], cond_op[] und je nach Art
+     * cond_value[] (Zahl), cond_time[] (Uhrzeit) oder cond_enum[] („var:wert“).
+     */
+    private static function saveCustomNotification(array $settings): string
+    {
+        $id = (string) ($_POST['rule'] ?? 'new');
+        $do = (string) ($_POST['do'] ?? 'save');
+        if ($do === 'test') {
+            return self::testNotification()['message'];
+        }
+        $index = null;
+        foreach ($settings['custom'] as $i => $rule) {
+            if ($rule['id'] === $id) {
+                $index = $i;
+            }
+        }
+        if ($do === 'delete') {
+            if ($index === null) {
+                return 'Diese Mitteilung gibt es nicht mehr.';
+            }
+            $name = $settings['custom'][$index]['name'];
+            array_splice($settings['custom'], $index, 1);
+            store()->put(Notify::KEY, Notify::stored($settings));
+            return '„' . $name . '“ gelöscht.';
+        }
+        if ($index === null && count($settings['custom']) >= Notify::CUSTOM_MAX) {
+            return 'Nicht gespeichert: höchstens ' . Notify::CUSTOM_MAX . ' eigene Mitteilungen.';
+        }
+        $vars = (array) ($_POST['cond_var'] ?? []);
+        $conditions = [];
+        foreach ($vars as $i => $var) {
+            $def = Notify::CONDITIONS[(string) $var] ?? null;
+            if ($def === null) {
+                continue;
+            }
+            $value = match ($def['type']) {
+                'num' => $_POST['cond_value'][$i] ?? null,
+                'time' => $_POST['cond_time'][$i] ?? null,
+                'enum' => str_starts_with((string) ($_POST['cond_enum'][$i] ?? ''), $var . ':') ? substr((string) $_POST['cond_enum'][$i], strlen((string) $var) + 1) : null,
+                default => null,
+            };
+            $conditions[] = ['var' => (string) $var, 'op' => (string) ($_POST['cond_op'][$i] ?? ''), 'value' => $value];
+        }
+        $rule = Notify::cleanRule([
+            'id' => $index === null ? null : $id,
+            'on' => ($_POST['on'] ?? '0') === '1',
+            'name' => $_POST['name'] ?? null,
+            'match' => $_POST['match'] ?? 'all',
+            'conditions' => $conditions,
+            'hold_min' => $_POST['hold_min'] ?? 0,
+            'repeat' => $_POST['repeat'] ?? 'edge',
+            'important' => ($_POST['important'] ?? '0') === '1',
+            'title' => $_POST['title'] ?? null,
+            'message' => $_POST['message'] ?? null,
+        ]);
+        if ($rule === null) {
+            return 'Nicht gespeichert: Es braucht mindestens eine vollständige Bedingung, etwa „Speicher < 20 %“.';
+        }
+        if ($index === null) {
+            $settings['custom'][] = $rule;
+        } else {
+            $settings['custom'][$index] = $rule;
+        }
+        store()->put(Notify::KEY, Notify::stored($settings));
+        $unknown = Notify::unknown($rule['title'] . ' ' . $rule['message']);
+        return '„' . $rule['name'] . '“ gespeichert.' . ($unknown ? ' Unbekannte Platzhalter bleiben stehen: ' . implode(', ', array_map(static fn (string $name): string => '{' . $name . '}', $unknown)) . '.' : '');
+    }
+
+    /**
+     * Test-Mitteilung (event test), Probe einer Meldung oder einer eigenen Mitteilung (event custom) mit den Werten
+     * von jetzt, an die angekreuzten oder die gespeicherten Geräte (POST /api/mitteilung und die Formulare). Der Text
+     * der Test-Mitteilung bleibt gespeichert.
      *
      * @return array{ok: bool, message: string, row: ?array}
      */
     public static function testNotification(): array
     {
         $event = (string) ($_POST['event'] ?? 'test');
-        $event = isset(Notify::EVENTS[$event]) ? $event : 'test';
+        $event = isset(Notify::EVENTS[$event]) || $event === 'custom' ? $event : 'test';
         $settings = Notify::settings(cfg());
-        $base = $event === 'test' ? $settings['test'] : $settings['events'][$event];
+        $base = match ($event) {
+            'test' => $settings['test'],
+            'custom' => ['title' => '{regel}', 'message' => ''],
+            default => $settings['events'][$event],
+        };
         $title = Notify::text($_POST['title'] ?? null, Notify::TITLE_MAX) ?? $base['title'];
         $message = Notify::text($_POST['message'] ?? null, Notify::MESSAGE_MAX, true) ?? $base['message'];
         $targets = array_key_exists('targets', $_POST) ? Notify::targets($_POST['targets']) : $settings['targets'];
@@ -648,9 +754,18 @@ final class Actions
         $now = time();
         $notify = new Notify(store(), ha());
         $snap = (new Snapshot(store(), ha()))->build();
-        $context = $notify->contextFor($event, Notify::sampleData($event, $now), $snap, $now);
-        $important = $event !== 'test' && $settings['events'][$event]['important'];
-        $result = $notify->deliver($event, Notify::render($title, $context), Notify::render($message, $context), $settings, $important, $now, $targets, true);
+        if ($event === 'custom') {
+            // Eigene Mitteilung: Name, Wichtig und Kennung kommen aus dem Sheet, das noch nicht gespeichert sein muss.
+            $rule = (string) ($_POST['rule'] ?? '');
+            $context = $notify->contextFor('custom', ['regel' => Notify::text($_POST['name'] ?? null, Notify::NAME_MAX) ?? 'Eigene Mitteilung'], $snap, $now);
+            $important = in_array((string) ($_POST['important'] ?? '0'), ['1', 'true'], true);
+            $logged = preg_match('/^r[a-f0-9]{8}$/', $rule) ? 'custom-' . $rule : 'custom';
+        } else {
+            $context = $notify->contextFor($event, Notify::sampleData($event, $now), $snap, $now);
+            $important = $event !== 'test' && $settings['events'][$event]['important'];
+            $logged = $event;
+        }
+        $result = $notify->deliver($logged, Notify::render($title, $context), Notify::render($message, $context), $settings, $important, $now, $targets, true);
         try {
             $index = ha()->index();
         } catch (Throwable) {
@@ -802,6 +917,10 @@ final class Actions
                 'regress_a' => self::clamped($plant['regress_a'] ?? null, -20, 20, 2.1),
                 'regress_b' => self::clamped($plant['regress_b'] ?? null, -2, 3, 0.86),
                 'regress_locked' => !empty($plant['regress_locked']),
+                'lat' => is_numeric($plant['lat'] ?? null) && is_numeric($plant['lon'] ?? null) ? round(clamp_float((float) $plant['lat'], -90, 90), 4) : null,
+                'lon' => is_numeric($plant['lat'] ?? null) && is_numeric($plant['lon'] ?? null) ? round(clamp_float((float) $plant['lon'], -180, 180), 4) : null,
+                'pvgis_loss' => self::clamped($plant['pvgis_loss'] ?? null, 0, 50, YearCheck::LOSS_PCT),
+                'pvgis_year' => (int) round(self::clamped($plant['pvgis_year'] ?? null, YearCheck::FIRST_YEAR, YearCheck::LAST_YEAR, YearCheck::LAST_YEAR)),
             ]);
         }
         if (isset($data['charge']) && is_array($data['charge'])) {

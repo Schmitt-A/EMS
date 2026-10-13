@@ -239,6 +239,12 @@ final class ConfigStore
                 'regress_b' => 0.86,
                 'regress_locked' => false,
                 'regress_days' => 0,
+                // Für PVGIS („Lohnt sich dynamisch?“): Standort von Hand (null: der von Home Assistant), Systemverluste
+                // in Prozent und das Wetterjahr der Stundenwerte.
+                'lat' => null,
+                'lon' => null,
+                'pvgis_loss' => 14.0,
+                'pvgis_year' => 2023,
             ],
             'charge' => [
                 // Aus oder ein Modus für Sonne und Speicher (Energy::SUN_MODES); last_mode gilt beim Einschalten.
