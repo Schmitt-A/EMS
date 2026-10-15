@@ -29,7 +29,7 @@ if (seeded.status !== 0) {
   process.exit(1);
 }
 // CHECK_TARIFF=dynamic: dieselbe Demo mit dynamischem Tarif und Netzladen „In Ladefenstern“, damit Ladefenster,
-// Fensterwahl, Preisbereich und Energie-Boost geprüft werden; mit statischem Tarif gibt es sie nur als Vorschau.
+// Fensterwahl, Preisbereich und Energie-Boost geprüft werden; mit statischem Tarif gibt es sie nicht.
 if (process.env.CHECK_TARIFF === 'dynamic') {
   const php = "require 'app/src/bootstrap.php'; $t = new Tariff(store()); $c = $t->tariffAt(time()); $c['mode'] = 'dynamic'; "
     + "$t->saveHistory(Tariff::withEntry($t->history(), date('Y-m-d'), $c), time()); store()->merge('charge', ['grid' => 'windows']); "

@@ -420,7 +420,7 @@ check($planIn['error'] === null && $planIn['plan']['days'] === [1, 2, 3, 4, 5] &
 check(GridPlans::clean(['days' => [], 'time' => '07:00', 'type' => 'soc', 'value' => 80])['error'] !== null && GridPlans::clean(['days' => [1], 'time' => '25:00', 'type' => 'soc', 'value' => 80])['error'] !== null
     && GridPlans::clean(['days' => [1], 'time' => '07:00', 'type' => 'time', 'value' => 80])['error'] !== null && GridPlans::clean(['days' => [1], 'time' => '07:00', 'type' => 'range', 'value' => 5])['error'] !== null, 'Ladeplan: ohne Tag, Unsinn bei Uhrzeit, Art und Wert abgelehnt');
 check(GridPlans::daysText([1, 2, 3, 4, 5]) === 'Mo–Fr' && GridPlans::daysText([6, 7]) === 'Sa, So' && GridPlans::daysText([1, 3, 4, 5, 7]) === 'Mo, Mi–Fr, So' && GridPlans::daysText(range(1, 7)) === 'täglich'
-    && GridPlans::label($planIn['plan']) === 'Mo–Fr 07:00 · bis 80' . NNBSP . '%', 'Ladeplan als Zeile');
+    && GridPlans::label($planIn['plan']) === 'Mo–Fr · Bis 80' . NNBSP . '% um 07:00' && GridPlans::headline(['type' => 'energy', 'value' => 10.0, 'time' => '12:00']) === '10' . NNBSP . 'kWh bis 12:00', 'Ladeplan als Zeile');
 $tue = (int) strtotime('2026-10-13 12:00:00 Europe/Berlin');
 $fri = ['days' => [5], 'time' => '06:30', 'on' => true, 'id' => 'pfri'];
 $wed = ['days' => [3], 'time' => '07:00', 'on' => true, 'id' => 'pwed'];
@@ -431,6 +431,24 @@ check(GridPlans::upcoming([$fri, $wed, ['on' => false] + $wed], $tue)['id'] === 
 check(GridPlans::conditions($planIn['plan'], 45.0, null)['ok'] && !GridPlans::conditions($planIn['plan'], 75.0, null)['ok'] && GridPlans::conditions($planIn['plan'], null, null)['ok']
     && !GridPlans::conditions(['soc_below' => null, 'pv_below' => 10.0], 50.0, 14.2)['ok'] && GridPlans::conditions(['soc_below' => null, 'pv_below' => 10.0], 50.0, 3.0)['ok']
     && str_contains(GridPlans::conditions($planIn['plan'], 75.0, null)['text'], 'nicht unter'), 'Ladeplan-Bedingungen: Speicher unter, Sonne unter, ohne Wert gilt der Plan');
+$carPlan = GridPlans::clean(['days' => [3], 'time' => '07:00', 'type' => 'soc', 'value' => '80', 'car_below' => '50', 'car_below_type' => 'soc'])['plan'];
+$rangePlan = GridPlans::clean(['days' => [3], 'time' => '07:00', 'type' => 'soc', 'value' => '80', 'car_below' => '150', 'car_below_type' => 'range'])['plan'];
+check($carPlan['car_below'] === 50.0 && $rangePlan['car_below_type'] === 'range' && GridPlans::clean(['days' => [3], 'time' => '07:00', 'type' => 'soc', 'value' => '80', 'car_below' => '120', 'car_below_type' => 'soc'])['error'] !== null
+    && GridPlans::conditions($carPlan, null, null, 40.0, null)['ok'] && !GridPlans::conditions($carPlan, null, null, 60.0, null)['ok'] && GridPlans::conditions($carPlan, null, null, null, null)['ok']
+    && GridPlans::conditions($rangePlan, null, null, 90.0, 120.0)['ok'] && !GridPlans::conditions($rangePlan, null, null, 10.0, 200.0)['ok']
+    && GridPlans::conditionsShort(['soc_below' => 60.0] + $carPlan) === 'Speicher < 60' . NNBSP . '%, Auto < 50' . NNBSP . '%', 'Ladeplan-Bedingung Auto: Ladestand oder Reichweite unter einer Grenze');
+// Einmal erfüllt bleibt der Plan für diese Uhrzeit dabei, auch wenn das Auto beim Laden über die Grenze kommt.
+$armStore = new ConfigStore(':memory:');
+$failNow = GridPlans::conditions($carPlan, null, null, 60.0, null);
+check(!GridPlans::armed($armStore, $carPlan, $wedAt, $failNow, true)['ok']
+    && GridPlans::armed($armStore, $carPlan, $wedAt, GridPlans::conditions($carPlan, null, null, 40.0, null), false)['ok']
+    && !GridPlans::armed($armStore, $carPlan, $wedAt, $failNow, true)['ok']
+    && GridPlans::armed($armStore, $carPlan, $wedAt, GridPlans::conditions($carPlan, null, null, 40.0, null), true)['ok']
+    && GridPlans::armed($armStore, $carPlan, $wedAt, $failNow, true)['ok'] && !GridPlans::armed($armStore, $carPlan, $wedAt + 7 * 86400, $failNow, true)['ok'], 'Ladeplan-Bedingungen gelten bis zur Uhrzeit, wenn sie einmal mit Auto erfüllt waren');
+check(GridPlans::target($planIn['plan'], $wedAt, 40.0, null, 70.0)['value'] === 70.0 && GridPlans::target($planIn['plan'], $wedAt, 40.0, null, 90.0)['value'] === 80.0, 'Ladeplan nach Ladestand endet am Ladelimit des Autos');
+$rows = Snapshot::planRows([$planIn['plan'], ['on' => false] + $carPlan], null, $tue);
+check($rows[0]['label'] === 'Bis 80' . NNBSP . '% um 07:00' && str_starts_with($rows[0]['detail'], 'Mo–Fr · als Nächstes ') && str_ends_with($rows[0]['detail'], '· nur bei Speicher < 60' . NNBSP . '%')
+    && $rows[1]['detail'] === 'Mi · aus · nur bei Auto < 50' . NNBSP . '%' && GridPlans::nextText($carPlan, $wedAt + 7 * 86400, $tue) === 'am 21.10.' && !str_contains($rows[0]['detail'], '07:00'), 'Ladeplan in der Liste: Ziel und Uhrzeit oben, Tage, nächster Termin und Bedingungen darunter, ohne die Uhrzeit doppelt');
 $planTarget = GridPlans::target($planIn['plan'], $wedAt, 40.0, null);
 check($planTarget['ready_by'] === $wedAt && $planTarget['start_soc'] === 40.0 && $planTarget['then'] === 'grid' && abs(Target::neededKwh($planTarget, ['car_soc' => 40, 'capacity_kwh' => 75]) - 30 / 0.92) < 1e-9, 'Ladeplan als Ziel mit „fertig bis“');
 // Ladeleistung: fest, gelernt beim Netzladen, sonst die Wallbox.
@@ -1123,7 +1141,7 @@ $wins = new PriceWindows($winStore);
 $winList = $wins->list($dayStart + 10 * 3600);
 check(count($winList) === 2 && $winList[0]['start'] === $dayStart + 13 * 3600 && $winList[0]['end'] === $dayStart + 16 * 3600 && $winList[1]['start'] === $dayStart + 86400 + 2 * 3600 && $winList[0]['on'], 'Je Tag das günstigste 3-Stunden-Fenster');
 check(PriceWindows::at($winList, $dayStart + 14 * 3600)['day'] === '2026-10-12' && PriceWindows::at($winList, $dayStart + 17 * 3600) === null && count(PriceWindows::slotsOf($winList, $dayStart + 15 * 3600, $dayStart + 86400 + 3 * 3600)) === 8, 'Fenster zu einer Zeit und seine Viertelstunden');
-check($wins->enabled($dayStart) === false && $wins->offered($dayStart + 10 * 3600) === [], 'Mit statischem Tarif gibt es keine Ladefenster zur Wahl, nur die Vorschau');
+check($wins->enabled($dayStart) === false && $wins->offered($dayStart + 10 * 3600) === [], 'Mit statischem Tarif gibt es keine Ladefenster zur Wahl');
 $winStore->put('tariffs', ['mode' => 'dynamic'] + $winStore->get('tariffs'));
 $wins = new PriceWindows($winStore);
 check($wins->enabled($dayStart) && count($wins->offered($dayStart + 10 * 3600)) === 2 && count($wins->offered($dayStart + 17 * 3600)) === 1, 'Mit dynamischem Tarif: die aktiven Fenster, die noch kommen');

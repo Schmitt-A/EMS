@@ -140,7 +140,7 @@ $floorSoc = (float) ($snap['floor_soc'] ?? 0);
 <?php endif; ?>
     <?= ui_divider('Energie-Boost') ?>
 <?php if (!$enabled): ?>
-    <p class="body-sm muted">Den Speicher einmalig in einem Ladefenster aus dem Netz laden. Ladefenster gibt es nur mit dynamischem Tarif; mit deinem statischen kostet jede Viertelstunde gleich viel, und Laden aus dem Netz brächte nur Verluste. Eine Vorschau der Fenster steht unter <?= ui_inline('Prognose → Strompreis', ['href' => url('/prognose/strompreis') . '#windows-title']) ?>.</p>
+    <p class="body-sm muted">Den Speicher einmalig in einem Ladefenster aus dem Netz laden. Ladefenster gibt es nur mit dynamischem Tarif; mit deinem statischen kostet jede Viertelstunde gleich viel, und Laden aus dem Netz brächte nur Verluste. Umstellen unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
 <?php else: ?>
     <div class="boost-advice<?= $advice['charge'] ? ' boost-advice-charge' : '' ?>">
       <p class="body boost-advice-head"><?= icon($advice['charge'] ? 'battery-charging' : 'info', 'icon-20') ?><span><?= e($advice['head']) ?></span></p>

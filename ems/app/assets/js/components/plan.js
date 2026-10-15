@@ -1,6 +1,7 @@
 // Ladeplan-Sheet: rechnet beim Tippen, wann das Laden etwa startet (aus dem, was zum Ziel fehlt, und der Ladeleistung),
-// was es kostet und wie viel Sonne an jedem gewählten Tag bis zur Uhrzeit erwartet wird. Die Werte kommen als data-*
-// vom Server (partials/plan-form.php); gespeichert wird per Formular.
+// was es kostet und wie viel Sonne an jedem gewählten Tag bis zur Uhrzeit erwartet wird. Ein Ladestand über dem
+// Ladelimit des Autos zählt nur bis zum Limit. Die Werte kommen als data-* vom Server (partials/plan-form.php);
+// gespeichert wird per Formular.
 import { $, $$ } from '../core/dom.js';
 import { clock, dayLabel, fmt, NNBSP, timeLabel } from '../core/format.js';
 
@@ -25,6 +26,7 @@ function bind(form) {
   const power = num(d.power);
   const price = num(d.price);
   const soc = num(d.soc);
+  const limit = num(d.limit);
   const capacity = num(d.capacity);
   const range = num(d.range);
   const use = num(d.consumption);
@@ -33,7 +35,8 @@ function bind(form) {
   const need = () => {
     const type = $('input[name="type"]:checked', form)?.value;
     if (type === 'soc') {
-      const target = num($('input[name="soc"]', form)?.value);
+      const wanted = num($('input[name="soc"]', form)?.value);
+      const target = wanted === null || limit === null ? wanted : Math.min(wanted, limit);
       return target === null || soc === null || capacity === null ? null : (Math.max(0, target - soc) / 100) * capacity / EFFICIENCY;
     }
     if (type === 'range') {
@@ -102,6 +105,14 @@ function bind(form) {
       }));
     }
   };
+  // Bedingung Auto: beim Wechsel zwischen Ladestand und Reichweite den Vorschlag der anderen Einheit nehmen.
+  const DEFAULTS = { soc: '40', range: '150' };
+  form.addEventListener('change', (event) => {
+    if (event.target.name !== 'car_below_type') return;
+    const field = $('[data-plan-car]', form);
+    const other = event.target.value === 'soc' ? 'range' : 'soc';
+    if (field && (field.value === DEFAULTS[other] || field.value === '')) field.value = DEFAULTS[event.target.value];
+  });
   form.addEventListener('input', update);
   form.addEventListener('change', update);
   update();

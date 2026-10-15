@@ -641,8 +641,9 @@ function ui_chargepoint(array $cp, array $opts = []): string
     $planItems = '';
     foreach ((array) ($cp['plans'] ?? []) as $plan) {
         $planItems .= '<li><button type="button" class="cp-plan" data-open-dialog="' . e($id) . '-plan-' . e((string) $plan['id']) . '" aria-haspopup="dialog"' . (empty($plan['on']) ? ' data-off' : '') . '>'
-            . icon('calendar', 'icon-16') . '<span class="cp-plan-text"><span class="cp-plan-label">' . e((string) $plan['label']) . '</span>'
-            . '<span class="caption muted">' . e((string) $plan['next']) . (!empty($plan['active']) ? ' · plant gerade' : '') . '</span></span>' . icon('chevron-right', 'icon-16') . '</button></li>';
+            . icon('calendar', 'icon-16') . '<span class="cp-plan-text"><span class="cp-plan-label">' . e((string) $plan['label'])
+            . (!empty($plan['active']) ? '<span class="pill">plant gerade</span>' : '') . '</span>'
+            . '<span class="caption muted cp-plan-detail">' . e((string) $plan['detail']) . '</span></span>' . icon('chevron-right', 'icon-16') . '</button></li>';
     }
     $plansHtml = !$editable ? '' : '<div class="cp-plans stack-tight"><p class="caption muted cp-plans-title">Ladepläne</p>'
         . ($planItems !== '' ? '<ul class="cp-plan-list" role="list">' . $planItems . '</ul>' : '')
@@ -654,7 +655,7 @@ function ui_chargepoint(array $cp, array $opts = []): string
         . $windowsHtml
         . '<p class="caption cp-grid-text"' . ui_attrs(['data-live' => $p('chargepoint.grid_text'), 'data-live-hide' => $p('chargepoint.grid_text')]) . ($gridText === '' ? ' hidden' : '') . '>' . e($gridText) . '</p>'
         . $plansHtml
-        . ($editable ? '<p class="caption">' . ui_inline($enabled ? 'Ladefenster einstellen' : 'Vorschau der Ladefenster', ['href' => url('/prognose/strompreis') . '#windows-title']) . '</p>' : '')
+        . ($editable && $enabled ? '<p class="caption">' . ui_inline('Ladefenster einstellen', ['href' => url('/prognose/strompreis') . '#windows-title']) . '</p>' : '')
         . '</section>';
     $power = '<span class="cp-power">' . icon('zap', 'icon-16') . ($live ? ui_live_num('chargepoint.power_kw', $cp['power_kw'], 'kW') : ui_num($cp['power_kw'], 'kW')) . '</span>';
     $phases = '<span class="phases" data-active="' . (int) $cp['phases'] . '"' . ui_attrs(['data-live-phases' => $p('chargepoint.phases')]) . ' role="img" aria-label="' . e(((int) $cp['phases']) > 0 ? $cp['phases'] . '-phasig' : 'keine Phase aktiv') . '"><span></span><span></span><span></span></span>';

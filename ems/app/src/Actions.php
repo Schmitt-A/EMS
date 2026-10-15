@@ -1269,6 +1269,8 @@ final class Actions
             'value' => $_POST[match ($type) { 'soc' => 'soc', 'range' => 'km', default => 'kwh' }] ?? null,
             'soc_below' => ($_POST['soc_below_on'] ?? '0') === '1' ? ($_POST['soc_below'] ?? null) : null,
             'pv_below' => ($_POST['pv_below_on'] ?? '0') === '1' ? ($_POST['pv_below'] ?? null) : null,
+            'car_below' => ($_POST['car_below_on'] ?? '0') === '1' ? ($_POST['car_below'] ?? null) : null,
+            'car_below_type' => (string) ($_POST['car_below_type'] ?? 'soc'),
         ], $id);
         if ($built['error'] !== null) {
             return $built['error'];
@@ -1282,13 +1284,14 @@ final class Actions
         $now = time();
         // Wer einen Plan ändert, will ihn auch für die nächste Uhrzeit, selbst wenn sie schon erledigt war.
         store()->put(GridPlans::DONE, 0);
+        store()->put(GridPlans::ARMED, '');
         $snap = (new Snapshot(store(), ha()))->build();
         $result = ChargePlan::refresh(store(), $snap, $now, true);
         (new Controller(store(), ha()))->kick($now);
         $next = GridPlans::next($built['plan'], $now);
         $text = 'Ladeplan gespeichert: ' . GridPlans::label($built['plan']) . ($built['plan']['on'] ? '' : ', ausgeschaltet') . '.';
         if ($built['plan']['on'] && $next !== null) {
-            $text .= ' Nächstes Mal ' . day_label(date('Y-m-d', $next)) . ' ' . date('H:i', $next) . '.';
+            $text .= ' Als Nächstes ' . rtrim(GridPlans::nextText($built['plan'], $next, $now), '.') . '.';
         }
         $planText = ChargePlan::text($result);
         return $planText === '' ? $text : $text . ' ' . $planText;

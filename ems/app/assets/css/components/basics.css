@@ -8,6 +8,15 @@
   box-shadow: var(--shadow-card);
 }
 
+/* Kinder von Karten, Stapeln und Formularzeilen dürfen schmaler werden als ihr Inhalt. Sonst setzt ein Knopf, der
+   nicht umbricht, oder eine Zeile mit fester Feldbreite bei größerer Systemschrift die Mindestbreite der ganzen Spalte,
+   und die Seite lässt sich seitlich schieben. */
+.card > *,
+.stack > *,
+.form-rows > * {
+  min-width: 0;
+}
+
 .card-flush {
   padding: 0;
   overflow: hidden;
@@ -38,15 +47,19 @@
   align-items: center;
   justify-content: center;
   gap: var(--s-2);
+  max-width: 100%;
   min-height: 2.75rem;
-  padding: 0 var(--s-5);
+  padding: 0.375rem var(--s-5);
   border: 0;
   border-radius: var(--r-pill);
   font-size: 0.9375rem;
   font-weight: 600;
   line-height: 1.25rem;
+  text-align: center;
   text-decoration: none;
-  white-space: nowrap;
+  /* Bricht erst um, wenn die Zeile nicht reicht, etwa mit größerer Systemschrift; sonst drückt ein Knopf die Seite
+     breiter als den Bildschirm, und sie lässt sich seitlich schieben. */
+  white-space: normal;
   transition: background-color var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
 }
 

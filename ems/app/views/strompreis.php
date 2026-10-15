@@ -54,7 +54,7 @@ if (!empty($price['meta']['error']) && $price['horizon'] < time()) {
           . '<button type="button" class="toggle-chip c-v1" aria-pressed="true" data-chart-series="static"><span class="swatch swatch-dot"></span>Statisch</button>'
           . '<button type="button" class="toggle-chip c-muted" aria-pressed="true" data-chart-series="spot"><span class="swatch swatch-dot"></span>Börse</button>'
           . '<button type="button" class="toggle-chip c-grid-out" aria-pressed="true" data-chart-series="export"><span class="swatch swatch-dot"></span>Einspeisung</button>'
-          . '<button type="button" class="toggle-chip c-accent" aria-pressed="' . ($price['windows_enabled'] ? 'true' : 'false') . '" data-chart-bands><span class="swatch"></span>Ladefenster' . ($price['windows_enabled'] ? '' : '<span class="sr-only">, Vorschau</span>') . '</button>'
+          . ($price['windows_enabled'] ? '<button type="button" class="toggle-chip c-accent" aria-pressed="true" data-chart-bands><span class="swatch"></span>Ladefenster</button>' : '')
           . '</div></div>',
       'style' => [
           'dynamic' => ['type' => 'step', 'width' => $dynamicActive ? 'bold' : null, 'dash' => !$dynamicActive, 'unit' => 'ct/kWh', 'decimals' => 1],
@@ -64,12 +64,12 @@ if (!empty($price['meta']['error']) && $price['horizon'] < time()) {
       ],
       'empty' => 'Noch keine Börsenpreise. Der Recorder holt sie gleich.',
   ]) ?>
-  <p class="caption muted">Dick der Tarif, nach dem du bezahlst, gestrichelt der andere. Hinterlegt sind die aktiven Ladefenster, kräftiger die Viertelstunden, die ein Ladeplan dazunimmt, und der Preisbereich als waagerechtes Band<?= $price['windows_enabled'] ? '' : '; mit deinem statischen Tarif als Vorschau, sobald du „Ladefenster“ antippst oder unten die Vorschau aufklappst' ?>. Je Tag stehen der teuerste und der günstigste dynamische Preis. Ändern unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
+  <p class="caption muted">Dick der Tarif, nach dem du bezahlst, gestrichelt der andere.<?= $price['windows_enabled'] ? ' Hinterlegt sind die aktiven Ladefenster, kräftiger die Viertelstunden, die ein Ladeplan dazunimmt, und der Preisbereich als waagerechtes Band.' : '' ?> Je Tag stehen der teuerste und der günstigste dynamische Preis. Ändern unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
   <p class="caption muted"><?= e(MarketPrices::SOURCE) ?>.</p>
 </section>
 
 <?php
-// Ladefenster: mit dynamischem Tarif direkt, mit statischem als aufklappbare Vorschau (gleiche Bedienung).
+// Ladefenster: nur mit dynamischem Tarif; mit statischem kostet jede Viertelstunde gleich viel.
 ob_start();
 ?>
   <form method="post" action="<?= e(url('/einstellungen')) ?>" class="form-rows" data-autosubmit>
@@ -163,11 +163,7 @@ $boostWindow = $price['users']['battery'];
 <section class="card stack" aria-labelledby="windows-title">
   <h2 class="card-title" id="windows-title">Ladefenster</h2>
 <?php if (!$price['windows_enabled']): ?>
-  <p class="body-sm muted">Mit deinem statischen Tarif kostet jede Viertelstunde gleich viel, Ladefenster gibt es deshalb erst mit dynamischem Tarif. Die Vorschau zeigt, wie sie mit deinen Aufschlägen aussähen, aufgeklappt auch im Diagramm oben; was du dort einstellst, gilt, sobald du unter Einstellungen → Tarif auf dynamisch wechselst.</p>
-  <details class="window-preview" data-chart-bands-for="price-chart">
-    <summary><?= icon('chevron-down', 'icon-16') ?><span>Vorschau</span></summary>
-    <div class="stack window-preview-body"><?= $windowsUi ?></div>
-  </details>
+  <p class="body-sm muted">Mit deinem statischen Tarif kostet jede Viertelstunde gleich viel, Ladefenster gibt es deshalb erst mit dynamischem Tarif. Umstellen unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
 <?php else: ?>
   <p class="body-sm muted">Je Tag sucht EMS das günstigste Fenster am Stück, sobald die Preise da sind; gegen 13 Uhr kommen die für morgen dazu, mit einer Preis-Entität von Tibber oder Octopus auch deren Preise. Dazu kommen die Zeiten in deinem Preisbereich und eigene Fenster. Aus den aktiven Fenstern wählst du in der Ladepunkt-Karte die fürs Auto und unter Speicher → Ausblick das für den Energie-Boost.</p>
   <?= $windowsUi ?>

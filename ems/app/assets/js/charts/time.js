@@ -124,8 +124,7 @@ export function renderTime(figure, payload, state) {
     const from = x(Math.max(today[0], bounds[0]));
     svg('rect', { class: 'today-zone', x: from, y: top - 8, width: x(Math.min(today[1], bounds[1])) - from, height: height - bottom - top + 8 }, plot);
   }
-  // Ladefenster und Preisbereich blendet der Knopf „Ladefenster“ aus (state.bands false); als Vorschau mit statischem
-  // Tarif stehen sie nur da, solange er an ist.
+  // Ladefenster und Preisbereich blendet der Knopf „Ladefenster“ aus (state.bands false).
   const bands = state.bands === false ? [] : payload.bands || [];
   const ranges = state.bands === false ? [] : payload.ranges || [];
   // Preisbereich der Ladefenster als waagerechtes Band über die ganze Breite, ohne Untergrenze bis zum Boden.

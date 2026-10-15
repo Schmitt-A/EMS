@@ -250,9 +250,13 @@ final class ChargePlan
         } elseif ($grid !== 'now') {
             $due = GridPlans::upcoming(GridPlans::all($store), $now, (int) $store->get(GridPlans::DONE, 0));
             if ($due !== null && $due['deadline'] - $now <= GridPlans::HORIZON_S) {
-                $planTarget = GridPlans::target($due, $due['deadline'], $snap['vehicle']['soc'] ?? null, $snap['vehicle']['range_km'] ?? null);
+                $car = $snap['vehicle'];
+                $carSoc = isset($car['soc']) ? (float) $car['soc'] : null;
+                $carRange = isset($car['range_km']) ? (float) $car['range_km'] : null;
+                $planTarget = GridPlans::target($due, $due['deadline'], $carSoc, $carRange, !empty($car['limit_from_car']) && isset($car['limit']) ? (float) $car['limit'] : null);
                 $planView = Target::view($planTarget, $inputs, $now);
-                $cond = GridPlans::conditions($due, isset($snap['values']['battery_soc']) ? (float) $snap['values']['battery_soc'] : null, self::sunKwh($store, $cfg, $snap, $now, $due['deadline']));
+                $cond = GridPlans::armed($store, $due, $due['deadline'], GridPlans::conditions($due, isset($snap['values']['battery_soc']) ? (float) $snap['values']['battery_soc'] : null,
+                    self::sunKwh($store, $cfg, $snap, $now, $due['deadline']), $carSoc, $carRange), $connected);
                 if ($planView['reached'] ?? false) {
                     // Erreicht: bis zur nächsten Uhrzeit dieses Plans erledigt.
                     $store->put(GridPlans::DONE, $due['deadline']);

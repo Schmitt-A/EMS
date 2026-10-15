@@ -545,11 +545,25 @@
 .cp-plan-text {
   display: grid;
   flex: 1;
+  gap: 0.125rem;
   min-width: 0;
 }
 
+/* Oben Ziel und Uhrzeit, darunter Wochentage, nächster Termin und Bedingungen; beides bricht schmal um. */
 .cp-plan-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
   font-weight: 600;
+}
+
+.cp-plan-detail {
+  overflow-wrap: anywhere;
+}
+
+.cp-plan > .icon {
+  flex: none;
 }
 
 /* Ladeplan-Sheet: Wochentage als Kästchen in einer Reihe. */
@@ -557,9 +571,45 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-2);
+  min-inline-size: 0;
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+.plan-days legend {
+  margin-block-end: var(--s-2);
+  padding: 0;
+}
+
+/* Bedingungen untereinander: oben Name, Hinweis und Schalter, darunter die Grenze nur, wenn der Schalter an ist. */
+.plan-cond {
+  display: grid;
+  gap: var(--s-1);
+  padding-block-end: var(--s-2);
+}
+
+.plan-cond + .plan-cond {
+  border-block-start: 1px solid var(--border);
+}
+
+.plan-cond .form-row {
+  border-block-end: 0;
+}
+
+.plan-cond:not(:has(input[role="switch"]:checked)) .plan-cond-value {
+  display: none;
+}
+
+.plan-unit {
+  flex: none;
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.plan-cond:has(input[name="car_below_type"][value="range"]:checked) .plan-unit[data-unit="soc"],
+.plan-cond:has(input[name="car_below_type"][value="soc"]:checked) .plan-unit[data-unit="range"] {
+  display: none;
 }
 
 .plan-day {

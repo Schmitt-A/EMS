@@ -323,37 +323,3 @@
   min-width: 0;
 }
 
-/* Vorschau der Ladefenster bei statischem Tarif: aufklappbar, darin dieselbe Bedienung. */
-.window-preview summary {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  min-height: 2.75rem;
-  color: var(--accent-on-soft);
-  font-size: 0.875rem;
-  font-weight: 600;
-  list-style: none;
-  cursor: pointer;
-}
-
-.window-preview summary::-webkit-details-marker {
-  display: none;
-}
-
-.window-preview summary .icon {
-  transition: transform var(--dur-base) var(--ease-out);
-}
-
-.window-preview[open] summary .icon {
-  transform: rotate(180deg);
-}
-
-.window-preview summary:focus-visible {
-  outline: 2px solid var(--accent-strong);
-  outline-offset: 2px;
-  border-radius: var(--r-field);
-}
-
-.window-preview-body {
-  margin-block-start: var(--s-3);
-}

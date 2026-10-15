@@ -426,19 +426,18 @@ final class Series
             }
         }
         // Aktive Ladefenster hinterlegt, kräftiger die Viertelstunden, die der Ladeplan für „fertig bis“ dazunimmt, und
-        // der Preisbereich als waagerechtes Band. Mit statischem Tarif sind Fenster und Preisbereich eine Vorschau, die
-        // das Diagramm erst zeigt, wenn man „Ladefenster“ antippt oder die Vorschau der Ladefenster aufklappt.
+        // der Preisbereich als waagerechtes Band; mit statischem Tarif gibt es keine Ladefenster und damit nichts davon.
         $bands = [];
         $ranges = [];
         $windows = new PriceWindows($this->store, $tariff);
         $enabled = $windows->enabled($now);
-        foreach ($windows->list($now) as $w) {
+        foreach ($enabled ? $windows->list($now) : [] as $w) {
             if ($w['on']) {
                 $bands[] = ['from' => $w['start'] * 1000, 'to' => $w['end'] * 1000, 'label' => 'Ladefenster', 'kind' => 'window'];
             }
         }
         $config = $windows->config();
-        if ($config['range_to'] !== null) {
+        if ($enabled && $config['range_to'] !== null) {
             $ranges[] = ['from' => $config['range_from'], 'to' => $config['range_to']];
         }
         if ($enabled) {

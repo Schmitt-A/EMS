@@ -609,7 +609,7 @@ final class Snapshot
             return $schedule;
         }
         if (empty($windows['enabled'])) {
-            return 'Ladefenster gibt es nur mit dynamischem Tarif; mit deinem statischen kostet jede Viertelstunde gleich viel. Eine Vorschau steht unter Prognose → Strompreis.';
+            return 'Ladefenster gibt es nur mit dynamischem Tarif; mit deinem statischen kostet jede Viertelstunde gleich viel.';
         }
         if (!empty($windows['done'])) {
             return 'Ziel fürs Netzladen erreicht. Bis zum Abstecken lädt das Auto in Ladefenstern nicht mehr aus dem Netz.';
@@ -627,9 +627,10 @@ final class Snapshot
     }
 
     /**
-     * Ladepläne für die Karte: Zeile, an/aus und für den nächsten fälligen, ob er gerade plant.
+     * Ladepläne für die Karte: oben Ziel und Uhrzeit, darunter Wochentage, wann als Nächstes (ohne die Uhrzeit noch
+     * einmal) und die Bedingungen; dazu an/aus und für den nächsten fälligen, ob er gerade plant.
      *
-     * @return list<array{id: string, label: string, on: bool, next: string, active: bool}>
+     * @return list<array{id: string, label: string, detail: string, on: bool, active: bool}>
      */
     public static function planRows(array $plans, ?array $plan, int $now): array
     {
@@ -637,11 +638,13 @@ final class Snapshot
         $out = [];
         foreach ($plans as $p) {
             $next = GridPlans::next($p, $now);
+            $when = !$p['on'] ? 'aus' : ($next === null ? '' : 'als Nächstes ' . GridPlans::nextText($p, $next, $now));
+            $cond = GridPlans::conditionsShort($p);
             $out[] = [
                 'id' => (string) $p['id'],
-                'label' => GridPlans::label($p),
+                'label' => GridPlans::headline($p),
+                'detail' => implode(' · ', array_filter([GridPlans::daysText((array) $p['days']), $when, $cond === '' ? '' : 'nur bei ' . $cond])),
                 'on' => (bool) $p['on'],
-                'next' => !$p['on'] ? 'aus' : ($next === null ? '' : 'nächstes Mal ' . (date('Y-m-d', $next) === date('Y-m-d', $now) ? 'heute' : day_label(date('Y-m-d', $next))) . ' ' . date('H:i', $next)),
                 'active' => $p['id'] === $active,
             ];
         }
