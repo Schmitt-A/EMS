@@ -202,7 +202,11 @@ final class Snapshot
         $enabled = $windows->enabled($now);
         $plan = ChargePlan::get($this->store);
         $gridTarget = Target::get($this->store, 'grid');
-        if ($plan !== null && (!$enabled || $gridTarget === null || (int) ($plan['target_set_at'] ?? 0) !== (int) ($gridTarget['set_at'] ?? -1))) {
+        if ($plan !== null && ($plan['source'] ?? 'target') === 'target' && (!$enabled || $gridTarget === null || (int) ($plan['target_set_at'] ?? 0) !== (int) ($gridTarget['set_at'] ?? -1))) {
+            $plan = null;
+        }
+        // Ein Ladeplan gilt bis zu seiner Uhrzeit, der Recorder rechnet ihn neu oder räumt ihn ab.
+        if ($plan !== null && ($plan['source'] ?? 'target') === 'schedule' && (int) $plan['deadline'] <= $now) {
             $plan = null;
         }
         $cfg['charge']['mode'] = Energy::userMode($cfg['charge']['mode'] ?? 'smart');
@@ -381,11 +385,16 @@ final class Snapshot
         }
         $base['target'] = Target::view(Target::get($this->store), Target::inputs($base), $now);
         $base['grid_target'] = Target::view($gridTarget, Target::inputs($base), $now);
+        $base['now_target'] = Target::view(Target::get($this->store, 'now'), Target::inputs($base), $now);
+        $base['chargepoint']['grid_windows'] = ChargePlan::windowsWanted($cfg['charge']);
+        $base['chargepoint']['plans'] = self::planRows(GridPlans::all($this->store), $plan, $now);
+        $carKw = GridPlans::carKw($cfg, $this->store);
+        $base['chargepoint']['power_plan_kw'] = ChargePlan::powerKw($cfg['charge'], $carKw);
         $base['chargepoint']['grid_text'] = self::gridText($cfg['charge'], $base['windows'], $plan, (bool) $base['vehicle']['connected'], $now);
         $base['chargepoint']['windows_enabled'] = $enabled;
         $base['chargepoint']['grid_windows'] = self::windowChoices($base['windows'], $now);
         // Mit Ziel zählt die Restzeit bis zum Ziel, nicht bis zum Limit: erst das für Sonne und Speicher, sonst das fürs Netzladen.
-        foreach (['target', 'grid_target'] as $key) {
+        foreach (['now_target', 'target', 'grid_target'] as $key) {
             $view = $base[$key];
             if ($view !== null && $view['remaining_s'] !== null && !$view['reached']) {
                 $base['chargepoint']['remaining_s'] = $view['remaining_s'];
@@ -423,6 +432,8 @@ final class Snapshot
             'target' => $snap['target'] === null ? ['active' => false] : ['active' => true] + $snap['target'] + ['remaining_text' => $snap['target']['text']],
             // Ziel fürs Netzladen, eigene Zeile im Abschnitt Netzladen
             'grid_target' => ($snap['grid_target'] ?? null) === null ? ['active' => false] : ['active' => true] + $snap['grid_target'],
+            // Ziel für Netzladen „Jetzt“
+            'now_target' => ($snap['now_target'] ?? null) === null ? ['active' => false] : ['active' => true] + $snap['now_target'],
             'session_view' => $snap['session_view'],
             // Ausblick des Speichers
             'outlook' => self::outlookRows($snap['storage'] ?? [], (float) ($snap['car_buffer_soc'] ?? 100), isset($snap['house_mean_kw']) ? (float) $snap['house_mean_kw'] : null),
@@ -590,11 +601,12 @@ final class Snapshot
         if (($charge['mode'] ?? 'smart') === 'aus') {
             return $grid === 'off' ? '' : 'Laden ist aus, Netzladen wartet, bis es wieder an ist.';
         }
+        $schedule = $plan !== null && ($plan['source'] ?? 'target') === 'schedule' ? ChargePlan::text($plan) : '';
         if ($grid === 'now') {
             return $connected ? '' : 'Sobald das Auto angesteckt ist, lädt es voll aus dem Netz.';
         }
         if ($grid !== 'windows') {
-            return '';
+            return $schedule;
         }
         if (empty($windows['enabled'])) {
             return 'Ladefenster gibt es nur mit dynamischem Tarif; mit deinem statischen kostet jede Viertelstunde gleich viel. Eine Vorschau steht unter Prognose → Strompreis.';
@@ -612,6 +624,28 @@ final class Snapshot
             default => 'Kein aktives Ladefenster bekannt. Die Fenster stehen unter Prognose → Strompreis.',
         };
         return trim($text . ' ' . ChargePlan::text($plan));
+    }
+
+    /**
+     * Ladepläne für die Karte: Zeile, an/aus und für den nächsten fälligen, ob er gerade plant.
+     *
+     * @return list<array{id: string, label: string, on: bool, next: string, active: bool}>
+     */
+    public static function planRows(array $plans, ?array $plan, int $now): array
+    {
+        $active = $plan !== null && ($plan['source'] ?? '') === 'schedule' ? (string) ($plan['plan_id'] ?? '') : '';
+        $out = [];
+        foreach ($plans as $p) {
+            $next = GridPlans::next($p, $now);
+            $out[] = [
+                'id' => (string) $p['id'],
+                'label' => GridPlans::label($p),
+                'on' => (bool) $p['on'],
+                'next' => !$p['on'] ? 'aus' : ($next === null ? '' : 'nächstes Mal ' . (date('Y-m-d', $next) === date('Y-m-d', $now) ? 'heute' : day_label(date('Y-m-d', $next))) . ' ' . date('H:i', $next)),
+                'active' => $p['id'] === $active,
+            ];
+        }
+        return $out;
     }
 
     /**

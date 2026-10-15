@@ -123,6 +123,31 @@ function paintGrid(card, grid) {
   for (const node of $$('[data-grid-show]', card)) node.hidden = !node.dataset.gridShow.split(' ').includes(grid);
 }
 
+// Schalter „Ladefenster nutzen“ und „Stoppen“ für Netzladen „Jetzt“; „Jetzt“ selbst startet im Ziel-Sheet.
+function bindGrid(card) {
+  const box = $('[data-grid-windows]', card);
+  box?.addEventListener('change', async () => {
+    const on = box.checked;
+    try {
+      applyLive(await postJson('/api/modus', { windows: on ? '1' : '0' }));
+    } catch {
+      box.checked = !on;
+      fail(card, 'Die Ladefenster wurden nicht umgeschaltet. Bitte noch einmal versuchen.');
+    }
+  });
+  const stop = $('[data-grid-stop]', card);
+  stop?.addEventListener('click', async () => {
+    stop.disabled = true;
+    try {
+      applyLive(await postJson('/api/modus', { grid: 'stop' }));
+    } catch {
+      fail(card, 'Netzladen wurde nicht gestoppt. Bitte noch einmal versuchen.');
+    } finally {
+      stop.disabled = false;
+    }
+  });
+}
+
 // Ladeziele für Sonne und Speicher und fürs Netzladen: Zeile oder „… setzen“, Fortschritt als Breite.
 function paintTarget(card, scope, target) {
   const row = $(`[data-target="${scope}"]`, card);
@@ -176,15 +201,17 @@ export function initChargepoints(root = document) {
     const bar = $('[data-chargebar]', card);
     bindSwitch(card);
     bindChoice(card, '[data-mode-switch]', 'mode', 'Der Modus wurde nicht gespeichert. Bitte noch einmal versuchen.');
-    bindChoice(card, '[data-grid-switch]', 'grid', 'Netzladen wurde nicht umgestellt. Bitte noch einmal versuchen.');
+    bindGrid(card);
     if (bar) bindLimit(card, bar);
     paintTarget(card, 'sun', null);
     paintTarget(card, 'grid', null);
+    paintTarget(card, 'now', null);
     const timerBox = $('[data-cp-timer]', card);
     if (timerBox && !timerBox.hidden) paintTimer(card, { remaining_s: Number(timerBox.dataset.left), total_s: Number(timerBox.dataset.total) });
     onLive((data) => {
       paintTarget(card, 'sun', data.target);
       paintTarget(card, 'grid', data.grid_target);
+      paintTarget(card, 'now', data.now_target);
       paintSession(card, data.session_view);
       if (data.chargepoint) paintTimer(card, data.chargepoint.timer || null);
       const cp = data.chargepoint;
@@ -199,6 +226,8 @@ export function initChargepoints(root = document) {
           if (input && !input.checked && !fieldset.contains(document.activeElement)) input.checked = true;
         }
         paintGrid(card, cp.grid);
+        const windows = $('[data-grid-windows]', card);
+        if (windows && !windows.disabled && document.activeElement !== windows) windows.checked = Boolean(cp.grid_windows);
       }
       if (bar && vehicle) {
         bar.dataset.charging = String(Boolean(cp?.charging));

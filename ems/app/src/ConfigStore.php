@@ -250,8 +250,11 @@ final class ConfigStore
                 // Aus oder ein Modus für Sonne und Speicher (Energy::SUN_MODES); last_mode gilt beim Einschalten.
                 'mode' => 'smart',
                 'last_mode' => 'smart',
-                // Netzladen: off, now (bis Ziel oder Abstecken) oder windows (in den Ladefenstern, PriceWindows).
+                // Netzladen: off, now (bis zum Ziel für „Jetzt“ oder Abstecken) oder windows (in den Ladefenstern,
+                // PriceWindows). grid_windows ist der Schalter „Ladefenster nutzen“, nach „Jetzt“ gilt er wieder;
+                // null heißt: wie grid (von früher).
                 'grid' => 'off',
+                'grid_windows' => null,
                 'phase_mode' => 'auto',
                 'solar_share' => 100.0,
                 'reserve_w' => 200.0,
@@ -286,7 +289,8 @@ final class ConfigStore
             'chargepoint' => ['name' => 'Wallbox'],
             // capacity_kwh: Akku des Autos, wenn keine Entität ihn meldet (Tesla BLE meldet keinen). consumption_kwh:
             // Verbrauch in kWh/100 km, für die Reichweite, wenn keine Entität sie meldet.
-            'vehicle' => ['name' => 'Auto', 'limit_soc' => 80.0, 'capacity_kwh' => null, 'consumption_kwh' => null],
+            // charge_kw: Ladeleistung, die das Auto höchstens nimmt; null lernt EMS sie beim Netzladen (GridPlans).
+            'vehicle' => ['name' => 'Auto', 'limit_soc' => 80.0, 'capacity_kwh' => null, 'consumption_kwh' => null, 'charge_kw' => null],
             'weather' => ['url' => 'https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/single_stations/F9519/kml/MOSMIX_L_LATEST_F9519.kmz'],
             // flow_view: Energiefluss auf Laden als Balken ('bar') oder Energie-Flow ('graph').
             'ui' => ['theme' => 'system', 'flow_view' => 'bar'],

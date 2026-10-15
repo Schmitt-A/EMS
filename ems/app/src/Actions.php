@@ -319,6 +319,9 @@ final class Actions
             if (array_key_exists('consumption_kwh', $_POST)) {
                 $patch['consumption_kwh'] = self::optional('consumption_kwh', 5, 60);
             }
+            if (array_key_exists('charge_kw', $_POST)) {
+                $patch['charge_kw'] = self::optional('charge_kw', 1, 22);
+            }
             if (array_key_exists('limit_soc', $_POST)) {
                 $patch['limit_soc'] = max(20.0, snap_percent(post_float('limit_soc', 20, 100, 80)));
             }
@@ -410,6 +413,9 @@ final class Actions
             self::redirectBack();
         } elseif ($section === 'grid_windows') {
             flash(self::saveGridWindows());
+            self::redirectBack();
+        } elseif ($section === 'grid_plan') {
+            flash(self::saveGridPlan());
             self::redirectBack();
         } elseif ($section === 'battery_grid') {
             flash(self::saveBatteryGrid());
@@ -800,6 +806,7 @@ final class Actions
             'weather' => ['url' => (new WeatherFeed(store()))->url()],
             'ui' => ['theme' => $cfg['ui']['theme'] ?? 'system', 'flow_view' => $cfg['ui']['flow_view'] ?? 'bar'],
             'notify' => Notify::stored(Notify::settings($cfg)),
+            'grid_plans' => GridPlans::all(store()),
         ];
     }
 
@@ -899,7 +906,18 @@ final class Actions
                 'limit_soc' => max(20.0, snap_percent(self::clamped($data['vehicle']['limit_soc'] ?? null, 20, 100, 80))),
                 'capacity_kwh' => is_numeric($capacity) ? clamp_float((float) $capacity, 1, 250) : null,
                 'consumption_kwh' => is_numeric($consumption) ? clamp_float((float) $consumption, 5, 60) : null,
+                'charge_kw' => is_numeric($data['vehicle']['charge_kw'] ?? null) ? clamp_float((float) $data['vehicle']['charge_kw'], 1, 22) : null,
             ]);
+        }
+        if (isset($data['grid_plans']) && is_array($data['grid_plans'])) {
+            $plans = [];
+            foreach (array_slice($data['grid_plans'], 0, GridPlans::MAX) as $raw) {
+                $plan = is_array($raw) ? GridPlans::clean($raw, (string) ($raw['id'] ?? ''))['plan'] : null;
+                if ($plan !== null) {
+                    $plans[] = $plan;
+                }
+            }
+            store()->put(GridPlans::KEY, $plans);
         }
         if (isset($data['chargepoint']['name'])) {
             store()->merge('chargepoint', ['name' => self::name((string) $data['chargepoint']['name'], 'Wallbox')]);
@@ -950,6 +968,7 @@ final class Actions
                 'mode' => $mode,
                 'last_mode' => $last === 'aus' ? 'smart' : $last,
                 'grid' => Energy::grid($charge['grid'] ?? 'off'),
+                'grid_windows' => array_key_exists('grid_windows', $charge) && $charge['grid_windows'] !== null ? (bool) $charge['grid_windows'] : null,
                 'phase_mode' => in_array($phase, ['auto', '1p', '3p'], true) ? $phase : 'auto',
                 'solar_share' => self::clamped($charge['solar_share'] ?? null, 0, 100, 100),
                 'reserve_w' => self::clamped($charge['reserve_w'] ?? null, 0, 2000, 200),
@@ -1167,13 +1186,20 @@ final class Actions
     public static function saveTarget(): string
     {
         $controller = new Controller(store(), ha());
-        $scope = ($_POST['scope'] ?? '') === 'grid' ? 'grid' : 'sun';
-        $key = $scope === 'grid' ? Target::GRID_KEY : Target::KEY;
-        $name = $scope === 'grid' ? 'Ziel fürs Netzladen' : 'Ladeziel';
+        $scope = in_array($_POST['scope'] ?? '', ['grid', 'now'], true) ? (string) $_POST['scope'] : 'sun';
+        $key = Target::key($scope);
+        $name = match ($scope) {
+            'grid' => 'Ziel für die Ladefenster',
+            'now' => 'Netzladen „Jetzt“',
+            default => 'Ladeziel',
+        };
         if (!empty($_POST['clear'])) {
             store()->put($key, []);
             if ($scope === 'grid') {
                 store()->put(ChargePlan::KEY, []);
+            }
+            if ($scope === 'now') {
+                return self::stopNow();
             }
             $controller->kick(time());
             return $name . ' gelöscht.';
@@ -1184,6 +1210,14 @@ final class Actions
             return $built['error'];
         }
         store()->put($key, $built['target']);
+        if ($scope === 'now') {
+            // „Jetzt“ startet erst mit seinem Ziel.
+            store()->merge('charge', ['grid' => 'now']);
+            store()->put(ChargePlan::KEY, []);
+            $controller->kick(time());
+            $view = Target::view($built['target'], Target::inputs($snap), time());
+            return 'Netzladen „Jetzt“ läuft: ' . $view['label'] . ', danach ' . (ChargePlan::afterNow(cfg()['charge']) === 'windows' ? 'weiter in den Ladefenstern.' : 'ohne Netz.');
+        }
         // Mit „fertig bis“ steht der Plan gleich, nicht erst beim nächsten Recorder-Schritt.
         $plan = $scope === 'grid' ? ChargePlan::refresh(store(), $snap, time(), true) : null;
         $controller->kick(time());
@@ -1191,6 +1225,73 @@ final class Actions
         $planText = ChargePlan::text($plan);
         $then = $scope === 'grid' ? ', danach ohne Netz' : ', danach ' . ($built['target']['then'] === 'aus' ? 'Laden aus' : Energy::modeLabel((string) $built['target']['then']));
         return $name . ' gesetzt: ' . $view['label'] . $then . '.' . ($planText !== '' ? ' ' . $planText : '');
+    }
+
+    /** Netzladen „Jetzt“ beenden: Ziel weg, danach gelten die Ladefenster, wenn ihr Schalter an ist. */
+    public static function stopNow(): string
+    {
+        store()->put(Target::NOW_KEY, []);
+        $after = ChargePlan::afterNow(cfg()['charge']);
+        store()->merge('charge', ['grid' => $after]);
+        (new Controller(store(), ha()))->kick(time());
+        return $after === 'windows' ? 'Netzladen „Jetzt“ beendet, die Ladefenster gelten weiter.' : 'Netzladen „Jetzt“ beendet.';
+    }
+
+    /** Ladeplan fürs Netzladen speichern oder löschen (section grid_plan, id, do save oder delete). */
+    private static function saveGridPlan(): string
+    {
+        $plans = GridPlans::all(store());
+        $id = (string) ($_POST['id'] ?? '');
+        $index = null;
+        foreach ($plans as $i => $plan) {
+            if ($plan['id'] === $id) {
+                $index = $i;
+            }
+        }
+        if (($_POST['do'] ?? '') === 'delete') {
+            if ($index === null) {
+                return 'Diesen Ladeplan gibt es nicht mehr.';
+            }
+            array_splice($plans, $index, 1);
+            store()->put(GridPlans::KEY, $plans);
+            store()->put(ChargePlan::KEY, []);
+            return 'Ladeplan gelöscht.';
+        }
+        if ($index === null && count($plans) >= GridPlans::MAX) {
+            return 'Höchstens ' . GridPlans::MAX . ' Ladepläne.';
+        }
+        $type = (string) ($_POST['type'] ?? 'soc');
+        $built = GridPlans::clean([
+            'on' => ($_POST['on'] ?? '0') === '1',
+            'days' => (array) ($_POST['days'] ?? []),
+            'time' => (string) ($_POST['time'] ?? ''),
+            'type' => $type,
+            'value' => $_POST[match ($type) { 'soc' => 'soc', 'range' => 'km', default => 'kwh' }] ?? null,
+            'soc_below' => ($_POST['soc_below_on'] ?? '0') === '1' ? ($_POST['soc_below'] ?? null) : null,
+            'pv_below' => ($_POST['pv_below_on'] ?? '0') === '1' ? ($_POST['pv_below'] ?? null) : null,
+        ], $id);
+        if ($built['error'] !== null) {
+            return $built['error'];
+        }
+        if ($index === null) {
+            $plans[] = $built['plan'];
+        } else {
+            $plans[$index] = $built['plan'];
+        }
+        store()->put(GridPlans::KEY, $plans);
+        $now = time();
+        // Wer einen Plan ändert, will ihn auch für die nächste Uhrzeit, selbst wenn sie schon erledigt war.
+        store()->put(GridPlans::DONE, 0);
+        $snap = (new Snapshot(store(), ha()))->build();
+        $result = ChargePlan::refresh(store(), $snap, $now, true);
+        (new Controller(store(), ha()))->kick($now);
+        $next = GridPlans::next($built['plan'], $now);
+        $text = 'Ladeplan gespeichert: ' . GridPlans::label($built['plan']) . ($built['plan']['on'] ? '' : ', ausgeschaltet') . '.';
+        if ($built['plan']['on'] && $next !== null) {
+            $text .= ' Nächstes Mal ' . day_label(date('Y-m-d', $next)) . ' ' . date('H:i', $next) . '.';
+        }
+        $planText = ChargePlan::text($result);
+        return $planText === '' ? $text : $text . ' ' . $planText;
     }
 
     /** Die Fenster fürs Auto aus der Ladepunkt-Karte übernehmen; nur aktive Fenster, die noch kommen. */
@@ -1248,15 +1349,37 @@ final class Actions
                 $patch['last_mode'] = $mode;
             }
         }
+        $charge = cfg()['charge'];
+        if (array_key_exists('windows', $_POST)) {
+            // Schalter „Ladefenster nutzen“: gilt dauerhaft; läuft gerade „Jetzt“, gilt er danach.
+            $on = in_array((string) $_POST['windows'], ['1', 'true', 'on'], true);
+            if ($on && !(new PriceWindows(store()))->enabled(time())) {
+                json_out(['error' => 'Ladefenster gibt es nur mit dynamischem Tarif.'], 422);
+            }
+            $patch['grid_windows'] = $on;
+            if (Energy::grid($charge['grid'] ?? 'off') !== 'now') {
+                $patch['grid'] = $on ? 'windows' : 'off';
+            }
+        }
         if (array_key_exists('grid', $_POST)) {
             $grid = (string) $_POST['grid'];
+            if ($grid === 'stop') {
+                self::stopNow();
+                return;
+            }
             if (!in_array($grid, Energy::GRID, true)) {
                 json_out(['error' => 'Unbekannte Auswahl für Netzladen.'], 422);
             }
             if ($grid === 'windows' && !(new PriceWindows(store()))->enabled(time())) {
                 json_out(['error' => 'Ladefenster gibt es nur mit dynamischem Tarif.'], 422);
             }
+            if ($grid === 'now' && Target::get(store(), 'now') === null) {
+                json_out(['error' => 'Für „Jetzt“ bitte zuerst ein Ziel setzen.'], 422);
+            }
             $patch['grid'] = $grid;
+            if ($grid !== 'now') {
+                $patch['grid_windows'] = $grid === 'windows';
+            }
         }
         if ($patch === []) {
             json_out(['error' => 'Nichts zu ändern.'], 422);

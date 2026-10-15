@@ -568,17 +568,9 @@ function ui_chargepoint(array $cp, array $opts = []): string
         'tight' => true,
         'attrs' => ['data-mode-switch' => $live ? '1' : null, 'disabled' => !$editable],
     ]);
-    // Ladefenster gibt es nur mit dynamischem Tarif; mit statischem bleibt „In Ladefenstern“ gesperrt.
+    // Ladefenster gibt es nur mit dynamischem Tarif; mit statischem bleibt der Schalter gesperrt.
     $enabled = (bool) ($cp['windows_enabled'] ?? true);
-    $gridOptions = ui_grid_options();
-    if (!$enabled) {
-        $gridOptions['windows']['disabled'] = true;
-    }
-    $gridSeg = ui_segment($id === 'cp' ? 'grid' : $id . '-grid', 'Netzladen', $gridOptions, $grid, [
-        'id' => $id . '-grid',
-        'tight' => true,
-        'attrs' => ['data-grid-switch' => $live ? '1' : null, 'disabled' => !$editable],
-    ]);
+    $windowsWanted = (bool) ($cp['grid_windows'] ?? ($grid === 'windows'));
     $switch = '<label class="cp-switch" for="' . e($id) . '-on"><span class="cp-switch-text">Laden</span><span class="toggle"><input type="checkbox" role="switch"'
         . ui_attrs(['id' => $id . '-on', 'checked' => $on, 'disabled' => !$editable, 'data-charge-switch' => $live ? '1' : null])
         . '><span class="toggle-track"></span><span class="toggle-knob">' . icon('check', 'icon-16') . '</span></span></label>';
@@ -606,8 +598,16 @@ function ui_chargepoint(array $cp, array $opts = []): string
         if (!$editable) {
             return '';
         }
-        $path = $scope === 'grid' ? 'grid_target' : 'target';
-        $dialog = $id . ($scope === 'grid' ? '-grid-target' : '-target');
+        $path = match ($scope) {
+            'grid' => 'grid_target',
+            'now' => 'now_target',
+            default => 'target',
+        };
+        $dialog = $id . match ($scope) {
+            'grid' => '-grid-target',
+            'now' => '-now-target',
+            default => '-target',
+        };
         $t = $target ?? ['label' => '', 'text' => '', 'then_text' => '', 'progress' => 0];
         return '<div class="cp-target-slot"' . ui_attrs($attrs) . '><div class="cp-target" data-target="' . $scope . '" data-progress="' . e((string) (float) $t['progress']) . '"' . ($target === null ? ' hidden' : '') . '>'
             . '<span class="cp-target-icon" aria-hidden="true">' . icon('target', 'icon-16') . '</span>'
@@ -615,17 +615,44 @@ function ui_chargepoint(array $cp, array $opts = []): string
             . '<span class="caption muted"' . ui_attrs(['data-live' => $p($path . '.then_text')]) . '>' . e((string) $t['then_text']) . '</span></p>'
             . '<span class="cp-target-bar" aria-hidden="true"><span class="cp-target-fill"></span></span>'
             . '<p class="caption cp-target-text"' . ui_attrs(['data-live' => $p($path . '.text')]) . '>' . e((string) $t['text']) . '</p></div>'
-            . ui_inline('Ändern', ['data-open-dialog' => $dialog, 'aria-label' => $scope === 'grid' ? 'Ziel fürs Netzladen ändern' : 'Ladeziel ändern'])
+            . ui_inline('Ändern', ['data-open-dialog' => $dialog, 'aria-label' => match ($scope) { 'grid' => 'Ziel für die Ladefenster ändern', 'now' => 'Ziel für Netzladen jetzt ändern', default => 'Ladeziel ändern' }])
             . '</div>'
             . '<button type="button" class="text-action cp-target-set" data-open-dialog="' . e($dialog) . '" data-target-none="' . $scope . '"' . ($target !== null ? ' hidden' : '') . '>' . icon('target', 'icon-16')
-            . '<span>' . ($scope === 'grid' ? 'Ziel fürs Netzladen setzen' : 'Ladeziel setzen') . '</span></button></div>';
+            . '<span>' . match ($scope) { 'grid' => 'Ziel für die Fenster setzen', 'now' => 'Ziel für „Jetzt“ setzen', default => 'Ladeziel setzen' } . '</span></button></div>';
     };
+    // Netzladen: „Jetzt“ startet erst mit einem Ziel (Sheet), läuft bis dahin und lässt sich stoppen; die Ladefenster
+    // sind ein eigener Schalter, der danach weiter gilt; dazu die Ladepläne.
+    $nowOn = $grid === 'now';
+    $nowHtml = !$editable ? '' : '<div class="cp-now stack-tight" data-grid-show="now"' . ($nowOn ? '' : ' hidden') . '>'
+        . '<p class="cp-now-head body-sm"><span class="cp-now-dot" aria-hidden="true"></span>Lädt jetzt voll aus dem Netz</p>'
+        . $targetRow('now', $cp['now_target'] ?? null)
+        . '<div class="row wrap"><button type="button" class="btn btn-secondary" data-grid-stop>' . icon('x', 'icon-16') . 'Stoppen</button></div></div>'
+        . '<div class="cp-now-start" data-grid-show="off windows"' . ($nowOn ? ' hidden' : '') . '>'
+        . '<button type="button" class="btn btn-secondary" data-open-dialog="' . e($id) . '-now-target" aria-haspopup="dialog">' . icon('plug-zap', 'icon-16') . 'Jetzt aus dem Netz laden …</button></div>';
+    $windowsToggle = '<div class="cp-toggle-row"><label class="cp-toggle-label" for="' . e($id) . '-windows">Ladefenster nutzen'
+        . '<span class="caption muted">' . e($enabled ? 'In den gewählten Fenstern lädt das Auto aus dem Netz, auch nach „Jetzt“.' : 'Nur mit dynamischem Tarif.') . '</span></label>'
+        . '<span class="toggle"><input type="checkbox" role="switch"' . ui_attrs([
+            'id' => $id . '-windows',
+            'checked' => $windowsWanted && $enabled,
+            'disabled' => !$editable || !$enabled,
+            'data-grid-windows' => $live ? '1' : null,
+        ]) . '><span class="toggle-track"></span><span class="toggle-knob">' . icon('check', 'icon-16') . '</span></span></div>';
+    $planItems = '';
+    foreach ((array) ($cp['plans'] ?? []) as $plan) {
+        $planItems .= '<li><button type="button" class="cp-plan" data-open-dialog="' . e($id) . '-plan-' . e((string) $plan['id']) . '" aria-haspopup="dialog"' . (empty($plan['on']) ? ' data-off' : '') . '>'
+            . icon('calendar', 'icon-16') . '<span class="cp-plan-text"><span class="cp-plan-label">' . e((string) $plan['label']) . '</span>'
+            . '<span class="caption muted">' . e((string) $plan['next']) . (!empty($plan['active']) ? ' · plant gerade' : '') . '</span></span>' . icon('chevron-right', 'icon-16') . '</button></li>';
+    }
+    $plansHtml = !$editable ? '' : '<div class="cp-plans stack-tight"><p class="caption muted cp-plans-title">Ladepläne</p>'
+        . ($planItems !== '' ? '<ul class="cp-plan-list" role="list">' . $planItems . '</ul>' : '')
+        . '<button type="button" class="text-action" data-open-dialog="' . e($id) . '-plan-new" aria-haspopup="dialog">' . icon('plus', 'icon-16') . '<span>Ladeplan hinzufügen</span></button></div>';
     $gridSection = '<section class="cp-section" aria-labelledby="' . e($id) . '-grid-title"><h3 class="cp-section-title label" id="' . e($id) . '-grid-title">Netzladen</h3>'
-        . '<div class="cp-mode">' . $gridSeg . '</div>'
-        . '<p class="caption muted cp-hint"' . ui_attrs(['data-live' => $p('chargepoint.grid_hint')]) . '>' . e((string) ($cp['grid_hint'] ?? Energy::gridText($grid))) . '</p>'
-        . $targetRow('grid', $cp['grid_target'] ?? null, ['data-grid-show' => 'now windows', 'hidden' => $grid === 'off'])
+        . $nowHtml
+        . $windowsToggle
+        . $targetRow('grid', $cp['grid_target'] ?? null, ['data-grid-show' => 'windows', 'hidden' => $grid !== 'windows'])
         . $windowsHtml
         . '<p class="caption cp-grid-text"' . ui_attrs(['data-live' => $p('chargepoint.grid_text'), 'data-live-hide' => $p('chargepoint.grid_text')]) . ($gridText === '' ? ' hidden' : '') . '>' . e($gridText) . '</p>'
+        . $plansHtml
         . ($editable ? '<p class="caption">' . ui_inline($enabled ? 'Ladefenster einstellen' : 'Vorschau der Ladefenster', ['href' => url('/prognose/strompreis') . '#windows-title']) . '</p>' : '')
         . '</section>';
     $power = '<span class="cp-power">' . icon('zap', 'icon-16') . ($live ? ui_live_num('chargepoint.power_kw', $cp['power_kw'], 'kW') : ui_num($cp['power_kw'], 'kW')) . '</span>';

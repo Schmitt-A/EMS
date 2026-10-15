@@ -12,8 +12,8 @@ declare(strict_types=1);
  * @var string $back
  * @var string $scope sun oder grid
  */
-$scope = ($scope ?? 'sun') === 'grid' ? 'grid' : 'sun';
-$px = $scope === 'grid' ? 'g' : 't';
+$scope = in_array($scope ?? 'sun', ['grid', 'now'], true) ? $scope : 'sun';
+$px = ['grid' => 'g', 'now' => 'n', 'sun' => 't'][$scope];
 $type = (string) ($target['type'] ?? 'energy');
 $then = (string) ($target['then'] ?? ($snap['cfg']['charge']['then_mode'] ?? 'smart'));
 $vehicle = $snap['vehicle'];
@@ -42,8 +42,10 @@ $hint = static fn (string $panel): string => '<p class="caption target-km" data-
 ]) ?>>
   <?= csrf_field() ?>
   <input type="hidden" name="section" value="target"><input type="hidden" name="scope" value="<?= e($scope) ?>"><input type="hidden" name="back" value="<?= e($back) ?>">
-<?php if ($scope === 'grid'): ?>
-  <p class="body-sm muted">Bis hierhin lädt das Auto mit Netzladen aus dem Netz, jetzt oder in den gewählten Fenstern. Ist das Ziel erreicht, endet Netzladen, und Sonne und Speicher laden nach dem Modus weiter. Beim Abstecken verfällt das Ziel.</p>
+<?php if ($scope === 'now'): ?>
+  <p class="body-sm muted">Ab „Starten“ lädt das Auto voll aus dem Netz, bis dieses Ziel erreicht ist, der Hausspeicher gibt dabei nichts ab. Danach gelten wieder die Ladefenster, wenn sie eingeschaltet sind, und Sonne und Speicher nach dem Modus. Beim Abstecken verfällt das Ziel.</p>
+<?php elseif ($scope === 'grid'): ?>
+  <p class="body-sm muted">Bis hierhin lädt das Auto in den gewählten Ladefenstern aus dem Netz. Ist das Ziel erreicht, lädt es bis zum Abstecken in keinem Fenster mehr, Sonne und Speicher laden nach dem Modus weiter. Beim Abstecken verfällt das Ziel.</p>
 <?php else: ?>
   <p class="body-sm muted">Ist das Ziel erreicht, wechselt die App in den Modus darunter; „Laden aus“ stoppt die Wallbox. Beim Abstecken verfällt das Ziel.</p>
 <?php endif; ?>
@@ -86,14 +88,21 @@ $hint = static fn (string $panel): string => '<p class="caption target-km" data-
 <?php endif; ?>
   </div>
 <?php if ($scope === 'grid'): ?>
-  <div class="form-rows target-ready"><?= ui_form_row('Fertig bis', ui_input('ready_by', $ready, ['id' => 'f-' . $px . '-ready_by', 'type' => 'time', 'class' => 'field-num']), ['for' => 'f-' . $px . '-ready_by', 'hint' => 'Optional, mit „In Ladefenstern“. EMS prüft, ob die gewählten Fenster bis dahin reichen, mit der erwarteten Sonne, und nimmt sonst die günstigsten Viertelstunden davor dazu.']) ?></div>
-<?php else: ?>
+  <div class="form-rows target-ready"><?= ui_form_row('Fertig bis', ui_input('ready_by', $ready, ['id' => 'f-' . $px . '-ready_by', 'type' => 'time', 'class' => 'field-num']), ['for' => 'f-' . $px . '-ready_by', 'hint' => 'Optional. EMS prüft, ob die gewählten Fenster bis dahin reichen, mit der erwarteten Sonne, und nimmt sonst die günstigsten Viertelstunden davor dazu.']) ?></div>
+<?php elseif ($scope === 'sun'): ?>
   <div class="form-rows"><?= ui_form_row('Danach', ui_select('then', ['smart' => 'Intelligent', 'smart_dauerhaft' => 'Min+Sonne', 'aus' => 'Laden aus (Wallbox stoppt)'], $then, ['id' => 'f-' . $px . '-then']), ['for' => 'f-' . $px . '-then']) ?></div>
 <?php endif; ?>
   <div class="form-actions">
+<?php if ($scope === 'now'): ?>
+    <button class="btn btn-primary" type="submit"><?= icon('plug-zap', 'icon-16') ?><?= $target === null ? 'Starten' : 'Ziel ändern' ?></button>
+<?php if ($target !== null): ?>
+    <button class="btn btn-secondary" type="submit" name="clear" value="1">Stoppen</button>
+<?php endif; ?>
+<?php else: ?>
     <button class="btn btn-primary" type="submit"><?= icon('target', 'icon-16') ?>Ziel setzen</button>
 <?php if ($target !== null): ?>
     <button class="btn btn-secondary" type="submit" name="clear" value="1">Ziel löschen</button>
+<?php endif; ?>
 <?php endif; ?>
   </div>
 </form>

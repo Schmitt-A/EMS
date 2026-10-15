@@ -12,15 +12,26 @@ final class Target
 {
     public const KEY = 'charge_target';
     public const GRID_KEY = 'grid_target';
+    /** Ziel für Netzladen „Jetzt“: ohne es startet „Jetzt“ nicht, erreicht endet „Jetzt“. */
+    public const NOW_KEY = 'grid_now_target';
     /** Zuletzt erreichtes Ziel (Zeit, Beschreibung, Folgemodus), für die Mitteilung „Ladeziel erreicht“. */
     public const DONE = 'charge_target_done';
     public const THEN = ['aus', 'smart', 'smart_dauerhaft'];
 
-    /** Das Ziel für Sonne und Speicher (sun) oder fürs Netzladen (grid). */
+    /** Das Ziel für Sonne und Speicher (sun), für die Ladefenster (grid) oder für Netzladen „Jetzt“ (now). */
     public static function get(ConfigStore $store, string $scope = 'sun'): ?array
     {
-        $target = $store->get($scope === 'grid' ? self::GRID_KEY : self::KEY, []);
+        $target = $store->get(self::key($scope), []);
         return is_array($target) && isset($target['type'], $target['value']) ? $target : null;
+    }
+
+    public static function key(string $scope): string
+    {
+        return match ($scope) {
+            'grid' => self::GRID_KEY,
+            'now' => self::NOW_KEY,
+            default => self::KEY,
+        };
     }
 
     /**
@@ -87,7 +98,7 @@ final class Target
         } else {
             return ['target' => null, 'error' => 'Unbekannte Zielart.'];
         }
-        if ($scope === 'grid') {
+        if ($scope === 'grid' || $scope === 'now') {
             $then = 'grid';
         }
         $ready = trim((string) ($input['ready_by'] ?? ''));
@@ -262,21 +273,25 @@ final class Target
         $grid = Energy::grid($cfg['charge']['grid'] ?? 'off');
         $target = self::get($store);
         $gridTarget = self::get($store, 'grid');
+        $nowTarget = self::get($store, 'now');
+        $afterNow = ChargePlan::afterNow($cfg['charge']);
         $connected = Sessions::carConnected($values['wallbox_car_raw'] ?? null, isset($values['wallbox_kw']) ? (float) $values['wallbox_kw'] : null);
         if ($connected === false && $wasConnected === true) {
             $after = (string) ($cfg['charge']['after_unplug'] ?? '');
             $parts = ['Auto abgesteckt.'];
-            if ($target !== null || $gridTarget !== null) {
+            $count = count(array_filter([$target, $gridTarget, $nowTarget]));
+            if ($count > 0) {
                 $store->put(self::KEY, []);
                 $store->put(self::GRID_KEY, []);
-                $parts[] = $target !== null && $gridTarget !== null ? 'Ladeziele gelöscht.' : 'Ladeziel gelöscht.';
+                $store->put(self::NOW_KEY, []);
+                $parts[] = $count > 1 ? 'Ladeziele gelöscht.' : 'Ladeziel gelöscht.';
             }
             $store->put(ChargePlan::DONE, 0);
             $store->put(ChargePlan::CHOICE, []);
             $patch = [];
             if ($grid === 'now') {
-                $patch['grid'] = 'off';
-                $parts[] = 'Netzladen aus.';
+                $patch['grid'] = $afterNow;
+                $parts[] = $afterNow === 'windows' ? 'Netzladen „Jetzt“ beendet, die Ladefenster bleiben.' : 'Netzladen aus.';
             }
             if ($after !== '' && $after !== $mode) {
                 $patch['mode'] = $after;
@@ -293,12 +308,25 @@ final class Target
         }
         $inputs = self::inputs($snap);
         $texts = [];
+        if ($nowTarget !== null) {
+            $view = self::view($nowTarget, $inputs, $now);
+            if ($view !== null && $view['reached']) {
+                $store->put(self::NOW_KEY, []);
+                if ($grid === 'now') {
+                    $store->merge('charge', ['grid' => $afterNow]);
+                    $grid = $afterNow;
+                }
+                $store->put(self::DONE, ['t' => $now, 'label' => 'Netzladen ' . $view['label'], 'then' => $mode]);
+                $texts[] = 'Ziel für „Jetzt“ erreicht (' . $view['label'] . '), ' . ($afterNow === 'windows' ? 'weiter in den Ladefenstern.' : 'weiter ohne Netz.');
+            }
+        }
         if ($gridTarget !== null) {
             $view = self::view($gridTarget, $inputs, $now);
             if ($view !== null && $view['reached']) {
                 $store->put(self::GRID_KEY, []);
-                if ($grid === 'now') {
-                    $store->merge('charge', ['grid' => 'off']);
+                if ($grid === 'now' && $nowTarget === null) {
+                    // Von früher: „Jetzt“ mit dem Ziel der Fenster.
+                    $store->merge('charge', ['grid' => $afterNow]);
                 } elseif ($grid === 'windows') {
                     $store->put(ChargePlan::DONE, $now);
                     $store->put(ChargePlan::CHOICE, []);

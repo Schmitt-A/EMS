@@ -11,7 +11,7 @@ declare(strict_types=1);
 $v = $snap['values'];
 $b = $snap['balance'];
 $c = $snap['cfg']['charge'];
-$cp = $snap['chargepoint'] + ['vehicle' => $snap['vehicle'], 'target' => $snap['target'], 'grid_target' => $snap['grid_target'] ?? null, 'session_view' => $snap['session_view']];
+$cp = $snap['chargepoint'] + ['vehicle' => $snap['vehicle'], 'target' => $snap['target'], 'grid_target' => $snap['grid_target'] ?? null, 'now_target' => $snap['now_target'] ?? null, 'session_view' => $snap['session_view']];
 $vehicle = $snap['vehicle'];
 $tariffs = $snap['cfg']['tariffs'];
 $f = $snap['forecast'];
@@ -105,7 +105,18 @@ view('partials/target-form', ['target' => Target::get(store()), 'snap' => $snap,
 echo ui_dialog('cp-target', 'Ladeziel', ob_get_clean());
 ob_start();
 view('partials/target-form', ['target' => Target::get(store(), 'grid'), 'snap' => $snap, 'back' => '/', 'scope' => 'grid']);
-echo ui_dialog('cp-grid-target', 'Ziel fürs Netzladen', ob_get_clean());
+echo ui_dialog('cp-grid-target', 'Ziel für die Ladefenster', ob_get_clean());
+ob_start();
+view('partials/target-form', ['target' => Target::get(store(), 'now'), 'snap' => $snap, 'back' => '/', 'scope' => 'now']);
+echo ui_dialog('cp-now-target', 'Jetzt aus dem Netz laden', ob_get_clean());
+
+// Ebene 2: Ladepläne fürs Netzladen, je Plan ein Sheet und eines für einen neuen
+foreach (array_merge(GridPlans::all(store()), [null]) as $gridPlan) {
+    $planId = $gridPlan === null ? 'new' : (string) $gridPlan['id'];
+    ob_start();
+    view('partials/plan-form', ['plan' => $gridPlan, 'snap' => $snap, 'back' => '/', 'px' => 'pl-' . $planId]);
+    echo ui_dialog('cp-plan-' . $planId, $gridPlan === null ? 'Neuer Ladeplan' : 'Ladeplan', ob_get_clean());
+}
 
 // Ebene 2: Fahrzeug
 ob_start();
@@ -115,6 +126,9 @@ view('partials/vehicle-form', [
     'carLimit' => !empty($vehicle['limit_from_car']) ? (float) $vehicle['limit'] : null,
     'capacity' => is_numeric($snap['cfg']['vehicle']['capacity_kwh'] ?? null) ? (float) $snap['cfg']['vehicle']['capacity_kwh'] : null,
     'consumption' => is_numeric($snap['cfg']['vehicle']['consumption_kwh'] ?? null) ? (float) $snap['cfg']['vehicle']['consumption_kwh'] : null,
+    'chargeKw' => is_numeric($snap['cfg']['vehicle']['charge_kw'] ?? null) ? (float) $snap['cfg']['vehicle']['charge_kw'] : null,
+    'learned' => GridPlans::learned(store()),
+    'wallboxKw' => ChargePlan::powerKw($snap['cfg']['charge']),
     'derived' => ($snap['vehicle']['consumption_source'] ?? null) === 'car' ? ['kwh' => (float) $snap['vehicle']['consumption_kwh']] : null,
     'mapping' => $snap['cfg']['mapping'],
     'back' => '/',

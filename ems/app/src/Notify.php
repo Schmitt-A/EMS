@@ -99,7 +99,7 @@ final class Notify
         ],
         'plan' => [
             'group' => 'laden', 'label' => 'Ladeplan wird knapp', 'icon' => 'clock-alert', 'on' => true, 'important' => false,
-            'hint' => 'Wenn ein Ziel fürs Netzladen mit „fertig bis“ nur noch reicht, wenn das Auto durchgehend lädt; einmal je Ziel.',
+            'hint' => 'Wenn ein Ladeplan oder das Ziel der Ladefenster mit „fertig bis“ nur noch reicht, wenn das Auto durchgehend lädt; einmal je Ziel oder Uhrzeit.',
             'title' => '{auto}: Ladeplan knapp', 'message' => '{plan} Ziel: {ziel_netz}, Ladestand {ladestand}.',
             'vars' => ['plan', 'ziel_netz', 'ladestand', 'geladen'], 'params' => [],
         ],
@@ -964,7 +964,8 @@ final class Notify
             'control' => $active,
             'grid' => (string) ($cfg['charge']['grid'] ?? 'off'),
             'plan_status' => is_array($plan) ? (string) ($plan['status'] ?? '') : null,
-            'plan_key' => is_array($gridTarget) && isset($gridTarget['set_at']) ? (string) $gridTarget['set_at'] : null,
+            // Ein Ladeplan meldet sich einmal je Uhrzeit, das Ziel der Fenster einmal je Ziel.
+            'plan_key' => is_array($plan) && ($plan['source'] ?? '') === 'schedule' ? 'plan-' . (string) ($plan['target_set_at'] ?? '') : (is_array($gridTarget) && isset($gridTarget['set_at']) ? (string) $gridTarget['set_at'] : null),
             'dynamic' => ($tariff->tariffAt($now)['mode'] ?? 'static') === 'dynamic',
             'tomorrow_prices' => $tariff->horizon() >= $tomorrowEnd - 900,
             'in_window' => PriceWindows::at($windows->offered($now), $now) !== null,

@@ -476,3 +476,121 @@
     transition: none;
   }
 }
+
+/* Netzladen: „Jetzt“ läuft (Punkt, Ziel, Stoppen) oder startet über das Ziel-Sheet; Schalter für die Ladefenster;
+   die Ladepläne als Liste. */
+.cp-now[hidden],
+.cp-now-start[hidden] {
+  display: none;
+}
+
+.cp-now-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-weight: 600;
+}
+
+.cp-now-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--data-grid-in);
+}
+
+.cp-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-height: 2.75rem;
+}
+
+.cp-toggle-label {
+  display: grid;
+  gap: 0.125rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cp-plans {
+  padding-block-start: var(--s-1);
+}
+
+.cp-plan-list {
+  display: grid;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cp-plan {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  min-height: 2.75rem;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-field);
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: start;
+}
+
+.cp-plan[data-off] {
+  color: var(--text-2);
+}
+
+.cp-plan-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.cp-plan-label {
+  font-weight: 600;
+}
+
+/* Ladeplan-Sheet: Wochentage als Kästchen in einer Reihe. */
+.plan-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.plan-day {
+  position: relative;
+  display: inline-flex;
+}
+
+.plan-day input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+}
+
+.plan-day span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.plan-day input:checked + span {
+  background: var(--accent-soft);
+  color: var(--accent-on-soft);
+}
+
+.plan-day input:focus-visible + span {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}

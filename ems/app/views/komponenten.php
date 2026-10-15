@@ -145,7 +145,9 @@ $section('Ladepunkt-Karte mit Ladebalken', 'Modus, Leistung mit Phasen, Ladeziel
             echo ui_dialog($id . '-settings', 'Einstellungen: ' . $card['name'], '<p class="body muted">Hier stehen in der App die Ladeparameter, die Regelung im Detail und die Modi.</p>');
             echo ui_dialog($id . '-vehicle', 'Fahrzeug: ' . $card['vehicle']['name'], '<p class="body muted">Hier stehen in der App Name, Ladelimit und die Entitäten des Fahrzeugs.</p>');
             echo ui_dialog($id . '-target', 'Ladeziel', '<p class="body muted">Hier stehen in der App Energie, Uhrzeit oder Ladestand und der Folgemodus.</p>');
-            echo ui_dialog($id . '-grid-target', 'Ziel fürs Netzladen', '<p class="body muted">Hier stehen in der App Energie, Uhrzeit, Ladestand oder Reichweite und „fertig bis“.</p>');
+            echo ui_dialog($id . '-grid-target', 'Ziel für die Ladefenster', '<p class="body muted">Hier stehen in der App Energie, Uhrzeit, Ladestand oder Reichweite und „fertig bis“.</p>');
+            echo ui_dialog($id . '-now-target', 'Jetzt aus dem Netz laden', '<p class="body muted">Hier steht in der App das Ziel, mit dem Netzladen „Jetzt“ startet.</p>');
+            echo ui_dialog($id . '-plan-new', 'Neuer Ladeplan', '<p class="body muted">Hier stehen in der App Wochentage, Uhrzeit, Ziel und Bedingungen.</p>');
         }
     }
 });

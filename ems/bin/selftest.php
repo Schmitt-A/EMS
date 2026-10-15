@@ -399,6 +399,51 @@ $targetStore->put(Target::GRID_KEY, $gridTarget);
 $targetStore->put(ChargePlan::CHOICE, ['windows' => [['start' => $noon + 3600, 'end' => $noon + 7200]]]);
 Target::check($targetStore, ['cfg' => ['charge' => ['mode' => 'smart', 'grid' => 'now']], 'values' => ['wallbox_kw' => 0.0, 'wallbox_car_raw' => 'idle']] + $targetSnap, $noon, true);
 check(!ChargePlan::done($targetStore) && $targetStore->get('charge')['grid'] === 'off' && Target::get($targetStore, 'grid') === null && ChargePlan::chosen($targetStore, $noon) === [], 'Abstecken: Ziele und Wahl der Fenster weg, Netzladen „Jetzt“ aus');
+// Netzladen „Jetzt“ mit eigenem Ziel; danach gelten die Ladefenster, wenn ihr Schalter an ist.
+$nowTarget = Target::build(['type' => 'energy', 'kwh' => '20', 'ready_by' => '07:00'], $noon, null, null, 'now')['target'];
+check($nowTarget['then'] === 'grid' && !isset($nowTarget['ready_by']) && Target::key('now') === Target::NOW_KEY, 'Ziel für „Jetzt“: ohne Folgemodus und ohne „fertig bis“');
+check(ChargePlan::windowsWanted(['grid' => 'windows']) && !ChargePlan::windowsWanted(['grid' => 'now']) && ChargePlan::windowsWanted(['grid' => 'now', 'grid_windows' => true])
+    && ChargePlan::afterNow(['grid' => 'now', 'grid_windows' => true]) === 'windows' && ChargePlan::afterNow(['grid' => 'now', 'grid_windows' => false]) === 'off', 'Schalter der Ladefenster: von früher aus grid, danach eigen');
+$targetStore->put(Target::NOW_KEY, $nowTarget);
+$targetStore->put('charge', ['mode' => 'smart', 'grid' => 'now', 'grid_windows' => true]);
+$nowDone = Target::check($targetStore, ['cfg' => ['charge' => ['mode' => 'smart', 'grid' => 'now', 'grid_windows' => true]]] + $targetSnap, $noon, true);
+check($targetStore->get('charge')['grid'] === 'windows' && Target::get($targetStore, 'now') === null && str_contains((string) $nowDone['text'], 'Ladefenstern'), 'Ziel für „Jetzt“ erreicht: weiter in den Ladefenstern');
+$targetStore->put(Target::NOW_KEY, $nowTarget);
+$targetStore->put('charge', ['mode' => 'smart', 'grid' => 'now', 'grid_windows' => false]);
+Target::check($targetStore, ['cfg' => ['charge' => ['mode' => 'smart', 'grid' => 'now', 'grid_windows' => false]], 'values' => ['wallbox_kw' => 0.0, 'wallbox_car_raw' => 'idle']] + $targetSnap, $noon, true);
+check($targetStore->get('charge')['grid'] === 'off' && Target::get($targetStore, 'now') === null, 'Abstecken beendet „Jetzt“ samt Ziel');
+
+// Ladepläne fürs Netzladen.
+$planIn = GridPlans::clean(['days' => ['1', '2', '3', '4', '5', '9'], 'time' => '7:00', 'type' => 'soc', 'value' => '80', 'soc_below' => '60', 'pv_below' => ''], 'xx');
+check($planIn['error'] === null && $planIn['plan']['days'] === [1, 2, 3, 4, 5] && $planIn['plan']['time'] === '07:00' && $planIn['plan']['value'] === 80.0 && $planIn['plan']['soc_below'] === 60.0 && $planIn['plan']['pv_below'] === null
+    && preg_match('/^p[0-9a-f]{8}$/', $planIn['plan']['id']) && $planIn['plan']['on'], 'Ladeplan: Tage, Uhrzeit, Ziel und Bedingungen, neue Kennung');
+check(GridPlans::clean(['days' => [], 'time' => '07:00', 'type' => 'soc', 'value' => 80])['error'] !== null && GridPlans::clean(['days' => [1], 'time' => '25:00', 'type' => 'soc', 'value' => 80])['error'] !== null
+    && GridPlans::clean(['days' => [1], 'time' => '07:00', 'type' => 'time', 'value' => 80])['error'] !== null && GridPlans::clean(['days' => [1], 'time' => '07:00', 'type' => 'range', 'value' => 5])['error'] !== null, 'Ladeplan: ohne Tag, Unsinn bei Uhrzeit, Art und Wert abgelehnt');
+check(GridPlans::daysText([1, 2, 3, 4, 5]) === 'Mo–Fr' && GridPlans::daysText([6, 7]) === 'Sa, So' && GridPlans::daysText([1, 3, 4, 5, 7]) === 'Mo, Mi–Fr, So' && GridPlans::daysText(range(1, 7)) === 'täglich'
+    && GridPlans::label($planIn['plan']) === 'Mo–Fr 07:00 · bis 80' . NNBSP . '%', 'Ladeplan als Zeile');
+$tue = (int) strtotime('2026-10-13 12:00:00 Europe/Berlin');
+$fri = ['days' => [5], 'time' => '06:30', 'on' => true, 'id' => 'pfri'];
+$wed = ['days' => [3], 'time' => '07:00', 'on' => true, 'id' => 'pwed'];
+check(GridPlans::next($fri, $tue) === (int) strtotime('2026-10-16 06:30:00 Europe/Berlin') && GridPlans::next(['days' => [2], 'time' => '07:00'], $tue) === (int) strtotime('2026-10-20 07:00:00 Europe/Berlin'), 'Ladeplan: nächste Uhrzeit, heute vorbei heißt nächste Woche');
+$wedAt = (int) strtotime('2026-10-14 07:00:00 Europe/Berlin');
+check(GridPlans::upcoming([$fri, $wed, ['on' => false] + $wed], $tue)['id'] === 'pwed' && GridPlans::upcoming([$fri, $wed], $tue)['deadline'] === $wedAt
+    && GridPlans::upcoming([$fri, $wed], $tue, $wedAt)['id'] === 'pfri' && GridPlans::upcoming([['on' => false] + $wed], $tue) === null, 'Ladeplan: der nächste eingeschaltete, ein erledigter erst wieder nächstes Mal');
+check(GridPlans::conditions($planIn['plan'], 45.0, null)['ok'] && !GridPlans::conditions($planIn['plan'], 75.0, null)['ok'] && GridPlans::conditions($planIn['plan'], null, null)['ok']
+    && !GridPlans::conditions(['soc_below' => null, 'pv_below' => 10.0], 50.0, 14.2)['ok'] && GridPlans::conditions(['soc_below' => null, 'pv_below' => 10.0], 50.0, 3.0)['ok']
+    && str_contains(GridPlans::conditions($planIn['plan'], 75.0, null)['text'], 'nicht unter'), 'Ladeplan-Bedingungen: Speicher unter, Sonne unter, ohne Wert gilt der Plan');
+$planTarget = GridPlans::target($planIn['plan'], $wedAt, 40.0, null);
+check($planTarget['ready_by'] === $wedAt && $planTarget['start_soc'] === 40.0 && $planTarget['then'] === 'grid' && abs(Target::neededKwh($planTarget, ['car_soc' => 40, 'capacity_kwh' => 75]) - 30 / 0.92) < 1e-9, 'Ladeplan als Ziel mit „fertig bis“');
+// Ladeleistung: fest, gelernt beim Netzladen, sonst die Wallbox.
+$rateStore = new ConfigStore(':memory:');
+$rateSnap = ['cfg' => ['charge' => ['effective_mode' => 'netz']], 'values' => ['wallbox_kw' => 7.2]];
+for ($i = 0; $i < 6; $i++) {
+    GridPlans::learn($rateStore, $rateSnap, $tue + $i * 60);
+}
+GridPlans::learn($rateStore, $rateSnap, $tue + 330);
+GridPlans::learn($rateStore, ['cfg' => ['charge' => ['effective_mode' => 'smart']], 'values' => ['wallbox_kw' => 3.0]], $tue + 600);
+check(GridPlans::learned($rateStore) === ['kw' => 7.2, 'n' => 6] && GridPlans::carKw(['vehicle' => []], $rateStore) === 7.2 && GridPlans::carKw(['vehicle' => ['charge_kw' => 6.0]], $rateStore) === 6.0
+    && GridPlans::learned(new ConfigStore(':memory:')) === null, 'Ladeleistung: einmal je Minute beim Netzladen gelernt, ein fester Wert gilt davor');
+check(abs(ChargePlan::powerKw(['max_a' => 16]) - 11.04) < 1e-9 && ChargePlan::powerKw(['max_a' => 16], 7.2) === 7.2 && abs(ChargePlan::powerKw(['max_a' => 16, 'phase_mode' => '1p'], 7.2) - 3.68) < 1e-9, 'Planleistung: das Kleinere aus Wallbox und Auto');
 
 $sample = <<<'KML'
 <?xml version="1.0" encoding="ISO-8859-1"?>
@@ -1047,6 +1092,10 @@ check(ChargePlan::effective('smart_dauerhaft', 'windows', true, true, null, fals
     && ChargePlan::effective('smart', 'windows', true, true, null, true, $p0) === ['mode' => 'smart', 'reason' => null]
     && ChargePlan::effective('schnell', 'off', true, true, ['extra' => [$p0]], false, $p0) === ['mode' => 'schnell', 'reason' => null], 'In Ladefenstern: im Fenster und in dazu geplanten Viertelstunden, nicht mehr nach dem Ziel, nie mit Netzladen aus');
 check(ChargePlan::windows([900, 0, 2700]) === [[0, 1800], [2700, 3600]], 'Zeitfenster aus Viertelstunden');
+check(ChargePlan::effective('smart', 'off', true, false, ['source' => 'schedule', 'extra' => [$q24]], false, $q24 + 100) === ['mode' => 'netz', 'reason' => 'plan']
+    && ChargePlan::effective('smart', 'off', true, false, ['source' => 'schedule', 'extra' => [$q24]], false, $p0)['reason'] === null
+    && ChargePlan::effective('aus', 'off', true, false, ['source' => 'schedule', 'extra' => [$p0]], false, $p0)['reason'] === null, 'Ladeplan lädt in seinen Viertelstunden aus dem Netz, auch ohne Ladefenster, nie bei Laden aus');
+check(str_starts_with(ChargePlan::text(['source' => 'schedule', 'status' => 'ok', 'extra' => [$q24], 'slots' => [$q24], 'deadline' => $deadline, 'need_kwh' => 2.0, 'sun_kwh' => 0, 'window_kwh' => 0, 'extra_ct' => 34.7]), 'Ladeplan bis'), 'Satz zum Ladeplan');
 $ready = Target::build(['type' => 'soc', 'soc' => '80', 'ready_by' => '07:00'], $p0, 40.0, null, 'grid');
 check(($ready['target']['ready_by'] ?? null) === (int) strtotime('2026-10-13 07:00:00 Europe/Berlin') && Target::build(['type' => 'soc', 'soc' => '80', 'ready_by' => '7 Uhr'], $p0, 40.0, null, 'grid')['error'] !== null
     && !isset(Target::build(['type' => 'time', 'until' => '20:00', 'ready_by' => '07:00'], $p0, null, null, 'grid')['target']['ready_by']), 'Fertig bis: die nächste 7:00, Unsinn wird abgelehnt, ein Ziel nach Uhrzeit braucht es nicht');

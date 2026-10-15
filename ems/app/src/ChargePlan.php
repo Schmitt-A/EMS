@@ -137,6 +137,10 @@ final class ChargePlan
         if ($grid === 'now') {
             return ['mode' => 'netz', 'reason' => 'now'];
         }
+        // Ein Ladeplan (GridPlans) gilt unabhängig von den Ladefenstern, auch mit statischem Tarif.
+        if ($plan !== null && ($plan['source'] ?? 'target') === 'schedule' && in_array(intdiv($now, 900) * 900, (array) ($plan['extra'] ?? []), true)) {
+            return ['mode' => 'netz', 'reason' => 'plan'];
+        }
         if ($grid === 'windows' && !$done) {
             if ($plan !== null && in_array(intdiv($now, 900) * 900, (array) ($plan['extra'] ?? []), true)) {
                 return ['mode' => 'netz', 'reason' => 'plan'];
@@ -148,11 +152,29 @@ final class ChargePlan
         return ['mode' => $mode, 'reason' => null];
     }
 
-    /** Volle Ladeleistung in kW aus Höchststrom und Phasen. */
-    public static function powerKw(array $charge): float
+    /**
+     * Volle Ladeleistung in kW aus Höchststrom und Phasen; nimmt das Auto weniger (fester Wert unter Fahrzeug oder beim
+     * Netzladen gelernt, GridPlans::carKw()), gilt das.
+     */
+    public static function powerKw(array $charge, ?float $carKw = null): float
     {
         $maxA = min(16, max(6, (int) ($charge['max_a'] ?? 16)));
-        return Energy::KW_PER_AMP * $maxA * (($charge['phase_mode'] ?? 'auto') === '1p' ? 1 : 3);
+        $wallbox = Energy::KW_PER_AMP * $maxA * (($charge['phase_mode'] ?? 'auto') === '1p' ? 1 : 3);
+        return $carKw !== null && $carKw > 0.5 ? min($wallbox, $carKw) : $wallbox;
+    }
+
+    /** Ob die Ladefenster genutzt werden sollen (Schalter in der Karte); von früher gilt grid windows. */
+    public static function windowsWanted(array $charge): bool
+    {
+        return array_key_exists('grid_windows', $charge) && $charge['grid_windows'] !== null
+            ? (bool) $charge['grid_windows']
+            : Energy::grid($charge['grid'] ?? 'off') === 'windows';
+    }
+
+    /** Was nach Netzladen „Jetzt“ gilt: die Ladefenster, wenn ihr Schalter an ist, sonst aus. */
+    public static function afterNow(array $charge): string
+    {
+        return self::windowsWanted($charge) ? 'windows' : 'off';
     }
 
     /** Ziel in Ladefenstern schon erreicht (bis zum Abstecken)? */
@@ -191,65 +213,119 @@ final class ChargePlan
         $connected = Sessions::carConnected($values['wallbox_car_raw'] ?? null, isset($values['wallbox_kw']) ? (float) $values['wallbox_kw'] : null) !== false;
         $plan = self::get($store);
         $enabled = (new PriceWindows($store))->enabled($now);
+        $schedule = $plan !== null && ($plan['source'] ?? 'target') === 'schedule';
         return self::effective(
             Energy::userMode($charge['mode'] ?? 'smart'),
             Energy::grid($charge['grid'] ?? 'off'),
             $connected,
             $enabled && PriceWindows::at(self::chosen($store, $now), $now) !== null,
-            $enabled ? $plan : null,
+            $enabled || $schedule ? $plan : null,
             self::done($store),
             $now
         );
     }
 
     /**
-     * Recorder: Plan neu rechnen, wenn Netzladen in Ladefenstern gilt (nur mit dynamischem Tarif), das Ziel fürs
-     * Netzladen ein „fertig bis“ hat und sich etwas geändert hat oder 15 min vorbei sind. Ohne das, nach dem Ziel oder
-     * ohne Auto verschwindet er.
+     * Recorder: Plan neu rechnen. Zuerst das Ziel der Ladefenster mit „fertig bis“ (nur mit dynamischem Tarif und
+     * eingeschalteten Fenstern), sonst der nächste Ladeplan (GridPlans) in den kommenden 24 Stunden, dessen
+     * Bedingungen gelten. Neu, wenn sich etwas geändert hat oder 15 min vorbei sind; ohne beides, nach dem Ziel, bei
+     * „Jetzt“ oder ohne Auto verschwindet er. Nebenbei lernt EMS die Ladeleistung beim Netzladen.
      */
     public static function refresh(ConfigStore $store, array $snap, int $now, bool $force = false, ?PriceWindows $windows = null): ?array
     {
-        $target = Target::get($store, 'grid');
+        GridPlans::learn($store, $snap, $now);
         $cfg = $snap['cfg'];
         $mode = (string) ($cfg['charge']['mode'] ?? 'smart');
         $grid = Energy::grid($cfg['charge']['grid'] ?? 'off');
         $connected = !empty($snap['vehicle']['connected']);
         $tariff = new Tariff($store);
         $windows ??= new PriceWindows($store, $tariff);
-        $view = $target === null ? null : Target::view($target, Target::inputs($snap), $now);
-        if ($target === null || empty($target['ready_by']) || !$connected || $grid !== 'windows' || $mode === 'aus' || self::done($store)
-            || !$windows->enabled($now) || ($view['reached'] ?? false) || (int) $target['ready_by'] <= $now) {
+        $inputs = Target::inputs($snap);
+        $source = null;
+        $target = Target::get($store, 'grid');
+        $view = $target === null ? null : Target::view($target, $inputs, $now);
+        if ($target !== null && !empty($target['ready_by']) && $grid === 'windows' && !self::done($store) && $windows->enabled($now)
+            && !($view['reached'] ?? false) && (int) $target['ready_by'] > $now) {
+            $source = ['source' => 'target', 'target' => $target, 'key' => (int) $target['set_at']];
+        } elseif ($grid !== 'now') {
+            $due = GridPlans::upcoming(GridPlans::all($store), $now, (int) $store->get(GridPlans::DONE, 0));
+            if ($due !== null && $due['deadline'] - $now <= GridPlans::HORIZON_S) {
+                $planTarget = GridPlans::target($due, $due['deadline'], $snap['vehicle']['soc'] ?? null, $snap['vehicle']['range_km'] ?? null);
+                $planView = Target::view($planTarget, $inputs, $now);
+                $cond = GridPlans::conditions($due, isset($snap['values']['battery_soc']) ? (float) $snap['values']['battery_soc'] : null, self::sunKwh($store, $cfg, $snap, $now, $due['deadline']));
+                if ($planView['reached'] ?? false) {
+                    // Erreicht: bis zur nächsten Uhrzeit dieses Plans erledigt.
+                    $store->put(GridPlans::DONE, $due['deadline']);
+                } elseif ($cond['ok']) {
+                    $source = ['source' => 'schedule', 'target' => $planTarget, 'key' => $due['deadline'], 'plan_id' => $due['id'], 'conditions' => $cond['text']];
+                }
+            }
+        }
+        if ($source === null || !$connected || $mode === 'aus') {
             if (self::get($store) !== null) {
                 $store->put(self::KEY, []);
             }
             return null;
         }
+        $target = $source['target'];
         $horizon = $tariff->horizon();
         $deadline = (int) $target['ready_by'];
-        $slots = PriceWindows::slotsOf(self::chosen($store, $now), $now, $deadline);
+        $slots = $grid === 'windows' && $windows->enabled($now) ? PriceWindows::slotsOf(self::chosen($store, $now), $now, $deadline) : [];
+        $power = self::powerKw($cfg['charge'], GridPlans::carKw($cfg, $store));
         $old = self::get($store);
         $fresh = $old !== null
-            && (int) ($old['target_set_at'] ?? 0) === (int) $target['set_at']
+            && ($old['source'] ?? 'target') === $source['source']
+            && (int) ($old['target_set_at'] ?? 0) === $source['key']
             && (int) ($old['horizon'] ?? 0) === $horizon
             && ($old['mode'] ?? '') === $mode
             && ($old['windows'] ?? '') === md5(implode(',', $slots))
+            && abs((float) ($old['power_kw'] ?? 0) - $power) < 0.05
             && $now - (int) ($old['computed_at'] ?? 0) < self::REPLAN_S;
         if ($fresh && !$force) {
             return $old;
         }
-        $need = Target::neededKwh($target, Target::inputs($snap));
+        $need = Target::neededKwh($target, $inputs);
+        // Mit statischem Tarif kostet jede Viertelstunde gleich viel; plan() nimmt dann die spätesten.
         $prices = [];
         for ($q = intdiv($now, 900) * 900; $q < $deadline; $q += 900) {
             $prices[$q] = $tariff->importCt($q);
         }
         $sun = in_array($mode, self::SUN_MODES, true) ? self::sun($store, $cfg, $snap, $now, $deadline) : [];
-        $power = self::powerKw($cfg['charge']);
         $plan = $need === null
             ? ['slots' => $slots, 'extra' => [], 'need_kwh' => null, 'sun_kwh' => 0.0, 'window_kwh' => round(count($slots) * $power * 0.25, 2), 'grid_kwh' => null, 'avg_ct' => null, 'status' => 'unknown', 'deadline' => $deadline]
             : self::plan($need, $power, $now, $deadline, $prices, $sun, $slots);
-        $plan += ['target_set_at' => (int) $target['set_at'], 'horizon' => $horizon, 'mode' => $mode, 'windows' => md5(implode(',', $slots)), 'computed_at' => $now, 'power_kw' => $power];
+        $plan += [
+            'source' => $source['source'],
+            'plan_id' => $source['plan_id'] ?? null,
+            'conditions' => $source['conditions'] ?? '',
+            'target_set_at' => $source['key'],
+            'horizon' => $horizon,
+            'mode' => $mode,
+            'windows' => md5(implode(',', $slots)),
+            'computed_at' => $now,
+            'power_kw' => $power,
+        ];
         $store->put(self::KEY, $plan);
         return $plan;
+    }
+
+    /** Prognose der Anlage von jetzt bis zur Uhrzeit in kWh, für die Bedingung eines Plans; null ohne Prognose. */
+    public static function sunKwh(ConfigStore $store, array $cfg, array $snap, int $now, int $deadline): ?float
+    {
+        $rows = Forecast::fromRadiation((new WeatherFeed($store))->hours(intdiv($now, 3600) * 3600, $deadline), (array) $cfg['plant']);
+        if ($rows === []) {
+            return null;
+        }
+        $sum = 0.0;
+        foreach ($rows as $row) {
+            // Die laufende Stunde nur mit dem Rest.
+            $from = max($now, (int) $row['t']);
+            $to = min($deadline, (int) $row['t'] + 3600);
+            if ($to > $from) {
+                $sum += (float) $row['kw'] * ($to - $from) / 3600;
+            }
+        }
+        return round($sum, 1);
     }
 
     /**
@@ -288,6 +364,13 @@ final class ChargePlan
         $sun = (float) ($plan['sun_kwh'] ?? 0) >= 0.5 ? ', ' . kwh((float) $plan['sun_kwh'], 1) . ' Sonne erwartet' : '';
         // Ohne gewähltes Fenster plant EMS die Viertelstunden allein.
         $short = (float) ($plan['window_kwh'] ?? 0) > 0 ? 'Die gewählten Fenster reichen bis ' . $until . ' nicht.' : 'Ohne gewähltes Fenster bis ' . $until . ':';
+        if (($plan['source'] ?? 'target') === 'schedule') {
+            $day = (new DateTimeImmutable('@' . (int) $plan['deadline']))->setTimezone($tz)->format('Y-m-d') === (new DateTimeImmutable('now', $tz))->format('Y-m-d') ? '' : day_label((new DateTimeImmutable('@' . (int) $plan['deadline']))->setTimezone($tz)->format('Y-m-d')) . ' ';
+            $short = 'Ladeplan bis ' . $day . $until . ':';
+            if (in_array((string) $plan['status'], ['sun', 'windows'], true)) {
+                return $short . ' ' . ((string) $plan['status'] === 'sun' ? 'Die Sonne reicht voraussichtlich' : 'Die gewählten Fenster reichen') . ', ' . $need . ' fehlen' . $sun . '.';
+            }
+        }
         return match ((string) $plan['status']) {
             'done' => 'Ziel erreicht.',
             'sun' => 'Bis ' . $until . ' reicht voraussichtlich die Sonne (' . $need . ' fehlen' . $sun . ').',
