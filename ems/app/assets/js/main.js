@@ -9,6 +9,7 @@ import { initForms, initGlobal } from './components/forms.js';
 import { initHeatmaps } from './components/heatmap.js';
 import { initHomeAssistant } from './components/homeassistant.js';
 import { initNotify } from './components/notify.js';
+import { initPlans } from './components/plan.js';
 import { initTargets } from './components/target.js';
 import { initWeekMaps } from './components/weekmap.js';
 import { initDialogs } from './core/dialog.js';
@@ -21,6 +22,7 @@ if (!initHomeAssistant()) {
   initForms();
   initNotify();
   initTargets();
+  initPlans();
   initHeatmaps();
   initWeekMaps();
   initFlow();

@@ -629,7 +629,8 @@ function ui_chargepoint(array $cp, array $opts = []): string
         . '<div class="row wrap"><button type="button" class="btn btn-secondary" data-grid-stop>' . icon('x', 'icon-16') . 'Stoppen</button></div></div>'
         . '<div class="cp-now-start" data-grid-show="off windows"' . ($nowOn ? ' hidden' : '') . '>'
         . '<button type="button" class="btn btn-secondary" data-open-dialog="' . e($id) . '-now-target" aria-haspopup="dialog">' . icon('plug-zap', 'icon-16') . 'Jetzt aus dem Netz laden …</button></div>';
-    $windowsToggle = '<div class="cp-toggle-row"><label class="cp-toggle-label" for="' . e($id) . '-windows">Ladefenster nutzen'
+    // Mit statischem Tarif gibt es keine Ladefenster; dann fehlt der Schalter ganz.
+    $windowsToggle = !$enabled ? '' : '<div class="cp-toggle-row"><label class="cp-toggle-label" for="' . e($id) . '-windows">Ladefenster nutzen'
         . '<span class="caption muted">' . e($enabled ? 'In den gewählten Fenstern lädt das Auto aus dem Netz, auch nach „Jetzt“.' : 'Nur mit dynamischem Tarif.') . '</span></label>'
         . '<span class="toggle"><input type="checkbox" role="switch"' . ui_attrs([
             'id' => $id . '-windows',
