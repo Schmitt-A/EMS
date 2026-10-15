@@ -138,6 +138,30 @@ function paintTarget(card, scope, target) {
   }
 }
 
+// Wartezeit der Regelung: zählt zwischen zwei Abfragen sekundengenau herunter, der Balken füllt sich bis zum Schalten.
+const wait = (s) => (s < 60 ? `${s}${NNBSP}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}${NNBSP}min`);
+
+function paintTimer(card, timer, at = Date.now()) {
+  const box = $('[data-cp-timer]', card);
+  if (!box) return;
+  box.hidden = !timer;
+  clearInterval(box.tick);
+  if (!timer) return;
+  const label = $('[data-cp-timer-label]', box);
+  const then = $('[data-cp-timer-then]', box);
+  if (label && timer.label) label.textContent = timer.label;
+  if (then && timer.then) then.textContent = timer.then;
+  const total = Math.max(1, Number(timer.total_s) || 1);
+  const draw = () => {
+    const left = Math.max(0, Math.round(Number(timer.remaining_s) - (Date.now() - at) / 1000));
+    const out = $('[data-cp-timer-left]', box);
+    if (out) out.textContent = wait(left);
+    box.style.setProperty('--cp-timer', String(Math.min(1, Math.max(0, (total - left) / total))));
+  };
+  draw();
+  box.tick = setInterval(draw, 1000);
+}
+
 // Übersicht nur bei offenem Ladevorgang.
 function paintSession(card, session) {
   const box = $('[data-session]', card);
@@ -156,10 +180,13 @@ export function initChargepoints(root = document) {
     if (bar) bindLimit(card, bar);
     paintTarget(card, 'sun', null);
     paintTarget(card, 'grid', null);
+    const timerBox = $('[data-cp-timer]', card);
+    if (timerBox && !timerBox.hidden) paintTimer(card, { remaining_s: Number(timerBox.dataset.left), total_s: Number(timerBox.dataset.total) });
     onLive((data) => {
       paintTarget(card, 'sun', data.target);
       paintTarget(card, 'grid', data.grid_target);
       paintSession(card, data.session_view);
+      if (data.chargepoint) paintTimer(card, data.chargepoint.timer || null);
       const cp = data.chargepoint;
       const vehicle = data.vehicle;
       if (cp) {

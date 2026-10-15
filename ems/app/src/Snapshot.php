@@ -393,6 +393,7 @@ final class Snapshot
                 break;
             }
         }
+        $base['chargepoint']['timer'] = self::timerView($decision, $controlIn);
         $base['session_view'] = self::sessionView($base, $cfg['tariffs'], $now, $pricing);
         $base['control'] = self::control($live, $cfg['charge'], $strategy, $latched, $modes, $battery, $base['reserve'], $ems);
         $base['warnings'] = array_values(array_unique($base['warnings']));
@@ -628,14 +629,19 @@ final class Snapshot
         $row = is_array($group) ? $group : $session;
         $energy = (float) $row['energy_kwh'];
         $duration = (int) $row['duration_s'];
-        $start = (int) strtotime((string) (($row['plug_at'] ?? '') ?: $row['started_at']));
+        // Wie unter Ladevorgänge: vom ersten Ladezyklus bis zum Ende des letzten, solange einer läuft „seit“; das
+        // Anstecken kann viel früher liegen, etwa am Abend davor.
+        $start = (int) strtotime((string) $row['started_at']);
+        $end = empty($row['ended_at']) ? null : (int) strtotime((string) $row['ended_at']);
+        $day = date('Y-m-d', $start) === date('Y-m-d', $now) ? '' : day_label(date('Y-m-d', $start)) . ' ';
+        $since = $end === null ? 'seit ' . $day . date('H:i', $start) : $day . date('H:i', $start) . '–' . date('H:i', $end);
         $cost = Sessions::cost($row, $pricing?->forRow($row) ?? $tariffs);
         // Strecke aus der geladenen Energie wie auf der Karte (bei go-e „wh“ der Zähler der Wallbox) und dem Verbrauch.
         $counter = $base['chargepoint']['session_kwh'] ?? null;
         $km = Energy::kmFromKwh($counter !== null ? (float) $counter : $energy, $base['vehicle']['consumption_kwh'] ?? null);
         return [
             'open' => true,
-            'since' => 'seit ' . date('H:i', $start),
+            'since' => $since,
             'duration' => duration_clock($duration),
             'kwh' => kwh($energy),
             'avg' => $duration > 60 ? kw($energy / ($duration / 3600)) : '—',
@@ -791,6 +797,38 @@ final class Snapshot
             default => 'Ohne Ladestand des Speichers zählt nur der Überschuss am Zähler.',
         };
         return $mode === 'smart_dauerhaft' ? $text . ' Mindestens ' . $minA . NNBSP . 'A bleiben an.' : $text;
+    }
+
+    /**
+     * Laufende Wartezeit der Regelung für die Ladepunkt-Karte: welche (Einschalt-, Ausschaltverzögerung, Phasenwechsel,
+     * Schütz-Schutzzeit), was danach passiert, wie lange noch und wie lange insgesamt; null ohne Wartezeit.
+     */
+    public static function timerView(array $decision, array $in): ?array
+    {
+        $timer = $decision['timer'] ?? null;
+        if (is_array($timer)) {
+            $action = (string) $timer['action'];
+            $total = in_array($action, ['enable', 'scale3p'], true) ? (int) $in['on_s'] : (int) $in['off_s'];
+            [$label, $then] = match ($action) {
+                'enable' => ['Einschaltverzögerung', 'Laden startet'],
+                'disable' => ['Ausschaltverzögerung', 'Laden stoppt'],
+                'scale3p' => ['Phasenwechsel', 'auf 3 Phasen'],
+                'scale1p' => ['Phasenwechsel', 'auf 1 Phase'],
+                default => [null, null],
+            };
+            $left = (int) $timer['remaining_s'];
+        } elseif (($decision['note'] ?? null) === 'guard' && (int) ($decision['guard_s'] ?? 0) > 0) {
+            [$label, $then] = ['Schütz-Schutzzeit', 'dann darf sie wieder schalten'];
+            $total = (int) $in['guard_s'];
+            $left = (int) $decision['guard_s'];
+        } else {
+            return null;
+        }
+        if ($label === null || $total <= 0) {
+            return null;
+        }
+        $left = max(0, min($total, $left));
+        return ['label' => $label, 'then' => $then, 'remaining_s' => $left, 'total_s' => $total, 'text' => self::wait($left)];
     }
 
     /** Anstehender Wechsel der Verriegelung, leer ohne Wechsel. */
