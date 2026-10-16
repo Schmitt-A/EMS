@@ -37,7 +37,7 @@ final class Actions
     private const ENTITY_KEYS = [
         'pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'battery_reserve',
         'battery_operating_mode', 'battery_force_charge',
-        'car_soc', 'car_capacity', 'car_range', 'car_odometer', 'car_limit', 'car_wakeup', 'grid_import', 'grid_export', 'grid_signed', 'house_power',
+        'car_soc', 'car_capacity', 'car_range', 'car_odometer', 'car_limit', 'car_time_full', 'car_wakeup', 'grid_import', 'grid_export', 'grid_signed', 'house_power',
         'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force', 'wallbox_energy',
         'price_import',
     ];
@@ -62,6 +62,7 @@ final class Actions
         'car_range' => ['/^sensor\.\w*tesla\w*_(range|battery_range|reichweite)$/', ['km', 'mi']],
         'car_odometer' => ['/^sensor\.\w*tesla\w*_(odometer|kilometerstand)$/', ['km', 'mi']],
         'car_limit' => ['/^sensor\.\w*tesla\w*_(charge_limit|ladelimit)$/', ['%']],
+        'car_time_full' => ['/^sensor\.\w*tesla\w*_(time_to_full(_charge)?|minutes_to_full(_charge)?|charge_time_remaining|restzeit|ladedauer)$/', ['min', 'h', 's']],
         'car_wakeup' => ['/^button\.\w*tesla\w*_(wake_up|wake|aufwecken|wecken)$/', ['']],
         'wallbox_energy' => ['/^sensor\.(go_echarger|goe)_\w+_wh$/', ['kwh', 'wh']],
     ];
@@ -303,7 +304,7 @@ final class Actions
         } elseif ($section === 'vehicle') {
             $mapping = store()->get('mapping', []);
             $mapping = is_array($mapping) ? $mapping : [];
-            foreach (['car_soc', 'car_capacity', 'car_range', 'car_odometer', 'car_limit'] as $key) {
+            foreach (['car_soc', 'car_capacity', 'car_range', 'car_odometer', 'car_limit', 'car_time_full'] as $key) {
                 if (array_key_exists($key, $_POST)) {
                     $mapping[$key] = post_entity($key);
                 }

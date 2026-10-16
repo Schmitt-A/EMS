@@ -19,6 +19,36 @@ const widths = [360, 390, 768, 1024, 1440, 1920];
 const themes = ['light', 'dark'];
 const axeWidths = [390, 1440];
 const shots = process.env.CHECK_SHOTS !== '0' ? join(root, 'tests/screenshots') : null;
+// Überstand auf schmalen Handys, auch mit größerer Schrift (Zoom in der App von Home Assistant, Systemschrift): Seite und
+// jedes Sheet. html und body schneiden seitlich ab (overflow-x: clip), darum misst die Prüfung die Elemente selbst.
+const narrowWidths = [320, 360, 390];
+const zooms = [100, 115];
+
+// Elemente, die über den rechten oder linken Rand ragen, ohne dass ein Vorfahr sie abschneidet oder scrollt; mit
+// offenem Dialog an dessen Rand. Unsichtbare Tooltips zählen nicht.
+function overhang() {
+  const open = document.querySelector('dialog[open]');
+  const stop = open || null;
+  const right = open ? Math.min(window.innerWidth, open.getBoundingClientRect().right) : window.innerWidth;
+  const left = open ? Math.max(0, open.getBoundingClientRect().left) : 0;
+  const contained = (el) => {
+    for (let p = el.parentElement; p && p !== stop && p !== document.body; p = p.parentElement) {
+      if (getComputedStyle(p).overflowX !== 'visible') return true;
+    }
+    return false;
+  };
+  const out = [];
+  for (const el of (open || document.body).querySelectorAll('*')) {
+    if ((el instanceof SVGElement && el.tagName !== 'svg') || !el.getClientRects().length || el.closest('.sr-only, .tip-body, dialog:not([open])')) continue;
+    if (getComputedStyle(el).visibility === 'hidden') continue;
+    const box = el.getBoundingClientRect();
+    if (box.width === 0 || (box.right <= right + 0.5 && box.left >= left - 0.5) || contained(el)) continue;
+    out.push(`${el.tagName.toLowerCase()}${typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\s+/).join('.') : ''} ${Math.round(box.left)}…${Math.round(box.right)}`);
+  }
+  const body = open?.querySelector('.dialog-body');
+  if (body && body.scrollWidth > body.clientWidth + 1) out.push(`Sheet scrollt seitlich um ${body.scrollWidth - body.clientWidth}px`);
+  return [...new Set(out)].slice(0, 4);
+}
 const axeSource = readFileSync(join(root, 'node_modules/axe-core/axe.min.js'), 'utf8');
 
 const data = mkdtempSync(join(tmpdir(), 'ems-check-'));
@@ -113,10 +143,30 @@ try {
           return out;
         });
         if (report.overflow > 1) fail(where, `horizontales Scrollen um ${report.overflow}px`);
+        for (const text of await page.evaluate(overhang)) fail(where, `ragt über den Rand: ${text}`);
         if (!report.inter || !/^"?Inter/.test(report.font)) fail(where, `Schrift ${report.font}, Inter geladen: ${report.inter}`);
         for (const text of report.clipped) fail(where, `abgeschnitten: ${text}`);
         for (const text of [...new Set(report.small)].slice(0, 8)) fail(where, `Trefferfläche zu klein: ${text}`);
         if (shots) await page.screenshot({ path: join(shots, `${route.replace(/\W+/g, '_') || 'home'}-${width}-${theme}.png`), fullPage: true });
+        await context.close();
+      }
+    }
+
+    // Schmale Handys mit größerer Schrift: Seite und jedes Sheet ohne Überstand.
+    for (const width of narrowWidths) {
+      for (const zoom of zooms) {
+        const where = `${route} ${width}px ${zoom}%`;
+        const context = await browser.newContext({ viewport: { width, height: 800 }, isMobile: true, hasTouch: true, bypassCSP: true });
+        const page = await context.newPage();
+        await page.goto(base + route, { waitUntil: 'networkidle' });
+        await page.evaluate((z) => document.documentElement.style.setProperty('font-size', `${z}%`), zoom);
+        for (const text of await page.evaluate(overhang)) fail(where, `ragt über den Rand: ${text}`);
+        const dialogs = await page.evaluate(() => [...new Set([...document.querySelectorAll('[data-open-dialog]')].map((b) => b.dataset.openDialog))]);
+        for (const id of dialogs) {
+          if (!(await page.evaluate((dialogId) => { const d = document.getElementById(dialogId); d?.showModal(); return Boolean(d); }, id))) continue;
+          for (const text of await page.evaluate(overhang)) fail(`${where} #${id}`, `ragt über den Rand: ${text}`);
+          await page.evaluate((dialogId) => document.getElementById(dialogId).close(), id);
+        }
         await context.close();
       }
     }
@@ -171,4 +221,4 @@ if (failures.length) {
   for (const line of failures) console.error(`  ${line}`);
   process.exit(1);
 }
-console.log(`check:ui ok: ${routes.length} Seiten × ${widths.length} Breiten × hell/dunkel, axe, reduzierte Bewegung${shots ? `, Screenshots in ${shots}` : ''}`);
+console.log(`check:ui ok: ${routes.length} Seiten × ${widths.length} Breiten × hell/dunkel, axe, reduzierte Bewegung, Überstand auf ${narrowWidths.join('/')} px mit ${zooms.join('/')} % Schrift samt Sheets${shots ? `, Screenshots in ${shots}` : ''}`);

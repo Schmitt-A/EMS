@@ -216,27 +216,25 @@ final class Sessions
         return $periods;
     }
 
+    /** Kalendertag eines Zyklus (Y-m-d, Europe/Berlin) nach seinem Beginn. */
+    public static function dayOf(array $row): string
+    {
+        return (new DateTimeImmutable('@' . (int) strtotime((string) $row['started_at'])))->setTimezone(new DateTimeZone('Europe/Berlin'))->format('Y-m-d');
+    }
+
     /**
-     * Fasst die Ladezyklen eines Ansteckens zu einem Ladevorgang zusammen; ohne plug_at bleibt jeder Zyklus für sich.
+     * Fasst die Ladezyklen eines Tages zu einem Ladevorgang zusammen: alle Zyklen, die an diesem Tag beginnen, auch
+     * wenn das Auto über Nacht steckt oder zweimal angesteckt wurde. Ein Zyklus über Mitternacht zählt zu seinem Beginn.
      * @return list<array> Ladevorgänge, neueste zuerst, mit 'cycles' (älteste zuerst)
      */
     public static function groups(array $rows): array
     {
-        usort($rows, static fn (array $a, array $b): int => strcmp((string) $a['started_at'], (string) $b['started_at']));
+        usort($rows, static fn (array $a, array $b): int => strtotime((string) $a['started_at']) <=> strtotime((string) $b['started_at']));
         $groups = [];
-        $index = [];
         foreach ($rows as $row) {
-            $key = (string) ($row['plug_at'] ?? '');
-            if ($key !== '' && isset($index[$key])) {
-                $groups[$index[$key]][] = $row;
-                continue;
-            }
-            $groups[] = [$row];
-            if ($key !== '') {
-                $index[$key] = count($groups) - 1;
-            }
+            $groups[self::dayOf($row)][] = $row;
         }
-        return array_reverse(array_map([self::class, 'merge'], $groups));
+        return array_reverse(array_map([self::class, 'merge'], array_values($groups)));
     }
 
     /** Ein Ladevorgang aus seinen Zyklen: Summen, erster Start, letztes Ende, offen solange ein Zyklus läuft. */
@@ -272,8 +270,25 @@ final class Sessions
         ]);
     }
 
-    /** Der Ladevorgang, zu dem ein Zyklus gehört. */
+    /** Der Ladevorgang, zu dem ein Zyklus gehört: alle Zyklen seines Tages. */
     public function group(int $id): ?array
+    {
+        $row = $this->find($id);
+        if (!$row) {
+            return null;
+        }
+        $day = self::dayOf($row);
+        $t = (int) strtotime((string) $row['started_at']);
+        // Grob über zwei Tage holen, genau nach dem Tag in Berlin filtern; die Zeitstempel sind nicht alle gleich formatiert.
+        $stmt = $this->store->pdo()->prepare('SELECT * FROM sessions WHERE started_at >= ? AND started_at < ?');
+        $stmt->execute([date('Y-m-d', $t - 2 * 86400), date('Y-m-d', $t + 2 * 86400)]);
+        $cycles = array_values(array_filter($stmt->fetchAll() ?: [], static fn (array $c): bool => self::dayOf($c) === $day));
+        usort($cycles, static fn (array $a, array $b): int => strtotime((string) $a['started_at']) <=> strtotime((string) $b['started_at']));
+        return self::merge($cycles ?: [$row]);
+    }
+
+    /** Alle Zyklen seit dem Anstecken, zu dem ein Zyklus gehört: „Geladen“ der Karte und Mitteilungen beim Abstecken. */
+    public function plugGroup(int $id): ?array
     {
         $row = $this->find($id);
         if (!$row) {

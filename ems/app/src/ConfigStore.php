@@ -189,6 +189,7 @@ final class ConfigStore
                 'car_range' => '',
                 'car_odometer' => '',
                 'car_limit' => '',
+                'car_time_full' => '',
                 'grid_mode' => 'split',
                 'grid_import' => '',
                 'grid_export' => '',

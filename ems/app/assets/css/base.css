@@ -34,8 +34,18 @@ html {
   color: var(--text);
 }
 
+/* Sicherheitsnetz: Ragt etwas über den Rand, etwa mit Zoom in der App von Home Assistant oder einer sehr großen
+   Systemschrift, lässt sich die Seite trotzdem nicht seitlich schieben. Ein offenes Sheet schob sich sonst mit, weil es
+   am Bildschirm hängt und die Seite darunter breiter wäre. clip statt hidden, damit position: sticky weiter geht;
+   check:ui misst Überstände an den Elementen selbst und meldet sie weiter. */
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   margin: 0;
+  overflow-wrap: break-word;
   min-height: 100dvh;
   background: var(--bg);
   color: var(--text);

@@ -1,27 +1,37 @@
 <?php
 declare(strict_types=1);
 /**
- * Ladeplan fürs Netzladen (GridPlans): Wochentage, Uhrzeit, Ziel nach Ladestand, Reichweite oder Energie und optional
- * die Bedingungen Hausspeicher, Sonne und Auto, je mit dem Wert von jetzt. Die Felder der Zielart, die Grenze einer
- * eingeschalteten Bedingung und die Einheit der Bedingung Auto zeigt CSS über :has(), ohne Skript. Gespeichert wird per
- * Formular (section grid_plan).
+ * Ladeplan fürs Netzladen (GridPlans): Wochentage (für einen neuen Plan keine vorgewählt), Uhrzeit, Ziel nach Ladestand
+ * oder Energie und optional die Bedingungen Hausspeicher, Sonne und Ladestand des Autos, je mit dem Wert von jetzt. Die
+ * Regler des Ladestands nennen die Reichweite dazu (components/plan.js); eine Zielart Reichweite gibt es nicht mehr, ein
+ * alter Plan danach erscheint als Ladestand. Die Felder der Zielart und die Grenze einer eingeschalteten Bedingung
+ * zeigt CSS über :has(), ohne Skript. Gespeichert wird per Formular (section grid_plan).
  * @var ?array $plan gespeicherter Plan, null für einen neuen
  * @var array $snap
  * @var string $back
  * @var string $px Präfix der IDs, je Plan eigen
  */
 $plan ??= null;
-$days = $plan['days'] ?? [1, 2, 3, 4, 5];
+$days = $plan['days'] ?? [];
 $time = (string) ($plan['time'] ?? '07:00');
 $type = (string) ($plan['type'] ?? 'soc');
 $value = isset($plan['value']) ? (float) $plan['value'] : null;
 $vehicle = $snap['vehicle'];
 $soc = $type === 'soc' && $value !== null ? $value : (float) ($vehicle['limit'] ?? 80);
-$km = $type === 'range' && $value !== null ? $value : 300.0;
 $kwhValue = $type === 'energy' && $value !== null ? $value : 20.0;
+// Alte Pläne und Bedingungen nach Reichweite: als Ladestand, über die Kilometer je Prozent von jetzt.
+$perPct = $vehicle['range_km'] !== null && $vehicle['soc'] !== null && (float) $vehicle['soc'] >= 1 ? (float) $vehicle['range_km'] / (float) $vehicle['soc'] : null;
+$asSoc = static fn (float $km, float $fallback): float => $perPct === null ? $fallback : max(5, min(100, round($km / $perPct / 5) * 5));
+if ($type === 'range') {
+    $soc = $value === null ? $soc : $asSoc($value, $soc);
+    $type = 'soc';
+}
+$carBelow = isset($plan['car_below']) ? (float) $plan['car_below'] : 40.0;
+if (($plan['car_below_type'] ?? 'soc') === 'range' && isset($plan['car_below'])) {
+    $carBelow = $asSoc($carBelow, 40.0);
+}
 $batterySoc = isset($snap['values']['battery_soc']) ? (float) $snap['values']['battery_soc'] : null;
 $carLimit = !empty($vehicle['limit_from_car']) && isset($vehicle['limit']) ? (float) $vehicle['limit'] : null;
-$carType = (string) ($plan['car_below_type'] ?? 'soc');
 $carNow = implode(' · ', array_filter([
     $vehicle['soc'] === null ? '' : pct((float) $vehicle['soc']),
     $vehicle['range_km'] === null ? '' : with_unit((float) $vehicle['range_km'], 0, 'km'),
@@ -83,17 +93,14 @@ $priceCt = $prices === [] ? null : ($dynamic ? array_sum($prices) / count($price
   <p class="caption plan-calc" data-plan-start aria-live="polite"></p>
   <?= ui_segment('type', 'Ziel nach', [
       'soc' => ['label' => 'Ladestand', 'short' => '%'],
-      'range' => ['label' => 'Reichweite', 'short' => 'km'],
       'energy' => ['label' => 'Energie', 'short' => 'kWh'],
   ], $type, ['id' => $px . '-type']) ?>
   <div class="target-panel stack" data-panel="soc">
     <?= str_replace(['id="f-soc"', 'for="f-soc"'], ['id="' . $id('soc') . '"', 'for="' . $id('soc') . '"'], ui_range('soc', 'Bis Ladestand', $soc, 20, 100, 5, '%', $vehicle['soc'] === null ? 'Braucht den Ladestand des Autos, etwa über Tesla BLE.' : 'Jetzt ' . pct((float) $vehicle['soc']) . '.')) ?>
+    <p class="caption plan-km" data-plan-km="soc" aria-live="polite"></p>
 <?php if ($carLimit !== null): ?>
     <p class="caption muted">Das Ladelimit im Auto steht auf <?= e(pct($carLimit)) ?>. Darüber lädt das Auto nicht, und EMS ändert das Limit nicht; ein höheres Ziel endet bei <?= e(pct($carLimit)) ?>.</p>
 <?php endif; ?>
-  </div>
-  <div class="target-panel stack" data-panel="range">
-    <div class="form-rows"><?= ui_form_row('Reichweite', ui_input('km', ui_field_num($km, 0), ['id' => $id('km'), 'class' => 'field-num', 'inputmode' => 'numeric', 'autocomplete' => 'off']), ['for' => $id('km'), 'hint' => 'Kilometer, die das Auto dann anzeigt' . ($vehicle['range_km'] === null ? '; braucht die Reichweite des Autos.' : ', jetzt ' . with_unit((float) $vehicle['range_km'], 0, 'km') . '.')]) ?></div>
   </div>
   <div class="target-panel stack" data-panel="energy">
     <div class="form-rows"><?= ui_form_row('Energie', ui_input('kwh', ui_field_num($kwhValue, 1), ['id' => $id('kwh'), 'class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off']), ['for' => $id('kwh'), 'hint' => 'kWh seit dem Anstecken.']) ?></div>
@@ -112,10 +119,11 @@ $priceCt = $prices === [] ? null : ($dynamic ? array_sum($prices) / count($price
       <ul class="plan-sun caption" data-plan-sun role="list" aria-label="Sonnenprognose je gewähltem Tag"></ul>
     </div>
     <div class="plan-cond">
-      <div class="form-rows"><?= ui_form_row('Auto unter', ui_toggle('car_below_on', ($plan['car_below'] ?? null) !== null, 'Bedingung Auto', ['id' => $id('car-on')]), ['for' => $id('car-on'), 'hint' => ($carNow === '' ? 'Ladestand oder Reichweite des Autos, braucht dessen Entität' : 'Ladestand oder Reichweite, jetzt ' . $carNow) . '. Hat es mehr, lädt der Plan nicht.']) ?></div>
+      <div class="form-rows"><?= ui_form_row('Auto unter', ui_toggle('car_below_on', ($plan['car_below'] ?? null) !== null, 'Bedingung Auto', ['id' => $id('car-on')]), ['for' => $id('car-on'), 'hint' => ($carNow === '' ? 'Ladestand des Autos, braucht dessen Entität' : 'Ladestand des Autos, jetzt ' . $carNow) . '. Hat es mehr, lädt der Plan nicht.']) ?></div>
       <div class="plan-cond-value stack-tight">
-        <?= ui_segment('car_below_type', 'Auto unter', ['soc' => 'Ladestand', 'range' => 'Reichweite'], $carType, ['id' => $px . '-car-type', 'compact' => true]) ?>
-        <div class="form-rows"><?= ui_form_row('Grenze', '<span class="ha-link">' . ui_input('car_below', ui_field_num((float) ($plan['car_below'] ?? ($carType === 'range' ? 150 : 40)), 0), ['id' => $id('car-below'), 'class' => 'field-num', 'inputmode' => 'numeric', 'autocomplete' => 'off', 'data-plan-car' => true]) . '<span class="plan-unit" data-unit="soc">%</span><span class="plan-unit" data-unit="range">km</span></span>', ['for' => $id('car-below')]) ?></div>
+        <input type="hidden" name="car_below_type" value="soc">
+        <?= str_replace(['id="f-car_below"', 'for="f-car_below"'], ['id="' . $id('car-below') . '"', 'for="' . $id('car-below') . '"'], ui_range('car_below', 'Ladestand unter', $carBelow, 5, 100, 5, '%')) ?>
+        <p class="caption plan-km" data-plan-km="car_below" aria-live="polite"></p>
       </div>
     </div>
   </div>

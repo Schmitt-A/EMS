@@ -111,6 +111,7 @@ final class Snapshot
             return $km;
         };
         $carLimitRow = $read('car_limit');
+        $carTimeRow = $read('car_time_full');
         $reserveRow = $read('battery_reserve');
         $car = $read('wallbox_car');
         $amps = $read('wallbox_amps');
@@ -131,6 +132,7 @@ final class Snapshot
             'car_range_km' => $distance($carRangeRow),
             'car_odometer_km' => $distance($read('car_odometer')),
             'car_limit_soc' => is_array($carLimitRow) && $carLimitRow['num'] !== null ? clamp_float((float) $carLimitRow['num'], 0, 100) : null,
+            'car_time_full_s' => is_array($carTimeRow) ? Energy::durationSeconds($carTimeRow['num'] === null ? null : (float) $carTimeRow['num'], $carTimeRow['unit'] ?? null) : null,
             'battery_reserve_soc' => is_array($reserveRow) ? ($reserveRow['num'] ?? null) : null,
             'grid_import_kw' => $import,
             'grid_export_kw' => $export,
@@ -179,7 +181,7 @@ final class Snapshot
         $values = array_merge([
             'pv_kw' => null, 'battery_soc' => null, 'battery_charge_kw' => null, 'battery_discharge_kw' => null,
             'battery_capacity_kwh' => null, 'battery_total_kwh' => null, 'car_soc' => null, 'car_capacity_kwh' => null, 'car_range_km' => null,
-            'car_odometer_km' => null, 'car_limit_soc' => null, 'battery_reserve_soc' => null,
+            'car_odometer_km' => null, 'car_limit_soc' => null, 'car_time_full_s' => null, 'battery_reserve_soc' => null,
             'grid_import_kw' => null, 'grid_export_kw' => null, 'house_kw' => null,
             'house_includes_wallbox' => true, 'wallbox_kw' => null, 'wallbox_amps' => null, 'wallbox_car_raw' => null,
             'wallbox_phases_raw' => null, 'wallbox_force_raw' => null, 'wallbox_force_options' => [], 'wallbox_phases_options' => [], 'wallbox_session_kwh' => null, 'priority_soc' => 80, 'radiation_rows' => [],
@@ -373,7 +375,8 @@ final class Snapshot
         $base['car_buffer_soc'] = $bufferSoc;
         $base['house_known'] = $balance['house_base_kw'] !== null;
         $base['session'] = $session;
-        $base['plug_group'] = is_array($session) && !empty($session['plug_at']) ? $sessions->group((int) $session['id']) : null;
+        $base['plug_group'] = is_array($session) && !empty($session['plug_at']) ? $sessions->plugGroup((int) $session['id']) : null;
+        $base['day_group'] = is_array($session) ? $sessions->group((int) $session['id']) : null;
         $base['car_label'] = Energy::carLabel($values['wallbox_car_raw'] ?? null);
         $base['phase_label'] = Energy::phaseLabel($values['wallbox_phases_raw'] ?? null);
         $base['activity'] = Energy::activity($values['battery_charge_kw'] ?? null, $values['battery_discharge_kw'] ?? null);
@@ -399,10 +402,11 @@ final class Snapshot
             if ($view !== null && $view['remaining_s'] !== null && !$view['reached']) {
                 $base['chargepoint']['remaining_s'] = $view['remaining_s'];
                 $base['chargepoint']['remaining_text'] = duration_clock((int) $view['remaining_s']);
+                $base['chargepoint']['remaining_hint'] = 'bis zum Ziel';
                 break;
             }
         }
-        $base['chargepoint']['timer'] = self::timerView($decision, $controlIn);
+        $base['chargepoint']['timer'] = self::timerView($decision, $controlIn, Controller::active($cfg) && $controller['paused'] === null);
         $base['session_view'] = self::sessionView($base, $cfg['tariffs'], $now, $pricing);
         $base['control'] = self::control($live, $cfg['charge'], $strategy, $latched, $modes, $battery, $base['reserve'], $ems);
         $base['warnings'] = array_values(array_unique($base['warnings']));
@@ -533,7 +537,17 @@ final class Snapshot
         } elseif ($power !== null) {
             $energy = 0.0;
         }
-        $remaining = $charging ? Energy::timeToLimit($vehicle['soc'], $vehicle['limit'], $vehicle['capacity_kwh'], $power) : null;
+        // Restzeit: meldet das Auto sie selbst (etwa Tesla), gilt seine; sonst was bis zum Limit fehlt geteilt durch die
+        // Leistung. Fehlt dafür ein Wert, sagt der Hinweis darunter welcher.
+        $fromCar = $charging && ($v['car_time_full_s'] ?? null) !== null && (int) $v['car_time_full_s'] > 0;
+        $remaining = !$charging ? null : ($fromCar ? (int) $v['car_time_full_s'] : Energy::timeToLimit($vehicle['soc'], $vehicle['limit'], $vehicle['capacity_kwh'], $power));
+        $hint = match (true) {
+            !$charging || ($remaining !== null && !$fromCar) => '',
+            $fromCar => 'vom Auto',
+            $vehicle['soc'] === null => 'Ladestand fehlt',
+            $vehicle['capacity_kwh'] === null => 'Akku fehlt',
+            default => '',
+        };
         $mode = Energy::userMode($cfg['charge']['mode'] ?? 'smart');
         // Ist Laden aus, zeigt die Auswahl den Modus, mit dem es wieder angeht.
         $sun = $mode === 'aus' ? Energy::userMode($cfg['charge']['last_mode'] ?? 'smart') : $mode;
@@ -555,6 +569,7 @@ final class Snapshot
             'session_s' => $open ? (int) $session['duration_s'] : null,
             'remaining_s' => $remaining,
             'remaining_text' => $remaining === null ? '—' : duration_clock($remaining),
+            'remaining_hint' => $hint,
         ];
     }
 
@@ -652,30 +667,31 @@ final class Snapshot
     }
 
     /**
-     * Übersicht des Ladevorgangs, solange er läuft oder das Auto noch steckt: seit wann, wie lange geladen,
-     * Energie, Ø Leistung, Sonnenanteil und Kosten bisher.
+     * Übersicht des Ladevorgangs wie unter Ladevorgänge: alle Zyklen des Tages, solange einer läuft oder das Auto
+     * steckt und heute schon geladen hat; seit wann, wie lange geladen, Strecke, Ø Leistung, Sonnenanteil und Kosten.
+     * Steckt das Auto seit gestern, zählen die Zyklen von gestern nicht mit.
      */
     public static function sessionView(array $base, array $tariffs, int $now, ?Tariff $pricing = null): array
     {
         $session = $base['session'] ?? null;
-        $group = $base['plug_group'] ?? null;
+        $group = $base['day_group'] ?? null;
         $open = is_array($session) && empty($session['ended_at']);
-        if (!$open && !(!empty($base['vehicle']['connected']) && is_array($session))) {
+        $row = is_array($group) ? $group : (is_array($session) ? Sessions::merge([$session]) : null);
+        $today = date('Y-m-d', $now) === Sessions::dayOf($row ?? ['started_at' => '@0']);
+        if ($row === null || !($open || (!empty($base['vehicle']['connected']) && $today))) {
             return ['open' => false];
         }
-        $row = is_array($group) ? $group : $session;
         $energy = (float) $row['energy_kwh'];
         $duration = (int) $row['duration_s'];
-        // Wie unter Ladevorgänge: vom ersten Ladezyklus bis zum Ende des letzten, solange einer läuft „seit“; das
-        // Anstecken kann viel früher liegen, etwa am Abend davor.
+        // Vom ersten Ladezyklus des Tages bis zum Ende des letzten, solange einer läuft „seit“; ein Zyklus, der gestern
+        // begann und noch läuft, nennt den Tag.
         $start = (int) strtotime((string) $row['started_at']);
         $end = empty($row['ended_at']) ? null : (int) strtotime((string) $row['ended_at']);
         $day = date('Y-m-d', $start) === date('Y-m-d', $now) ? '' : day_label(date('Y-m-d', $start)) . ' ';
         $since = $end === null ? 'seit ' . $day . date('H:i', $start) : $day . date('H:i', $start) . '–' . date('H:i', $end);
         $cost = Sessions::cost($row, $pricing?->forRow($row) ?? $tariffs);
-        // Strecke aus der geladenen Energie wie auf der Karte (bei go-e „wh“ der Zähler der Wallbox) und dem Verbrauch.
-        $counter = $base['chargepoint']['session_kwh'] ?? null;
-        $km = Energy::kmFromKwh($counter !== null ? (float) $counter : $energy, $base['vehicle']['consumption_kwh'] ?? null);
+        // Strecke aus der Energie der Zyklen dieses Tages und dem Verbrauch.
+        $km = Energy::kmFromKwh($energy, $base['vehicle']['consumption_kwh'] ?? null);
         return [
             'open' => true,
             'since' => $since,
@@ -837,25 +853,36 @@ final class Snapshot
     }
 
     /**
-     * Laufende Wartezeit der Regelung für die Ladepunkt-Karte: welche (Einschalt-, Ausschaltverzögerung, Phasenwechsel,
-     * Schütz-Schutzzeit), was danach passiert, wie lange noch und wie lange insgesamt; null ohne Wartezeit.
+     * Laufende Wartezeit der Regelung für die Karte der Wallbox, mit Name, was danach passiert, Rest und Gesamtzeit.
+     * Nur, wenn EMS die Wallbox wirklich regelt ($controls): Sonst stellt eine andere Regelung sie, und die Timer von EMS
+     * wären nur gerechnet. Die Ausschaltverzögerung steht nur da, solange das Auto lädt; ist die Wallbox frei, ohne
+     * dass das Auto Strom nimmt, gibt es nichts zu stoppen, und EMS sperrt sie danach nur wieder. Ist das Auto fertig
+     * geladen, startet auch die Einschaltverzögerung nichts.
      */
-    public static function timerView(array $decision, array $in): ?array
+    public static function timerView(array $decision, array $in, bool $controls = true): ?array
     {
+        if (!$controls) {
+            return null;
+        }
+        $charging = !empty($in['charging']);
         $timer = $decision['timer'] ?? null;
         if (is_array($timer)) {
             $action = (string) $timer['action'];
+            if (($action === 'disable' && !$charging) || ($action === 'enable' && !empty($in['complete']))) {
+                return null;
+            }
             $total = in_array($action, ['enable', 'scale3p'], true) ? (int) $in['on_s'] : (int) $in['off_s'];
-            [$label, $then] = match ($action) {
-                'enable' => ['Einschaltverzögerung', 'Laden startet'],
-                'disable' => ['Ausschaltverzögerung', 'Laden stoppt'],
-                'scale3p' => ['Phasenwechsel', 'auf 3 Phasen'],
-                'scale1p' => ['Phasenwechsel', 'auf 1 Phase'],
-                default => [null, null],
+            $level = self::levelText((int) $in['min_a'], (int) ($decision['phases'] ?? 1));
+            [$label, $then, $why] = match ($action) {
+                'enable' => ['Einschaltverzögerung', 'Laden startet', 'Die Sonne reicht für ' . $level . '. Bleibt das so, gibt EMS die Wallbox frei.'],
+                'disable' => ['Ausschaltverzögerung', 'Laden stoppt', 'Die Sonne reicht nicht mehr für ' . $level . '. Bis dahin lädt das Auto mit dem Mindeststrom weiter.'],
+                'scale3p' => ['Phasenwechsel', 'auf 3 Phasen', 'Die Sonne reicht für drei Phasen. Bleibt das so, schaltet EMS um.'],
+                'scale1p' => ['Phasenwechsel', 'auf 1 Phase', 'Die Sonne reicht nicht mehr für drei Phasen. Bleibt das so, schaltet EMS auf eine.'],
+                default => [null, null, ''],
             };
             $left = (int) $timer['remaining_s'];
         } elseif (($decision['note'] ?? null) === 'guard' && (int) ($decision['guard_s'] ?? 0) > 0) {
-            [$label, $then] = ['Schütz-Schutzzeit', 'dann darf sie wieder schalten'];
+            [$label, $then, $why] = ['Schütz-Schutzzeit', 'dann darf sie wieder schalten', 'Zwischen zwei Schaltvorgängen wartet EMS, das schont das Schütz der Wallbox.'];
             $total = (int) $in['guard_s'];
             $left = (int) $decision['guard_s'];
         } else {
@@ -865,7 +892,7 @@ final class Snapshot
             return null;
         }
         $left = max(0, min($total, $left));
-        return ['label' => $label, 'then' => $then, 'remaining_s' => $left, 'total_s' => $total, 'text' => self::wait($left)];
+        return ['label' => $label, 'then' => $then, 'why' => $why, 'remaining_s' => $left, 'total_s' => $total, 'text' => self::wait($left)];
     }
 
     /** Anstehender Wechsel der Verriegelung, leer ohne Wechsel. */

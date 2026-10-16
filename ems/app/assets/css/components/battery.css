@@ -8,6 +8,7 @@
   --s2: 80%;
   --auto: 100%;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   justify-items: center;
   gap: var(--s-4);
 }

@@ -693,7 +693,8 @@ function ui_chargepoint(array $cp, array $opts = []): string
         'hidden' => $timer === null,
     ]) . '><p class="cp-timer-head body-sm"><span class="cp-timer-label" data-cp-timer-label>' . e((string) ($timer['label'] ?? '')) . '</span>'
         . '<span class="cp-timer-then"><span data-cp-timer-then>' . e((string) ($timer['then'] ?? '')) . '</span> in <span class="num" data-cp-timer-left>' . e((string) ($timer['text'] ?? '')) . '</span></span></p>'
-        . '<span class="cp-timer-bar" aria-hidden="true"><span></span></span></div>';
+        . '<span class="cp-timer-bar" aria-hidden="true"><span></span></span>'
+        . '<p class="caption muted" data-cp-timer-why>' . e((string) ($timer['why'] ?? '')) . '</p></div>';
     $track = '<div class="chargebar-track" data-chargebar-track><span class="chargebar-clip"><span class="chargebar-fill"></span><span class="chargebar-target"></span></span>'
         . ($limit !== null && $editable && !$fromCar
             ? '<span class="limit-mark" role="slider" tabindex="0" aria-label="Ladelimit" aria-valuemin="20" aria-valuemax="100" aria-valuenow="' . (int) $limit . '" aria-valuetext="' . e(pct((float) $limit)) . '" data-limit-mark></span>'
@@ -712,7 +713,8 @@ function ui_chargepoint(array $cp, array $opts = []): string
         . '<div class="metrics-3">'
         . ui_metric('Leistung', $power, ['after' => $phases])
         . ui_metric('Geladen', $live ? ui_live_num('chargepoint.session_kwh', $cp['session_kwh'], 'kWh') : ui_num($cp['session_kwh'], 'kWh'))
-        . ui_metric('Restzeit', '<span class="num"' . ui_attrs(['data-live' => $p('chargepoint.remaining_text')]) . '>' . e($remaining) . '</span>')
+        . ui_metric('Restzeit', '<span class="num"' . ui_attrs(['data-live' => $p('chargepoint.remaining_text')]) . '>' . e($remaining) . '</span>', ['after' => '<span class="caption muted"'
+            . ui_attrs(['data-live' => $p('chargepoint.remaining_hint'), 'data-live-hide' => $p('chargepoint.remaining_hint'), 'hidden' => ($cp['remaining_hint'] ?? '') === '']) . '>' . e((string) ($cp['remaining_hint'] ?? '')) . '</span>'])
         . '</div>'
         . $timerHtml
         . $sessionHtml

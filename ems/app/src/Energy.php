@@ -44,6 +44,20 @@ final class Energy
         };
     }
 
+    /** Dauer in Sekunden aus einem Sensor mit Einheit h, min oder s; ohne Einheit Minuten. */
+    public static function durationSeconds(?float $value, ?string $unit): ?int
+    {
+        if ($value === null || $value < 0) {
+            return null;
+        }
+        return (int) round($value * match (strtolower(trim((string) $unit))) {
+            'h', 'std' => 3600,
+            's', 'sek' => 1,
+            'd' => 86400,
+            default => 60,
+        });
+    }
+
     /** Strecke in km. Tesla BLE meldet Reichweite und Kilometerstand in Meilen, sofern das Sprachpaket nicht umrechnet. */
     public static function distanceKm(?float $value, ?string $unit): array
     {

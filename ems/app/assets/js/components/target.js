@@ -1,6 +1,7 @@
-// Ladeziel-Sheet: unter Energie, Uhrzeit, Ladestand und Reichweite die Kilometer und die Dauer, beim Tippen neu
-// gerechnet aus den data-Werten des Formulars (Verbrauch kWh/100 km, bisher geladen, Leistung, Ladestand, Akku,
-// Reichweite). Wie Energy::kmFromKwh(): 8 % der Energie ab Wallbox gehen beim Laden verloren.
+// Ladeziel-Sheet: unter Energie, Uhrzeit und Ladestand die Kilometer und die Dauer, beim Tippen neu gerechnet aus den
+// data-Werten des Formulars (Verbrauch kWh/100 km, bisher geladen, Leistung, Ladestand, Akku, Reichweite). Der Regler
+// des Ladestands nennt die Reichweite dazu: aus der Reichweite je Prozent von jetzt, sonst aus Akku und Verbrauch.
+// Wie Energy::kmFromKwh(): 8 % der Energie ab Wallbox gehen beim Laden verloren.
 import { $, $$ } from '../core/dom.js';
 import { clock, withUnit } from '../core/format.js';
 
@@ -14,6 +15,14 @@ const num = (value) => {
 };
 const km = (kwh, use) => (kwh === null || !use ? null : Math.round((Math.max(0, kwh) * EFFICIENCY) / use * 100));
 const kmText = (value) => withUnit(value, 'km', 0);
+
+// Reichweite bei einem Ladestand: linear aus der von jetzt, sonst aus Akku und Verbrauch; null, wenn etwas fehlt.
+export function rangeAt(goal, { soc, range, capacity, use }) {
+  if (goal === null) return null;
+  if (range !== null && soc !== null && soc >= 1) return Math.round((range / soc) * goal);
+  if (capacity && use) return Math.round(((goal / 100) * capacity) / use * 100);
+  return null;
+}
 
 // Sekunden bis HH:MM; eine vergangene Uhrzeit meint morgen, wie Target::build().
 function secondsUntil(text) {
@@ -56,23 +65,13 @@ function update(form) {
 
   const goal = num($('[name="soc"]', form)?.value);
   if (goal !== null && soc !== null) {
-    if (!use || !capacity) set('soc', MISSING);
-    else {
-      const add = Math.round((Math.max(0, goal - soc) / 100) * capacity / use * 100);
-      const at = range !== null && soc >= 1 ? Math.round((range / soc) * goal) : Math.round((goal / 100) * capacity / use * 100);
-      set('soc', `Reichweite dann ≈ ${kmText(at)}, ab jetzt ≈ ${kmText(add)} dazu.`);
-    }
-  }
-
-  const target = num($('[name="km"]', form)?.value);
-  if (target !== null && range !== null) {
-    const left = Math.max(0, target - range);
-    if (left === 0) set('range', `Das Auto zeigt schon ${kmText(range)}.`);
-    else {
-      const need = use ? (left * use) / 100 / EFFICIENCY : null;
-      const time = need !== null && rate ? (need / rate) * 3600 : null;
-      set('range', `Noch ${kmText(left)}${need !== null ? `, ≈ ${withUnit(need, 'kWh')}` : ''}${time !== null ? `, ca. ${clock(time)}` : ''}.`);
-    }
+    const at = rangeAt(goal, { soc, range, capacity, use });
+    const now = rangeAt(soc, { soc, range, capacity, use });
+    const need = capacity ? ((Math.max(0, goal - soc) / 100) * capacity) / EFFICIENCY : null;
+    const time = need !== null && rate ? (need / rate) * 3600 : null;
+    if (at === null) set('soc', MISSING);
+    else if (goal <= soc) set('soc', `Reichweite ≈ ${kmText(at)}. Das Auto hat schon ${withUnit(soc, '%', 0)}.`);
+    else set('soc', `Reichweite dann ≈ ${kmText(at)}, ab jetzt ≈ ${kmText(at - now)} dazu${need !== null ? `, ≈ ${withUnit(need, 'kWh')}` : ''}${time !== null ? `, ca. ${clock(time)}` : ''}.`);
   }
 }
 

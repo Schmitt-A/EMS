@@ -13,6 +13,7 @@
    und die Seite lässt sich seitlich schieben. */
 .card > *,
 .stack > *,
+.stack-tight > *,
 .form-rows > * {
   min-width: 0;
 }

@@ -553,7 +553,38 @@ $grouped = Sessions::groups([
 ]);
 check(count($grouped) === 3 && $grouped[0]['id'] === 4 && $grouped[0]['ended_at'] === null, 'Neuester Ladevorgang zuerst, offen solange ein Zyklus läuft');
 check($grouped[1]['id'] === 1 && count($grouped[1]['cycles']) === 3 && abs($grouped[1]['energy_kwh'] - 9.0) < 0.001 && $grouped[1]['ended_at'] === '2026-10-08T17:20:00+02:00', 'Drei Zyklen eines Ansteckens ergeben einen Ladevorgang');
-check(count($grouped[2]['cycles']) === 1, 'Ohne Ansteckzeit bleibt ein Zyklus für sich');
+check(count($grouped[2]['cycles']) === 1, 'Ein Tag mit einem Zyklus');
+// Steckt das Auto über Nacht, ist jeder Tag ein eigener Ladevorgang; zweimal angesteckt am selben Tag bleibt einer.
+$overnight = Sessions::groups([
+    $cycle(10, '2026-10-15T11:23:00+02:00', '2026-10-15T11:25:00+02:00', 0.1, '2026-10-15T11:20:00+02:00'),
+    $cycle(11, '2026-10-15T17:46:00+02:00', '2026-10-15T17:48:00+02:00', 0.2, '2026-10-15T11:20:00+02:00'),
+    $cycle(12, '2026-10-16T13:50:00+02:00', '2026-10-16T15:27:00+02:00', 3.9, '2026-10-15T11:20:00+02:00'),
+    $cycle(13, '2026-10-16T15:45:00+02:00', null, 0.3, '2026-10-16T15:40:00+02:00'),
+    $cycle(14, '2026-10-16T23:50:00+02:00', '2026-10-17T00:40:00+02:00', 1.0, '2026-10-16T15:40:00+02:00'),
+]);
+check(count($overnight) === 2 && array_column($overnight[0]['cycles'], 'id') === [12, 13, 14] && array_column($overnight[1]['cycles'], 'id') === [10, 11] && $overnight[0]['ended_at'] === null
+    && Sessions::dayOf(['started_at' => '2026-10-16T23:50:00+02:00']) === '2026-10-16' && Sessions::dayOf(['started_at' => '2026-10-16T22:30:00Z']) === '2026-10-17', 'Ladevorgänge je Tag, über Nacht getrennt, ein Zyklus über Mitternacht beim Beginn');
+// Übersicht auf Laden: die Zyklen des Tages; steckt das Auto seit gestern ohne Ladung heute, steht sie nicht da.
+$svNow = (int) strtotime('2026-10-16 16:00:00 Europe/Berlin');
+$svBase = static fn (array $group, bool $connected, ?string $ended): array => [
+    'session' => ['id' => 1, 'started_at' => $group['cycles'][count($group['cycles']) - 1]['started_at'], 'ended_at' => $ended, 'energy_kwh' => 1.0, 'solar_kwh' => 1.0, 'grid_kwh' => 0.0, 'duration_s' => 600],
+    'day_group' => $group,
+    'vehicle' => ['connected' => $connected, 'consumption_kwh' => 16.0],
+    'chargepoint' => ['session_kwh' => 13.2],
+];
+$svTariff = ['import_ct' => 30.0, 'export_ct' => 8.0];
+$svToday = Snapshot::sessionView($svBase($overnight[0], true, null), $svTariff, $svNow);
+$svYesterday = Snapshot::sessionView($svBase($overnight[1], true, '2026-10-15T17:48:00+02:00'), $svTariff, $svNow);
+check($svToday['open'] && $svToday['since'] === 'seit 13:50' && !$svYesterday['open'] && $svToday['km'] === '≈ ' . with_unit(Energy::kmFromKwh(5.2, 16.0), 0, 'km'), 'Dieser Ladevorgang: nur die Zyklen von heute, Strecke aus ihrer Energie');
+// Wartezeit in der Karte nur, wenn EMS regelt; Ausschaltverzögerung nur, solange das Auto lädt.
+$tvIn = ['on_s' => 60, 'off_s' => 180, 'guard_s' => 60, 'min_a' => 6, 'charging' => true, 'complete' => false];
+$tvOff = ['timer' => ['action' => 'disable', 'remaining_s' => 120], 'phases' => 1, 'note' => null, 'guard_s' => 0];
+$tvShown = Snapshot::timerView($tvOff, $tvIn, true);
+check($tvShown['label'] === 'Ausschaltverzögerung' && $tvShown['remaining_s'] === 120 && $tvShown['total_s'] === 180 && str_contains($tvShown['why'], 'Mindeststrom')
+    && Snapshot::timerView($tvOff, ['charging' => false] + $tvIn, true) === null && Snapshot::timerView($tvOff, $tvIn, false) === null
+    && Snapshot::timerView(['timer' => ['action' => 'enable', 'remaining_s' => 30]] + $tvOff, ['charging' => false, 'complete' => true] + $tvIn, true) === null
+    && Snapshot::timerView(['timer' => ['action' => 'enable', 'remaining_s' => 30]] + $tvOff, ['charging' => false] + $tvIn, true)['then'] === 'Laden startet', 'Wartezeit: nur wenn EMS regelt, Ausschalten nur beim Laden, Einschalten nicht bei vollem Auto');
+check(Energy::durationSeconds(90.0, 'min') === 5400 && Energy::durationSeconds(1.5, 'h') === 5400 && Energy::durationSeconds(30.0, null) === 1800 && Energy::durationSeconds(null, 'min') === null, 'Restzeit vom Auto in Sekunden');
 // Diagramm der Ladevorgänge: heute ganz rechts, davor die Tage bis in den Vormonat.
 $chartNow = strtotime('2026-10-10 12:00:00 Europe/Berlin');
 $axis = Sessions::chartAxis('month', '2026-10', 2026, $chartNow);
@@ -994,8 +1025,10 @@ if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
     };
     $assigned = $sessions->backfillPlugs($ha, 'sensor.wallbox_car', $plugStart + 40000);
     $plugs = $sessionStore->pdo()->query('SELECT plug_at FROM sessions ORDER BY started_at')->fetchAll(PDO::FETCH_COLUMN);
-    check($assigned === 3 && $plugs[0] === $plugs[1] && $plugs[1] !== $plugs[2] && count(Sessions::groups($sessions->all())) === 2, 'Nachträglich zugeordnet: zwei Zyklen ein Ladevorgang, das nächste Anstecken ein neuer');
-    check($sessions->deleteGroup((int) $sessionStore->pdo()->query('SELECT MAX(id) FROM sessions WHERE plug_at = ' . $sessionStore->pdo()->quote((string) $plugs[0]))->fetchColumn()) && count($sessions->all()) === 1, 'Löschen nimmt den ganzen Ladevorgang');
+    check($assigned === 3 && $plugs[0] === $plugs[1] && $plugs[1] !== $plugs[2] && count(Sessions::groups($sessions->all())) === 1, 'Nachträglich zugeordnet: zwei Zyklen ein Anstecken, das nächste ein neues; am selben Tag ein Ladevorgang');
+    $lastId = (int) $sessionStore->pdo()->query('SELECT MAX(id) FROM sessions')->fetchColumn();
+    check(count($sessions->plugGroup($lastId)['cycles']) === 1 && count($sessions->group($lastId)['cycles']) === 3, 'Seit dem Anstecken ein Zyklus, am Tag drei');
+    check($sessions->deleteGroup($lastId) && count($sessions->all()) === 0, 'Löschen nimmt den ganzen Ladevorgang des Tages');
     // Recorder: Pausen beim Laden bleiben ein Ladevorgang, erst Abstecken und neues Anstecken beginnen einen neuen.
     $sessionStore->pdo()->exec('DELETE FROM sessions');
     $sessionStore->put('plug_state', ['since' => null]);
@@ -1009,7 +1042,9 @@ if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
         $step($car, $kw, $t + $offset);
     }
     $groupsAfter = Sessions::groups($sessions->all());
-    check(count($sessions->all()) === 3 && count($groupsAfter) === 2 && count($groupsAfter[1]['cycles']) === 2 && $groupsAfter[0]['ended_at'] === null, 'Recorder: zwei Zyklen bis zum Abstecken, danach ein neuer Ladevorgang');
+    $plugsAfter = $sessionStore->pdo()->query('SELECT plug_at FROM sessions ORDER BY started_at')->fetchAll(PDO::FETCH_COLUMN);
+    check(count($sessions->all()) === 3 && $plugsAfter[0] === $plugsAfter[1] && $plugsAfter[1] !== $plugsAfter[2] && count($groupsAfter) === 1 && count($groupsAfter[0]['cycles']) === 3 && $groupsAfter[0]['ended_at'] === null,
+        'Recorder: zwei Zyklen bis zum Abstecken, danach ein neues Anstecken; am selben Tag ein Ladevorgang');
     foreach (['', '-wal', '-shm'] as $suffix) {
         @unlink($file . $suffix);
     }

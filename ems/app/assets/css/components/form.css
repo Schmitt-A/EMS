@@ -17,10 +17,12 @@
   border-block-end: 0;
 }
 
+/* Lange Wörter wie „Ausschaltverzögerung“ trennen, statt die Zeile zu sprengen. */
 .form-row > label,
 .form-row > .form-label {
   flex: 1;
   min-width: 0;
+  hyphens: auto;
 }
 
 .form-row > .control {
@@ -67,6 +69,27 @@
   color: var(--text);
   font-size: 1rem;
   line-height: 1.25rem;
+}
+
+/* Datum und Uhrzeit: iOS gibt diesen Feldern eine eigene Mindestbreite und eigene Optik, damit ragen sie aus schmalen
+   Spalten; dort ohne die Systemoptik, sie öffnen trotzdem die Auswahl von iOS. */
+input.field:is([type="time"], [type="date"], [type="datetime-local"]) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@supports (-webkit-touch-callout: none) {
+  input.field:is([type="time"], [type="date"], [type="datetime-local"]) {
+    display: block;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+}
+
+.field::-webkit-date-and-time-value {
+  min-width: 0;
+  margin: 0;
+  text-align: inherit;
 }
 
 .field::placeholder {
@@ -219,9 +242,16 @@ textarea.field {
 
 .range-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--s-3);
+}
+
+.range-head > label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .range-out {

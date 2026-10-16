@@ -1,9 +1,10 @@
 // Ladeplan-Sheet: rechnet beim Tippen, wann das Laden etwa startet (aus dem, was zum Ziel fehlt, und der Ladeleistung),
-// was es kostet und wie viel Sonne an jedem gewählten Tag bis zur Uhrzeit erwartet wird. Ein Ladestand über dem
-// Ladelimit des Autos zählt nur bis zum Limit. Die Werte kommen als data-* vom Server (partials/plan-form.php);
-// gespeichert wird per Formular.
+// was es kostet, wie viel Sonne an jedem gewählten Tag bis zur Uhrzeit erwartet wird und welche Reichweite zu den
+// Reglern des Ladestands gehört. Ein Ladestand über dem Ladelimit des Autos zählt nur bis zum Limit. Die Werte kommen
+// als data-* vom Server (partials/plan-form.php); gespeichert wird per Formular.
 import { $, $$ } from '../core/dom.js';
-import { clock, dayLabel, fmt, NNBSP, timeLabel } from '../core/format.js';
+import { clock, dayLabel, fmt, NNBSP, timeLabel, withUnit } from '../core/format.js';
+import { rangeAt } from './target.js';
 
 const EFFICIENCY = 0.92;
 const num = (value) => {
@@ -38,10 +39,6 @@ function bind(form) {
       const wanted = num($('input[name="soc"]', form)?.value);
       const target = wanted === null || limit === null ? wanted : Math.min(wanted, limit);
       return target === null || soc === null || capacity === null ? null : (Math.max(0, target - soc) / 100) * capacity / EFFICIENCY;
-    }
-    if (type === 'range') {
-      const km = num($('input[name="km"]', form)?.value);
-      return km === null || range === null || use === null ? null : (Math.max(0, km - range) * use) / 100 / EFFICIENCY;
     }
     return num($('input[name="kwh"]', form)?.value);
   };
@@ -105,14 +102,21 @@ function bind(form) {
       }));
     }
   };
-  // Bedingung Auto: beim Wechsel zwischen Ladestand und Reichweite den Vorschlag der anderen Einheit nehmen.
-  const DEFAULTS = { soc: '40', range: '150' };
-  form.addEventListener('change', (event) => {
-    if (event.target.name !== 'car_below_type') return;
-    const field = $('[data-plan-car]', form);
-    const other = event.target.value === 'soc' ? 'range' : 'soc';
-    if (field && (field.value === DEFAULTS[other] || field.value === '')) field.value = DEFAULTS[event.target.value];
-  });
+  // Reichweite zu den Reglern des Ladestands: Ziel und Bedingung Auto.
+  const car = { soc, range, capacity, use };
+  const kmLines = () => {
+    for (const line of $$('[data-plan-km]', form)) {
+      const value = num($(`input[name="${line.dataset.planKm}"]`, form)?.value);
+      const km = rangeAt(value, car);
+      const capped = line.dataset.planKm === 'soc' && limit !== null && value !== null && value > limit;
+      line.textContent = km === null
+        ? 'Für die Reichweite fehlen Ladestand und Reichweite des Autos oder Akku und Verbrauch unter Fahrzeug.'
+        : `≈ ${withUnit(km, 'km', 0)} Reichweite${capped ? `, das Auto lädt aber nur bis ${withUnit(limit, '%', 0)} ≈ ${withUnit(rangeAt(limit, car), 'km', 0)}` : ''}.`;
+    }
+  };
+  form.addEventListener('input', kmLines);
+  form.addEventListener('change', kmLines);
+  kmLines();
   form.addEventListener('input', update);
   form.addEventListener('change', update);
   update();

@@ -332,7 +332,7 @@ final class Controller
                             $s['enabled'] = false;
                             $s['switched_at'] = $now;
                             self::reset($s, 'pv');
-                            $events[] = 'Zu wenig Sonne, gestoppt.';
+                            $events[] = $charging ? 'Zu wenig Sonne, gestoppt.' : 'Zu wenig Sonne, Wallbox wieder gesperrt.';
                             return;
                         }
                         $s['note'] = 'guard';

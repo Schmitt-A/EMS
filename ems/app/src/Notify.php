@@ -555,7 +555,7 @@ final class Notify
         $sessions = new Sessions($this->store);
         $session = null;
         if (isset($data['session'])) {
-            $session = $sessions->group((int) $data['session']);
+            $session = $sessions->plugGroup((int) $data['session']);
         } elseif (is_array($snap['plug_group'] ?? null)) {
             $session = $snap['plug_group'];
         } elseif (is_array($snap['session'] ?? null)) {

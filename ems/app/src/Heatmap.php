@@ -712,7 +712,7 @@ final class Heatmap
 
     /**
      * Ladezyklen über ihre Ladezeit (Beginn plus Ladedauer) verteilt: je Abschnitt energy, solar, cost, seconds;
-     * ein Ladevorgang (alle Zyklen eines Ansteckens) zählt beim Beginn seines ersten Zyklus.
+     * ein Ladevorgang (alle Zyklen eines Tages) zählt beim Beginn seines ersten Zyklus.
      *
      * @return array<string, array{energy: float, solar: float, cost: float, seconds: float, count: float}>
      */
@@ -729,7 +729,7 @@ final class Heatmap
         foreach ($stmt->fetchAll() ?: [] as $row) {
             $t0 = (int) strtotime((string) $row['started_at']);
             $t1 = $t0 + max(60, (int) $row['duration_s']);
-            $group = (string) (($row['plug_at'] ?? '') ?: 'id:' . $row['id']);
+            $group = Sessions::dayOf($row);
             $firsts[$group] = min($firsts[$group] ?? PHP_INT_MAX, $t0);
             if ($t1 <= $start || $t0 >= $end) {
                 continue;

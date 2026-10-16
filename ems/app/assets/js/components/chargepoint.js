@@ -176,6 +176,8 @@ function paintTimer(card, timer, at = Date.now()) {
   const then = $('[data-cp-timer-then]', box);
   if (label && timer.label) label.textContent = timer.label;
   if (then && timer.then) then.textContent = timer.then;
+  const why = $('[data-cp-timer-why]', box);
+  if (why && timer.why !== undefined) why.textContent = timer.why;
   const total = Math.max(1, Number(timer.total_s) || 1);
   const draw = () => {
     const left = Math.max(0, Math.round(Number(timer.remaining_s) - (Date.now() - at) / 1000));

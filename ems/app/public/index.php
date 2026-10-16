@@ -208,7 +208,7 @@ if ($path === '/ladevorgaenge') {
     $sessions->repairVehicleNames((string) (cfg()['vehicle']['name'] ?? ''));
     $sessions->backfillPlugs(ha(), (string) (cfg()['mapping']['wallbox_car'] ?? ''), time());
     $cycles = sessions_rows($params);
-    // Ein Ladevorgang reicht vom Anstecken bis zum Abstecken; seine Zyklen klappen in der Liste auf.
+    // Ein Ladevorgang sind alle Zyklen eines Tages; sie klappen in der Liste auf.
     $rows = Sessions::groups($cycles);
     $pricing = new Tariff(store());
     $priced = static function (array $row) use ($tariffs, $pricing): array {

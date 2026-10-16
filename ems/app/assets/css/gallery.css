@@ -62,8 +62,7 @@
 }
 
 .gallery-narrow {
-  width: 17.5rem;
-  max-width: 100%;
+  width: min(17.5rem, 100%);
 }
 
 @media (min-width: 64rem) {

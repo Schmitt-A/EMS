@@ -63,11 +63,16 @@
   min-width: 0;
 }
 
+/* Nur senkrecht scrollbar: Ein Feld, das auf einem Gerät breiter ausfällt als hier (Uhrzeit unter iOS), schiebt das
+   Sheet nicht mehr seitlich. */
 .dialog-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-5);
   padding: var(--s-2) var(--card-pad) calc(var(--card-pad) + env(safe-area-inset-bottom));
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
 

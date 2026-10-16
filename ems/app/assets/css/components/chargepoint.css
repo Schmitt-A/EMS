@@ -70,6 +70,7 @@
 
 .cp-windows {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-1);
   margin: 0;
   padding: 0;
@@ -598,17 +599,6 @@
 }
 
 .plan-cond:not(:has(input[role="switch"]:checked)) .plan-cond-value {
-  display: none;
-}
-
-.plan-unit {
-  flex: none;
-  color: var(--text-2);
-  font-weight: 600;
-}
-
-.plan-cond:has(input[name="car_below_type"][value="range"]:checked) .plan-unit[data-unit="soc"],
-.plan-cond:has(input[name="car_below_type"][value="soc"]:checked) .plan-unit[data-unit="range"] {
   display: none;
 }
 

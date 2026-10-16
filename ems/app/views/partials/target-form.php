@@ -1,7 +1,8 @@
 <?php
 declare(strict_types=1);
 /**
- * Ladeziel-Sheet: nach Energiemenge, Uhrzeit, Ladestand oder Reichweite. Für Sonne und Speicher ($scope sun) mit dem
+ * Ladeziel-Sheet: nach Energiemenge, Uhrzeit oder Ladestand; der Regler des Ladestands nennt die Reichweite dazu, eine
+ * eigene Zielart Reichweite gibt es nicht mehr (ein gespeichertes Ziel danach zeigt das Sheet als Ladestand). Für Sonne und Speicher ($scope sun) mit dem
  * Folgemodus, fürs Netzladen ($scope grid) ohne ihn, dafür bei Energie, Ladestand und Reichweite optional „fertig
  * bis“: In Ladefenstern prüft ChargePlan, ob die gewählten Fenster reichen, und plant sonst die günstigsten
  * Viertelstunden dazu. Die Felder der gewählten Art zeigt CSS über :has() am Segment, ohne Skript. Unter jedem Feld
@@ -14,10 +15,11 @@ declare(strict_types=1);
  */
 $scope = in_array($scope ?? 'sun', ['grid', 'now'], true) ? $scope : 'sun';
 $px = ['grid' => 'g', 'now' => 'n', 'sun' => 't'][$scope];
-$type = (string) ($target['type'] ?? 'energy');
 $then = (string) ($target['then'] ?? ($snap['cfg']['charge']['then_mode'] ?? 'smart'));
 $vehicle = $snap['vehicle'];
 $carSoc = $vehicle['soc'] ?? null;
+// Ohne Ziel: mit Ladestand des Autos nach Ladestand, sonst nach Energie.
+$type = (string) ($target['type'] ?? ($carSoc !== null ? 'soc' : 'energy'));
 $range = $vehicle['range_km'] ?? null;
 $kwhNow = (float) ($snap['chargepoint']['session_kwh'] ?? 0);
 $power = (float) ($snap['values']['wallbox_kw'] ?? 0);
@@ -27,7 +29,12 @@ $value = $target === null ? null : (float) $target['value'];
 $energy = $type === 'energy' && $value !== null ? $value : ceil($kwhNow + 20);
 $until = $type === 'time' && $value !== null ? date('H:i', (int) $value) : date('H:i', (int) (ceil((time() + 3600) / 900) * 900));
 $soc = $type === 'soc' && $value !== null ? $value : (float) ($vehicle['limit'] ?? 80);
-$km = $type === 'range' && $value !== null ? $value : ($range === null ? 300.0 : ceil(((float) $range + 100) / 10) * 10);
+if ($type === 'range') {
+    // Altes Ziel nach Reichweite: als Ladestand, über km je Prozent von jetzt.
+    $perPct = $range !== null && $carSoc !== null && (float) $carSoc >= 1 ? (float) $range / (float) $carSoc : null;
+    $soc = $perPct !== null && $value !== null ? max(20, min(100, round($value / $perPct / 5) * 5)) : $soc;
+    $type = 'soc';
+}
 $ready = isset($target['ready_by']) ? date('H:i', (int) $target['ready_by']) : '';
 $hint = static fn (string $panel): string => '<p class="caption target-km" data-target-km="' . $panel . '" aria-live="polite"></p>';
 ?>
@@ -53,10 +60,9 @@ $hint = static fn (string $panel): string => '<p class="caption target-km" data-
   <?= ui_notice('info', 'EMS regelt die Wallbox noch nicht. Das Ziel zeigt Fortschritt und Restzeit, stoppen kann EMS erst, wenn es unter ' . ui_inline('Einstellungen', ['href' => url('/einstellungen')]) . ' eingeschaltet ist.') ?>
 <?php endif; ?>
   <?= ui_segment('type', 'Ziel nach', [
+      'soc' => ['label' => 'Ladestand', 'short' => '%'],
       'energy' => ['label' => 'Energie', 'short' => 'kWh'],
       'time' => ['label' => 'Uhrzeit', 'short' => 'Zeit'],
-      'soc' => ['label' => 'Ladestand', 'short' => '%'],
-      'range' => ['label' => 'Reichweite', 'short' => 'km'],
   ], $type, ['id' => $px . 'g-type']) ?>
   <div class="target-panel stack" data-panel="energy">
     <div class="form-rows"><?= ui_form_row('Energie', ui_input('kwh', ui_field_num($energy, 1), ['id' => 'f-' . $px . '-kwh', 'class' => 'field-num', 'inputmode' => 'decimal', 'autocomplete' => 'off']), ['for' => 'f-' . $px . '-kwh', 'hint' => 'kWh insgesamt seit dem Anstecken, bisher ' . kwh($kwhNow) . '.']) ?></div>
@@ -73,18 +79,10 @@ $hint = static fn (string $panel): string => '<p class="caption target-km" data-
   </div>
   <div class="target-panel stack" data-panel="soc">
 <?php if ($carSoc === null): ?>
-    <p class="body-sm">Für ein Ziel nach Ladestand braucht die App den Ladestand des Autos, etwa über Tesla BLE unter <?= ui_inline('Einstellungen → Fahrzeug', ['href' => url('/einstellungen/fahrzeug')]) ?>.</p>
+    <p class="body-sm">Für ein Ziel nach Ladestand braucht die App den Ladestand des Autos, etwa über Tesla BLE unter <?= ui_inline('Einstellungen → Fahrzeug', ['href' => url('/einstellungen/fahrzeug')]) ?>. Bis dahin geht ein Ziel nach Energie.</p>
 <?php else: ?>
     <?= str_replace(['id="f-soc"', 'for="f-soc"'], ['id="f-' . $px . '-soc"', 'for="f-' . $px . '-soc"'], ui_range('soc', 'Bis Ladestand', $soc, 20, 100, 5, '%', 'Jetzt ' . pct((float) $carSoc) . '.')) ?>
     <?= $hint('soc') ?>
-<?php endif; ?>
-  </div>
-  <div class="target-panel stack" data-panel="range">
-<?php if ($range === null): ?>
-    <p class="body-sm">Für ein Ziel nach Reichweite braucht die App die Reichweite des Autos, etwa über Tesla BLE, oder Ladestand, Akku und Verbrauch unter <?= ui_inline('Einstellungen → Fahrzeug', ['href' => url('/einstellungen/fahrzeug')]) ?>.</p>
-<?php else: ?>
-    <div class="form-rows"><?= ui_form_row('Reichweite', ui_input('km', ui_field_num($km, 0), ['id' => 'f-' . $px . '-km', 'class' => 'field-num', 'inputmode' => 'numeric', 'autocomplete' => 'off']), ['for' => 'f-' . $px . '-km', 'hint' => 'Kilometer, die das Auto danach anzeigt, jetzt ' . with_unit((float) $range, 0, 'km') . '.']) ?></div>
-    <?= $hint('range') ?>
 <?php endif; ?>
   </div>
 <?php if ($scope === 'grid'): ?>
