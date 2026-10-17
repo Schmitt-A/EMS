@@ -712,7 +712,7 @@ function ui_chargepoint(array $cp, array $opts = []): string
         . '</header>'
         . '<div class="metrics-3">'
         . ui_metric('Leistung', $power, ['after' => $phases])
-        . ui_metric('Geladen', $live ? ui_live_num('chargepoint.session_kwh', $cp['session_kwh'], 'kWh') : ui_num($cp['session_kwh'], 'kWh'))
+        . ui_metric('Geladen', $live ? ui_live_num('chargepoint.cycle_kwh', $cp['cycle_kwh'] ?? $cp['session_kwh'], 'kWh') : ui_num($cp['cycle_kwh'] ?? $cp['session_kwh'], 'kWh'))
         . ui_metric('Restzeit', '<span class="num"' . ui_attrs(['data-live' => $p('chargepoint.remaining_text')]) . '>' . e($remaining) . '</span>', ['after' => '<span class="caption muted"'
             . ui_attrs(['data-live' => $p('chargepoint.remaining_hint'), 'data-live-hide' => $p('chargepoint.remaining_hint'), 'hidden' => ($cp['remaining_hint'] ?? '') === '']) . '>' . e((string) ($cp['remaining_hint'] ?? '')) . '</span>'])
         . '</div>'

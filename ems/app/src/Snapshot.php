@@ -498,6 +498,16 @@ final class Snapshot
         ];
     }
 
+    /** Energie des laufenden Ladezyklus; ohne offenen der heute beendete, solange das Auto steckt; sonst 0, ohne Messung null. */
+    public static function cycleKwh(?array $session, bool $connected, ?float $power, int $now): ?float
+    {
+        if (is_array($session) && (empty($session['ended_at'])
+            || ($connected && date('Y-m-d', (int) strtotime((string) $session['ended_at'])) === date('Y-m-d', $now)))) {
+            return round((float) $session['energy_kwh'], 3);
+        }
+        return $power === null ? null : 0.0;
+    }
+
     public static function vehicleStatus(string $raw, bool $charging): string
     {
         if ($charging || Sessions::carState($raw) === 'charging') {
@@ -537,6 +547,9 @@ final class Snapshot
         } elseif ($power !== null) {
             $energy = 0.0;
         }
+        // „Geladen“ in der Kachel: der laufende Ladezyklus, wie Leistung und Restzeit; ist keiner offen, der letzte, wenn er
+        // heute endete und das Auto noch steckt, sonst nichts. Ladeziele und Mitteilungen zählen weiter seit dem Anstecken.
+        $cycle = self::cycleKwh($session, (bool) $vehicle['connected'], $power, time());
         // Restzeit: meldet das Auto sie selbst (etwa Tesla), gilt seine; sonst was bis zum Limit fehlt geteilt durch die
         // Leistung. Fehlt dafür ein Wert, sagt der Hinweis darunter welcher.
         $fromCar = $charging && ($v['car_time_full_s'] ?? null) !== null && (int) $v['car_time_full_s'] > 0;
@@ -566,6 +579,7 @@ final class Snapshot
             'power_kw' => $power === null ? null : round($power, 3),
             'phases' => $phases,
             'session_kwh' => $energy,
+            'cycle_kwh' => $cycle,
             'session_s' => $open ? (int) $session['duration_s'] : null,
             'remaining_s' => $remaining,
             'remaining_text' => $remaining === null ? '—' : duration_clock($remaining),

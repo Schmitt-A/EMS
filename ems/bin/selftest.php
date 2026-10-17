@@ -584,6 +584,10 @@ check($tvShown['label'] === 'Ausschaltverzögerung' && $tvShown['remaining_s'] =
     && Snapshot::timerView($tvOff, ['charging' => false] + $tvIn, true) === null && Snapshot::timerView($tvOff, $tvIn, false) === null
     && Snapshot::timerView(['timer' => ['action' => 'enable', 'remaining_s' => 30]] + $tvOff, ['charging' => false, 'complete' => true] + $tvIn, true) === null
     && Snapshot::timerView(['timer' => ['action' => 'enable', 'remaining_s' => 30]] + $tvOff, ['charging' => false] + $tvIn, true)['then'] === 'Laden startet', 'Wartezeit: nur wenn EMS regelt, Ausschalten nur beim Laden, Einschalten nicht bei vollem Auto');
+$cyNow = (int) strtotime('2026-10-17 10:00:00 Europe/Berlin');
+check(Snapshot::cycleKwh(['energy_kwh' => 2.5, 'ended_at' => null], true, 7.0, $cyNow) === 2.5 && Snapshot::cycleKwh(['energy_kwh' => 13.0, 'ended_at' => '2026-10-16T17:48:00+02:00'], true, 0.0, $cyNow) === 0.0
+    && Snapshot::cycleKwh(['energy_kwh' => 4.0, 'ended_at' => '2026-10-17T09:30:00+02:00'], true, 0.0, $cyNow) === 4.0 && Snapshot::cycleKwh(['energy_kwh' => 4.0, 'ended_at' => '2026-10-17T09:30:00+02:00'], false, 0.0, $cyNow) === 0.0
+    && Snapshot::cycleKwh(null, true, null, $cyNow) === null, 'Geladen in der Kachel: der laufende Zyklus, der von heute bei angestecktem Auto, sonst 0');
 check(Energy::durationSeconds(90.0, 'min') === 5400 && Energy::durationSeconds(1.5, 'h') === 5400 && Energy::durationSeconds(30.0, null) === 1800 && Energy::durationSeconds(null, 'min') === null, 'Restzeit vom Auto in Sekunden');
 // Diagramm der Ladevorgänge: heute ganz rechts, davor die Tage bis in den Vormonat.
 $chartNow = strtotime('2026-10-10 12:00:00 Europe/Berlin');
