@@ -206,6 +206,7 @@ final class ConfigStore
                 'wallbox_energy' => '',
                 // Preis-Entität des Anbieters (Tibber, Octopus …), optional; ohne sie rechnet EMS Börse plus Aufschläge.
                 'price_import' => '',
+                'price_static' => '',
                 'car_wakeup' => '',
                 'weather_radiation' => '',
                 'weather_cloud' => '',
@@ -240,7 +241,7 @@ final class ConfigStore
                 'regress_b' => 0.86,
                 'regress_locked' => false,
                 'regress_days' => 0,
-                // Für PVGIS („Lohnt sich dynamisch?“): Standort von Hand (null: der von Home Assistant), Systemverluste
+                // Für PVGIS („Welcher Tarif lohnt sich?“): Standort von Hand (null: der von Home Assistant), Systemverluste
                 // in Prozent und das Wetterjahr der Stundenwerte.
                 'lat' => null,
                 'lon' => null,

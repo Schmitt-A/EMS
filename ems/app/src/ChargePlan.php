@@ -292,7 +292,7 @@ final class ChargePlan
         // Mit statischem Tarif kostet jede Viertelstunde gleich viel; plan() nimmt dann die spätesten.
         $prices = [];
         for ($q = intdiv($now, 900) * 900; $q < $deadline; $q += 900) {
-            $prices[$q] = $tariff->importCt($q);
+            $prices[$q] = $tariff->importCt($q, 'car');
         }
         $sun = in_array($mode, self::SUN_MODES, true) ? self::sun($store, $cfg, $snap, $now, $deadline) : [];
         $plan = $need === null

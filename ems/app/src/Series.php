@@ -355,10 +355,11 @@ final class Series
     }
 
     /**
-     * Strompreis für Prognose → Strompreis, je Viertelstunde von 14 Tagen zurück bis zum letzten bekannten Preis
-     * (gegen 13 Uhr kommt morgen dazu): dynamisch (was der Anbieter gemeldet hat, sonst Börse plus Aufschläge),
-     * statisch, Börsenpreis netto und Einspeisevergütung, jede Zeit im Tarif, der damals galt. Je Tag der günstigste
-     * und der teuerste dynamische Preis. Lücken bleiben Lücken.
+     * Strompreis für Prognose → Strompreis, je Viertelstunde von 14 Tagen zurück, jede Zeit im Tarif, der damals galt,
+     * nur für den Tarif, der heute aktiv ist. Dynamisch bis zum letzten bekannten Preis (gegen 13 Uhr kommt morgen
+     * dazu): was der Anbieter gemeldet hat, sonst Börse plus Aufschläge, dazu Börsenpreis netto und Einspeisevergütung,
+     * je Tag der günstigste und der teuerste Preis; Lücken bleiben Lücken. Statisch bis morgen Mitternacht: der
+     * Arbeitspreis, mit Zeitfenstern die Preise für Auto und Speicher, und die Einspeisevergütung.
      */
     public function price(): array
     {
@@ -368,15 +369,27 @@ final class Series
         $from = $today->modify('-14 days')->getTimestamp();
         $tariff = new Tariff($this->store);
         $market = $tariff->market();
-        // Bis zum Ende der bekannten Preise: Börse oder Preis-Entität des Anbieters, je nachdem, was weiter reicht.
-        $last = $tariff->horizon();
-        $spots = $market->quarters($from, max($last, $now));
-        $quarters = $spots;
-        foreach ($tariff->providerQuarters($from, max($last, $now)) as $q) {
-            $quarters[$q] ??= null;
+        $active = $tariff->tariffAt($now);
+        $dynamicMode = $active['mode'] === 'dynamic';
+        $uses = [];
+        foreach ($dynamicMode ? [] : $active['windows'] as $w) {
+            $uses += array_fill_keys((array) $w['for'], true);
+        }
+        if ($dynamicMode) {
+            // Bis zum Ende der bekannten Preise: Börse oder Preis-Entität des Anbieters, je nachdem, was weiter reicht.
+            $last = $tariff->horizon();
+            $quarters = $market->quarters($from, max($last, $now));
+            foreach ($tariff->providerQuarters($from, max($last, $now)) as $q) {
+                $quarters[$q] ??= null;
+            }
+            $keys = ['dynamic', 'spot', 'export'];
+        } else {
+            $last = $today->modify('+2 days')->getTimestamp();
+            $quarters = array_fill_keys(range($from, $last - 900, 900), null);
+            $keys = array_merge(['static'], isset($uses['car']) ? ['car'] : [], isset($uses['battery']) ? ['battery'] : [], ['export']);
         }
         ksort($quarters);
-        $series = ['dynamic' => [], 'static' => [], 'spot' => [], 'export' => []];
+        $series = array_fill_keys($keys, []);
         $days = [];
         $prev = null;
         $lo = 0.0;
@@ -388,8 +401,15 @@ final class Series
                 }
             }
             $t = $tariff->tariffAt($q);
-            $dynamic = $tariff->dynamicAt($q, $t);
-            $values = ['dynamic' => $dynamic, 'static' => (float) $t['import_ct'], 'spot' => $spot, 'export' => (float) $t['export_ct']];
+            $dynamic = $dynamicMode ? $tariff->dynamicAt($q, $t) : null;
+            $values = array_intersect_key([
+                'dynamic' => $dynamic,
+                'static' => (float) $t['import_ct'],
+                'car' => Tariff::staticCt($t, $q, 'car'),
+                'battery' => Tariff::staticCt($t, $q, 'battery'),
+                'spot' => $spot,
+                'export' => (float) $t['export_ct'],
+            ], $series);
             foreach ($values as $key => $value) {
                 $series[$key][] = ['x' => $q * 1000, 'y' => $value === null ? null : round($value, 2)];
                 if ($value !== null) {
@@ -466,12 +486,13 @@ final class Series
             'yDataMax' => $yMax,
             'yDecimals' => 0,
             'yTitle' => 'Preis (ct/kWh)',
-            'series' => [
-                ['key' => 'dynamic', 'label' => 'Dynamisch', 'color' => 'price', 'axis' => 'y', 'data' => $series['dynamic']],
-                ['key' => 'static', 'label' => 'Statisch', 'color' => 'v1', 'axis' => 'y', 'data' => $series['static']],
-                ['key' => 'spot', 'label' => 'Börse netto', 'color' => 'muted', 'axis' => 'y', 'data' => $series['spot']],
-                ['key' => 'export', 'label' => 'Einspeisung', 'color' => 'export', 'axis' => 'y', 'data' => $series['export']],
-            ],
+            'series' => array_values(array_map(static fn (string $key): array => [
+                'key' => $key,
+                'label' => ['dynamic' => 'Dynamisch', 'static' => 'Arbeitspreis', 'car' => 'Auto', 'battery' => 'Speicher', 'spot' => 'Börse netto', 'export' => 'Einspeisung'][$key],
+                'color' => ['dynamic' => 'price', 'static' => 'price', 'car' => 'v1', 'battery' => 'battery', 'spot' => 'muted', 'export' => 'export'][$key],
+                'axis' => 'y',
+                'data' => $series[$key],
+            ], array_keys($series))),
         ];
         if (!$quarters) {
             $error = $market->meta()['error'] ?? null;

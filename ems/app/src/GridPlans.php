@@ -305,6 +305,42 @@ final class GridPlans
         };
     }
 
+    /**
+     * Daten für die Sheets der Ladepläne (Auto und Speicher, components/plan.js): je Wochentag die nächste Mitternacht
+     * (heute eingeschlossen), die Sonnenprognose je Stunde für gut eine Woche und der Preis für $use (car oder battery):
+     * dynamisch das Mittel der nächsten 24 Stunden, statisch mit Zeitfenstern deren günstigster Preis (window true),
+     * sonst der Arbeitspreis.
+     *
+     * @return array{days: array<int, int>, sun: list<array{0: int, 1: float}>, price: ?float, dynamic: bool, window: bool}
+     */
+    public static function sheetData(ConfigStore $store, array $plant, string $use, int $now): array
+    {
+        $tz = new DateTimeZone('Europe/Berlin');
+        $midnight = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0);
+        $days = [];
+        for ($i = 0; $i < 7; $i++) {
+            $d = $midnight->modify('+' . $i . ' day');
+            $days[(int) $d->format('N')] = $d->getTimestamp();
+        }
+        $sun = [];
+        foreach (Forecast::fromRadiation((new WeatherFeed($store))->hours($midnight->getTimestamp(), $midnight->getTimestamp() + 15 * 86400), $plant) as $row) {
+            $sun[] = [(int) $row['t'], round((float) $row['kw'], 2)];
+        }
+        $tariff = new Tariff($store);
+        $t = $tariff->tariffAt($now);
+        $dynamic = $t['mode'] === 'dynamic';
+        $prices = [];
+        for ($q = intdiv($now, 900) * 900; $q < $now + 86400; $q += 900) {
+            $ct = $tariff->importCt($q, $use);
+            if ($ct !== null) {
+                $prices[] = $ct;
+            }
+        }
+        $window = !$dynamic && $prices !== [] && min($prices) < (float) $t['import_ct'] - 0.005;
+        $price = $prices === [] ? null : ($dynamic ? array_sum($prices) / count($prices) : ($window ? min($prices) : (float) $t['import_ct']));
+        return ['days' => $days, 'sun' => $sun, 'price' => $price === null ? null : round($price, 2), 'dynamic' => $dynamic, 'window' => $window];
+    }
+
     /** Wochentage zur Auswahl. */
     public static function dayNames(): array
     {

@@ -42,38 +42,19 @@ $learned = GridPlans::learned(store());
 $power = ChargePlan::powerKw($snap['cfg']['charge'], $carKw);
 $fixed = is_numeric($snap['cfg']['vehicle']['charge_kw'] ?? null);
 $id = static fn (string $name): string => 'f-' . $px . '-' . $name;
-// Für components/plan.js: je Wochentag die nächste Mitternacht (heute eingeschlossen), die Sonnenprognose je Stunde
-// für gut eine Woche, Preis, Leistung und Werte des Autos; daraus rechnet das Sheet Start, Kosten und Sonne je Tag.
-$tz = new DateTimeZone('Europe/Berlin');
-$midnight = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0);
-$dayStarts = [];
-for ($i = 0; $i < 7; $i++) {
-    $d = $midnight->modify('+' . $i . ' day');
-    $dayStarts[(int) $d->format('N')] = $d->getTimestamp();
-}
-$sunHours = [];
-foreach (Forecast::fromRadiation((new WeatherFeed(store()))->hours($midnight->getTimestamp(), $midnight->getTimestamp() + 15 * 86400), (array) $snap['cfg']['plant']) as $row) {
-    $sunHours[] = [(int) $row['t'], round((float) $row['kw'], 2)];
-}
-$tariff = new Tariff(store());
-$dynamic = ($tariff->tariffAt($now)['mode'] ?? 'static') === 'dynamic';
-$prices = [];
-for ($q = intdiv($now, 900) * 900; $q < $now + 86400; $q += 900) {
-    $ct = $tariff->importCt($q);
-    if ($ct !== null) {
-        $prices[] = $ct;
-    }
-}
-$priceCt = $prices === [] ? null : ($dynamic ? array_sum($prices) / count($prices) : $prices[0]);
+// Für components/plan.js: Wochentage, Sonne und der Preis fürs Auto (GridPlans::sheetData()); daraus rechnet das Sheet
+// Start, Kosten und Sonne je Tag.
+$sheet = GridPlans::sheetData(store(), (array) $snap['cfg']['plant'], 'car', $now);
 ?>
 <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack target-form plan-form"<?= ui_attrs([
     'data-plan-form' => true,
     'data-now' => $now,
-    'data-days' => ui_json($dayStarts),
-    'data-sun' => ui_json($sunHours),
+    'data-days' => ui_json($sheet['days']),
+    'data-sun' => ui_json($sheet['sun']),
     'data-power' => round($power, 2),
-    'data-price' => $priceCt === null ? null : round($priceCt, 2),
-    'data-dynamic' => $dynamic ? '1' : null,
+    'data-price' => $sheet['price'],
+    'data-dynamic' => $sheet['dynamic'] ? '1' : null,
+    'data-window' => $sheet['window'] ? '1' : null,
     'data-soc' => $vehicle['soc'] ?? null,
     'data-limit' => $carLimit,
     'data-capacity' => $vehicle['capacity_kwh'] ?? null,

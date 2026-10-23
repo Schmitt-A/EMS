@@ -134,10 +134,10 @@ final class Notify
             'vars' => ['prognose_morgen', 'prognose_heute', 'ertrag_heute'], 'params' => ['sunny_kwh', 'report_time'],
         ],
         'boost' => [
-            'group' => 'speicher', 'label' => 'Energie-Boost', 'icon' => 'battery-charging', 'on' => true, 'important' => false,
-            'hint' => 'Wenn ein Energie-Boost den Speicher aus dem Netz zu laden beginnt und wenn er endet. Nur, wenn EMS regelt.',
-            'title' => 'Energie-Boost', 'message' => '{grund} Speicher {speicher}.',
-            'vars' => ['grund', 'speicher', 'speicher_kwh', 'preis'], 'labels' => ['grund' => 'Was der Boost tut'], 'params' => [],
+            'group' => 'speicher', 'label' => 'Speicher lädt aus dem Netz', 'icon' => 'battery-charging', 'on' => true, 'important' => false,
+            'hint' => 'Wenn ein Energie-Boost oder ein Ladeplan den Speicher aus dem Netz zu laden beginnt und wenn er endet. Nur, wenn EMS regelt.',
+            'title' => 'Speicher lädt aus dem Netz', 'message' => '{grund} Speicher {speicher}.',
+            'vars' => ['grund', 'speicher', 'speicher_kwh', 'preis'], 'labels' => ['grund' => 'Was der Speicher tut'], 'params' => [],
         ],
         'prices' => [
             'group' => 'strompreis', 'label' => 'Preise für morgen', 'icon' => 'badge-euro', 'on' => false, 'important' => false,
@@ -204,7 +204,7 @@ final class Notify
         'ueberschuss' => 'Sonnenüberschuss jetzt',
         'speicher' => 'Ladestand des Speichers',
         'speicher_kwh' => 'Energie im Speicher',
-        'boost' => 'Energie-Boost des Speichers',
+        'boost' => 'Speicher lädt aus dem Netz',
         'einspeisung' => 'Einspeisung jetzt',
         'netzbezug' => 'Netzbezug jetzt',
         'ertrag_heute' => 'Sonne heute erzeugt',

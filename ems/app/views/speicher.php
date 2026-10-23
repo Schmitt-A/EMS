@@ -4,7 +4,8 @@ declare(strict_types=1);
  * Speicher (8): oben die Heimspeicher-Säule mit drei Zonen und daneben, gleich hoch, der Speicherverlauf; darunter in
  * voller Breite „So wird geladen“ und der Ausblick: wann Speicher-Vorrang, batteriegestütztes Laden und voll erreicht
  * sind, Überschuss und Hausverbrauch, die nächsten Tage (Speicher am Anfang, Sonne, Haus, Bilanz, Netz und Speicher am
- * Ende, BatteryPlan::days()) und der Energie-Boost mit der Empfehlung.
+ * Ende, BatteryPlan::days()), der Energie-Boost mit der Empfehlung (nur mit dynamischem Tarif) und die Ladepläne des
+ * Speichers (BatteryPlans) mit dem, was der nächste gerade plant; je Plan ein Sheet.
  * Ebene 2: Grenzen mit Reglern und die Zonen-Tabelle.
  * @var array $snap
  * @var array $live
@@ -38,6 +39,11 @@ try {
 $plan = $snap['battery_plan'] ?? null;
 $advice = BatteryPlan::recommendation($plan, $gridSettings, $now);
 $boostTarget = $boost['target_soc'] ?? (($plan['reason'] ?? '') === 'charge' ? (float) $plan['target_soc'] : 80.0);
+// Ladepläne des Speichers: Liste und was der nächste fällige gerade plant.
+$batteryPlans = BatteryPlans::all(store());
+$planState = BatteryPlans::state(store());
+$planRows = BatteryPlans::rows($batteryPlans, $planState, $now);
+$planText = BatteryPlans::text($planState, $now);
 $read = static fn (string $key, int $value): string => '<span data-zone-read="' . e($key) . '">' . $value . '</span>' . NNBSP . '%';
 $limit = static fn (string $key, int $value): string => ui_inline('<span class="sr-only">Grenze ändern, </span>' . $read($key, $value), ['data-open-dialog' => 'battery-limits']);
 $post = static fn (string $do): string => csrf_field() . '<input type="hidden" name="section" value="battery_boost"><input type="hidden" name="back" value="/speicher"><input type="hidden" name="do" value="' . e($do) . '">';
@@ -140,7 +146,7 @@ $floorSoc = (float) ($snap['floor_soc'] ?? 0);
 <?php endif; ?>
     <?= ui_divider('Energie-Boost') ?>
 <?php if (!$enabled): ?>
-    <p class="body-sm muted">Den Speicher einmalig in einem Ladefenster aus dem Netz laden. Ladefenster gibt es nur mit dynamischem Tarif; mit deinem statischen kostet jede Viertelstunde gleich viel, und Laden aus dem Netz brächte nur Verluste. Umstellen unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
+    <p class="body-sm muted">Den Speicher einmalig in einem Ladefenster aus dem Netz laden gibt es nur mit dynamischem Tarif. Mit deinem statischen lädt er über die Ladepläne darunter, bevorzugt in seinen Zeitfenstern unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
 <?php else: ?>
     <div class="boost-advice<?= $advice['charge'] ? ' boost-advice-charge' : '' ?>">
       <p class="body boost-advice-head"><?= icon($advice['charge'] ? 'battery-charging' : 'info', 'icon-20') ?><span><?= e($advice['head']) ?></span></p>
@@ -180,6 +186,24 @@ $floorSoc = (float) ($snap['floor_soc'] ?? 0);
 <?php endif; ?>
     <p class="caption muted">Der Boost lädt den Speicher einmalig im gewählten Fenster aus dem Netz, bis zum gewählten Stand; ins Netz geht davon nichts zurück. Ladeleistung, Wirkungsgrad, Verschleiß und die Entitäten stehen unter <?= ui_inline('Einstellungen → Speicher', ['href' => url('/einstellungen/speicher')]) ?>.</p>
 <?php endif; ?>
+    <?= ui_divider('Ladepläne') ?>
+    <div class="cp-plans stack-tight" id="battery-plans">
+      <p class="body-sm muted">An gewählten Tagen bis zu einer Uhrzeit einen Ladestand erreichen, aus dem Netz in den günstigsten Viertelstunden davor.</p>
+<?php if ($planText !== ''): ?>
+      <p class="body-sm"><?= e($planText) ?></p>
+<?php endif; ?>
+<?php if ($planRows): ?>
+      <ul class="cp-plan-list" role="list">
+<?php foreach ($planRows as $row): ?>
+        <li><button type="button" class="cp-plan" data-open-dialog="bp-plan-<?= e($row['id']) ?>" aria-haspopup="dialog"<?= $row['on'] ? '' : ' data-off' ?>><?= icon('calendar', 'icon-16') ?><span class="cp-plan-text"><span class="cp-plan-label"><?= e($row['label']) ?><?= $row['active'] ? '<span class="pill">plant gerade</span>' : '' ?></span><span class="caption muted cp-plan-detail"><?= e($row['detail']) ?></span></span><?= icon('chevron-right', 'icon-16') ?></button></li>
+<?php endforeach; ?>
+      </ul>
+<?php endif; ?>
+      <button type="button" class="text-action" data-open-dialog="bp-plan-new" aria-haspopup="dialog"><?= icon('plus', 'icon-16') ?><span>Ladeplan hinzufügen</span></button>
+<?php if ($batteryPlans && $gridBlocker !== ''): ?>
+      <?= ui_notice('info', e('Noch lädt EMS nicht: ' . $gridBlocker)) ?>
+<?php endif; ?>
+    </div>
 <?php if (!empty($gridState['log'])): ?>
     <ul class="plain-list stack-tight body-sm" role="list" aria-label="Zuletzt aus dem Netz geladen">
 <?php foreach (array_slice((array) $gridState['log'], 0, 4) as $row): ?>
@@ -242,4 +266,12 @@ ob_start();
 <p class="caption muted">Aktuell: <?= e($mode === 'aus' ? 'Laden aus' : Energy::modeLabel($mode)) ?>. Geändert wird sofort, ohne Speichern-Knopf. Backup-Puffer und Entladeleistung stehen unter <?= ui_inline('Einstellungen → Speicher', ['href' => url('/einstellungen/speicher')]) ?>.</p>
 <?php
 echo ui_dialog('battery-limits', 'Grenzen des Speichers', ob_get_clean());
+
+// Ebene 2: Ladepläne des Speichers, je Plan ein Sheet und eines für einen neuen
+foreach (array_merge($batteryPlans, [null]) as $batteryPlan) {
+    $planId = $batteryPlan === null ? 'new' : (string) $batteryPlan['id'];
+    ob_start();
+    view('partials/battery-plan-form', ['plan' => $batteryPlan, 'snap' => $snap, 'back' => '/speicher', 'px' => 'bp-' . $planId]);
+    echo ui_dialog('bp-plan-' . $planId, $batteryPlan === null ? 'Neuer Ladeplan des Speichers' : 'Ladeplan des Speichers', ob_get_clean());
+}
 view('partials/overview', ['overview' => $overview]);

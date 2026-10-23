@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * „Lohnt sich dynamisch?“ unter Prognose → Strompreis: ein Jahr Tag für Tag. Preise: die Börse der letzten 365 Tage
+ * „Welcher Tarif lohnt sich?“ unter Prognose → Strompreis: ein Jahr Tag für Tag. Preise: die Börse der letzten 365 Tage
  * mit deinen Aufschlägen von heute (Einstellungen → Tarif). Sonne: der Ertrag deiner Anlage in einem üblichen Jahr am
  * Standort (PVGIS der EU-Kommission: stündlich aus einem echten Wetterjahr, sonst Monatsmittel). Haus und Auto
  * verbrauchen gleichmäßig über das Jahr, das Haus nach seinem üblichen Tagesverlauf. Stunde für Stunde nimmt das Auto
@@ -73,6 +73,7 @@ final class YearCheck
             'car_mode' => $inputs['car_mode'],
             'length_h' => $length,
             'static_ct' => (float) $t['import_ct'],
+            'static_windows' => self::windowPlan($t),
             'base_eur' => (float) ($t['base_eur'] ?? 0),
             'dyn_base_eur' => (float) ($t['dyn_base_eur'] ?? 0),
             'lat' => $coords['lat'],
@@ -402,10 +403,41 @@ final class YearCheck
     }
 
     /**
+     * Die Zeitfenster des statischen Tarifs für simulate(): je Verbraucher (car, battery) und Wochentag (1–7, der Tag,
+     * an dem ein Fenster beginnt) die Fenster als [Stunden, ct/kWh], günstigste zuerst. Leer ohne Fenster.
+     *
+     * @return array<string, array<int, list<array{0: float, 1: float}>>>
+     */
+    public static function windowPlan(array $t): array
+    {
+        $out = [];
+        foreach ((array) ($t['windows'] ?? []) as $w) {
+            [$fh, $fm] = array_map('intval', explode(':', (string) $w['from']));
+            [$th, $tm] = array_map('intval', explode(':', (string) $w['to']));
+            $hours = ((($th * 60 + $tm) - ($fh * 60 + $fm) + 1440) % 1440) / 60.0;
+            foreach ((array) $w['for'] as $use) {
+                foreach ((array) $w['days'] === [] ? range(1, 7) : (array) $w['days'] as $day) {
+                    $out[$use][(int) $day][] = [$hours, Tariff::windowCt($t, $w)];
+                }
+            }
+        }
+        foreach ($out as $use => $days) {
+            foreach ($days as $day => $list) {
+                usort($list, static fn (array $a, array $b): int => $a[1] <=> $b[1]);
+                $out[$use][$day] = $list;
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Das Jahr Tag für Tag, ohne Seiteneffekte. $in: house_kwh, car_kwh (an der Wallbox, mit Ladeverlust), profile (24
      * Gewichte des Hauses, Summe 1), battery_kwh, battery_kw, efficiency, wear_ct, car_kw, car_mode (CAR_MODES),
-     * length_h (Länge des Fensters), static_ct, base_eur und dyn_base_eur (je Monat), lat und lon (für Sonnenauf- und
-     * -untergang), azimuth. Kosten nur für den Netzbezug; Arbeits- und Grundpreis stehen getrennt.
+     * length_h (Länge des Fensters), static_ct, static_windows (windowPlan(), optional), base_eur und dyn_base_eur (je
+     * Monat), lat und lon (für Sonnenauf- und -untergang), azimuth. Kosten nur für den Netzbezug; Arbeits- und Grundpreis
+     * stehen getrennt. Mit Zeitfenstern kommt eine dritte Variante dazu: statisch, das Auto lädt in seinen Fenstern zu
+     * deren Preis, so weit es in ihre Länge passt, und der Speicher lädt den Netzbezug des Hauses in seinen Fenstern vor,
+     * wenn das nach Verlust und Verschleiß günstiger ist als der Arbeitspreis.
      *
      * @param list<array{date: string, week: int, month: int, hours: list<?float>, avg: ?float, window: ?float}> $days
      * @param array{daily: array<int, float>, hours?: ?array<string, list<float>>} $pv Sonne: Stunden je Tag „m-d“ in kWh,
@@ -428,11 +460,14 @@ final class YearCheck
         $batteryKw = max(0.1, (float) $in['battery_kw']);
         $eta = max(0.5, min(1.0, (float) $in['efficiency']));
         $static = (float) $in['static_ct'];
+        $plan = is_array($in['static_windows'] ?? null) ? $in['static_windows'] : [];
+        $hasWindows = $plan !== [];
         $wear = (float) $in['wear_ct'];
         $soc = $capacity / 2;
         $typical = self::typicalDay($days);
         $weeks = [];
         $year = ['pv' => 0.0, 'house' => 0.0, 'car' => 0.0, 'grid_house' => 0.0, 'grid_car' => 0.0, 'export' => 0.0, 'cost_static' => 0.0, 'cost_dynamic' => 0.0,
+            'cost_windows' => 0.0, 'tw_car' => 0.0, 'tw_shift' => 0.0,
             'grid_counted' => 0.0, 'car_window' => 0.0, 'car_rest' => 0.0, 'shift_kwh' => 0.0, 'shift_eur' => 0.0, 'shift_days' => 0, 'days' => 0, 'priced' => 0, 'counted' => 0];
         foreach ($days as $day) {
             $date = new DateTimeImmutable($day['date'] . ' 12:00:00', $tz);
@@ -472,8 +507,36 @@ final class YearCheck
             $priced = $day['window'] !== null && $day['avg'] !== null;
             // Ein Tag ohne Börsenpreis rechnet mit dem Ø Tagesverlauf der Tage mit Preis.
             $prices = $priced ? $day : $typical;
-            // Kosten nur für den Netzbezug; die Einspeisung ist in beiden Tarifen gleich und zählt nicht mit.
+            // Kosten nur für den Netzbezug; die Einspeisung ist in allen Tarifen gleich und zählt nicht mit.
             $staticCost = ($gridHouse + $carNeed) * $static;
+            // Statisch mit Zeitfenstern: das Auto in seinen Fenstern, der Speicher lädt das Haus in seinen vor.
+            $windowsCost = $staticCost;
+            $twCar = $twShift = 0.0;
+            if ($hasWindows) {
+                $weekday = (int) $date->format('N');
+                $rest = $carNeed;
+                $carCost = 0.0;
+                foreach ($plan['car'][$weekday] ?? [] as [$hours, $ct]) {
+                    $take = min($rest, $carKw * $hours);
+                    $carCost += $take * $ct;
+                    $rest -= $take;
+                    $twCar += $take;
+                }
+                $carCost += $rest * $static;
+                $houseCost = $gridHouse * $static;
+                $left = min($gridHouse, $capacity * $eta);
+                foreach ($plan['battery'][$weekday] ?? [] as [$hours, $ct]) {
+                    $cost = $ct / $eta + $wear;
+                    if ($left <= 0 || $cost >= $static) {
+                        break;
+                    }
+                    $shift = min($left, $batteryKw * $hours * $eta);
+                    $houseCost -= $shift * ($static - $cost);
+                    $left -= $shift;
+                    $twShift += $shift;
+                }
+                $windowsCost = $houseCost + $carCost;
+            }
             $dynamicCost = null;
             $shift = $shiftEur = $carWindow = $carRest = 0.0;
             if ($prices !== null) {
@@ -516,6 +579,9 @@ final class YearCheck
                 $year['counted']++;
                 $year['grid_counted'] += $gridHouse + $carNeed;
                 $year['cost_static'] += $staticCost / 100;
+                $year['cost_windows'] += $windowsCost / 100;
+                $year['tw_car'] += $twCar;
+                $year['tw_shift'] += $twShift;
                 $year['cost_dynamic'] += (float) $dynamicCost / 100;
                 $year['car_window'] += $carWindow;
                 $year['car_rest'] += $carRest;
@@ -545,6 +611,7 @@ final class YearCheck
         $dynamicEnergy = $year['cost_dynamic'] * $scale;
         $staticBase = 12 * (float) $in['base_eur'];
         $dynamicBase = 12 * (float) $in['dyn_base_eur'];
+        $windowsEnergy = $year['cost_windows'] * $scale;
         return [
             'weeks' => $out,
             'year' => [
@@ -572,6 +639,13 @@ final class YearCheck
                 'static_eur' => round($staticEnergy + $staticBase, 2),
                 'dynamic_eur' => round($dynamicEnergy + $dynamicBase, 2),
                 'difference' => round($staticEnergy + $staticBase - $dynamicEnergy - $dynamicBase, 2),
+                'has_windows' => $hasWindows,
+                'windows_energy_eur' => round($windowsEnergy, 2),
+                'windows_base_eur' => round($staticBase, 2),
+                'windows_eur' => round($windowsEnergy + $staticBase, 2),
+                'windows_avg_ct' => $year['grid_counted'] > 0 ? round($year['cost_windows'] * 100 / $year['grid_counted'], 2) : null,
+                'windows_car_kwh' => round($year['tw_car'] * $scale),
+                'windows_shift_kwh' => round($year['tw_shift'] * $scale),
                 'priced_days' => $year['priced'],
             ],
         ];

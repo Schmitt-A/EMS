@@ -2,7 +2,10 @@
 declare(strict_types=1);
 
 /**
- * Stromtarif mit Verlauf. Statisch: Arbeitspreis und Grundpreis brutto. Dynamisch: Börsenpreis plus Netzentgelt,
+ * Stromtarif mit Verlauf. Statisch: Arbeitspreis und Grundpreis brutto, optional Zeitfenster (windows), in denen das
+ * Laden des Autos und/oder des Speichers anders kostet: Arbeitspreis minus einen Betrag oder ein fester Preis, an
+ * gewählten Wochentagen, etwa bei zeitvariablem Netzentgelt nach §14a. Den Arbeitspreis kann eine Entität liefern
+ * (mapping.price_static); der Recorder trägt eine Änderung dann ab heute in den Verlauf ein. Dynamisch: Börsenpreis plus Netzentgelt,
  * Steuern und Umlagen und Anbieteraufschlag (netto), darauf die MwSt, dazu ein Grundpreis; mit §14a Modul 3 gilt das
  * Netzentgelt in bis zu drei Zeitfenstern anders. Dazu die Einspeisevergütung nach EEG. Ein Satz enthält immer beide
  * Tarife und welcher aktiv ist, damit die Statistik jede Zeit in beiden rechnen kann. Jede Änderung gilt ab einem
@@ -21,6 +24,9 @@ final class Tariff
      * Steuern und Umlagen: Stromsteuer 2,05, Konzessionsabgabe 1,32 bis 2,39, KWKG-, Offshore- und §19-Umlage gut 2,9.
      */
     public const TYPICAL = ['dyn_grid_ct' => 9.0, 'dyn_levies_ct' => 6.7, 'dyn_supplier_ct' => 1.5, 'dyn_vat_pct' => 19.0];
+    /** Wofür ein Zeitfenster des statischen Tarifs gilt. */
+    public const USES = ['car' => 'Auto', 'battery' => 'Speicher'];
+    public const WINDOWS_MAX = 6;
 
     private ?array $history = null;
     private ?MarketPrices $market = null;
@@ -50,6 +56,7 @@ final class Tariff
         return [
             'mode' => ($t['mode'] ?? 'static') === 'dynamic' ? 'dynamic' : 'static',
             'import_ct' => $num($t['import_ct'] ?? null, 0, 200, 34.7),
+            'windows' => self::staticWindows((array) ($t['windows'] ?? [])),
             'base_eur' => $num($t['base_eur'] ?? null, 0, 500, null),
             'dyn_base_eur' => $num($t['dyn_base_eur'] ?? null, 0, 500, null),
             'dyn_grid_ct' => $num($t['dyn_grid_ct'] ?? null, 0, 100, self::TYPICAL['dyn_grid_ct']),
@@ -60,6 +67,86 @@ final class Tariff
             'export_ct' => $num($t['export_ct'] ?? null, 0, 200, 11.0),
             'co2_g_kwh' => $num($t['co2_g_kwh'] ?? null, 0, 1500, 380.0),
         ];
+    }
+
+    /**
+     * Zeitfenster des statischen Tarifs, bereinigt: from und to „HH:MM“ (über Mitternacht erlaubt), days 1–7 (leer
+     * heißt alle), for Teilmenge von USES, kind minus (Arbeitspreis minus ct) oder price (fester Preis ct), ct brutto.
+     *
+     * @return list<array{from: string, to: string, days: list<int>, for: list<string>, kind: string, ct: float}>
+     */
+    public static function staticWindows(array $raw): array
+    {
+        $out = [];
+        foreach ($raw as $w) {
+            if (!is_array($w)) {
+                continue;
+            }
+            $from = self::clock($w['from'] ?? null);
+            $to = self::clock($w['to'] ?? null);
+            $ct = str_replace(',', '.', trim((string) ($w['ct'] ?? '')));
+            $for = array_values(array_intersect(array_keys(self::USES), array_map('strval', (array) ($w['for'] ?? []))));
+            if ($from === null || $to === null || $from === $to || !is_numeric($ct) || $for === []) {
+                continue;
+            }
+            $days = array_values(array_unique(array_filter(array_map('intval', (array) ($w['days'] ?? [])), static fn (int $d): bool => $d >= 1 && $d <= 7)));
+            sort($days);
+            $out[] = [
+                'from' => $from,
+                'to' => $to,
+                'days' => count($days) === 7 ? [] : $days,
+                'for' => $for,
+                'kind' => ($w['kind'] ?? 'minus') === 'price' ? 'price' : 'minus',
+                'ct' => round(clamp_float((float) $ct, 0, 200), 4),
+            ];
+        }
+        return array_slice($out, 0, self::WINDOWS_MAX);
+    }
+
+    /**
+     * Das Zeitfenster für einen Verbraucher zu einem Zeitpunkt, null außerhalb. Ein Fenster über Mitternacht gehört zum
+     * Wochentag, an dem es beginnt. Passen mehrere, gilt das günstigste.
+     */
+    public static function windowAt(array $t, int $ts, string $use): ?array
+    {
+        $local = (new DateTimeImmutable('@' . $ts))->setTimezone(new DateTimeZone('Europe/Berlin'));
+        $hm = $local->format('H:i');
+        $today = (int) $local->format('N');
+        $best = null;
+        foreach ((array) ($t['windows'] ?? []) as $w) {
+            if (!in_array($use, (array) $w['for'], true)) {
+                continue;
+            }
+            $wraps = $w['from'] > $w['to'];
+            $in = $wraps ? ($hm >= $w['from'] || $hm < $w['to']) : ($hm >= $w['from'] && $hm < $w['to']);
+            $day = $wraps && $hm < $w['to'] ? ($today === 1 ? 7 : $today - 1) : $today;
+            if (!$in || ((array) $w['days'] !== [] && !in_array($day, (array) $w['days'], true))) {
+                continue;
+            }
+            if ($best === null || self::windowCt($t, $w) < self::windowCt($t, $best)) {
+                $best = $w;
+            }
+        }
+        return $best;
+    }
+
+    /** Preis brutto in einem Zeitfenster: fester Preis oder Arbeitspreis minus Betrag, nie unter 0. */
+    public static function windowCt(array $t, array $w): float
+    {
+        return $w['kind'] === 'price' ? (float) $w['ct'] : max(0.0, (float) $t['import_ct'] - (float) $w['ct']);
+    }
+
+    /** Statischer Preis brutto für Haus, Auto oder Speicher zu einem Zeitpunkt. */
+    public static function staticCt(array $t, int $ts, string $use = 'house'): float
+    {
+        $w = $use === 'house' ? null : self::windowAt($t, $ts, $use);
+        return $w === null ? (float) $t['import_ct'] : self::windowCt($t, $w);
+    }
+
+    /** Fenster als Text: „22:00–06:00, Mo–Fr“. */
+    public static function windowLabel(array $w): string
+    {
+        return $w['from'] . '–' . $w['to'] . ((array) $w['days'] === [] ? '' : ', ' . GridPlans::daysText((array) $w['days']));
     }
 
     /** Uhrzeit als „HH:MM“, null bei Unsinn; „24:00“ ist Mitternacht. */
@@ -205,24 +292,27 @@ final class Tariff
         return $spot === null ? null : self::dynamicCt($spot, $t ?? $this->tariffAt($q), $q);
     }
 
-    /** Bezugspreis brutto im damals aktiven Tarif; null, wenn im dynamischen der Preis fehlt. */
-    public function importCt(int $ts): ?float
+    /**
+     * Bezugspreis brutto im damals aktiven Tarif für Haus, Auto oder Speicher ($use); im statischen gelten dessen
+     * Zeitfenster, im dynamischen für alle derselbe Preis. null, wenn im dynamischen der Preis fehlt.
+     */
+    public function importCt(int $ts, string $use = 'house'): ?float
     {
         $t = $this->tariffAt($ts);
-        return $t['mode'] === 'static' ? (float) $t['import_ct'] : $this->dynamicAt($ts, $t);
+        return $t['mode'] === 'static' ? self::staticCt($t, $ts, $use) : $this->dynamicAt($ts, $t);
     }
 
     /** Zeitgewichtetes Mittel des Bezugspreises über [from, to), null ohne Preis. */
-    public function averageImportCt(int $from, int $to): ?float
+    public function averageImportCt(int $from, int $to, string $use = 'house'): ?float
     {
         $t = $this->tariffAt($from);
-        if ($t['mode'] === 'static' && self::day($from) === self::day(max($from, $to - 1))) {
+        if ($t['mode'] === 'static' && ($use === 'house' || $t['windows'] === []) && self::day($from) === self::day(max($from, $to - 1))) {
             return (float) $t['import_ct'];
         }
         $sum = $weight = 0.0;
         for ($q = intdiv($from, 900) * 900; $q < $to; $q += 900) {
             $part = min($to, $q + 900) - max($from, $q);
-            $ct = $this->importCt(max($from, $q));
+            $ct = $this->importCt(max($from, $q), $use);
             if ($part <= 0 || $ct === null) {
                 continue;
             }
@@ -241,7 +331,8 @@ final class Tariff
         $start = (int) strtotime((string) ($row['started_at'] ?? 'now'));
         $end = $start + max(60, (int) ($row['duration_s'] ?? 0));
         $t = $this->tariffAt($start);
-        $import = $t['mode'] === 'dynamic' ? ($this->averageImportCt($start, $end) ?? (float) $t['import_ct']) : (float) $t['import_ct'];
+        // Das Auto zahlt im statischen Tarif in seinen Zeitfenstern deren Preis.
+        $import = $this->averageImportCt($start, $end, 'car') ?? (float) $t['import_ct'];
         return ['import_ct' => $import, 'export_ct' => (float) $t['export_ct'], 'co2_g_kwh' => (float) $t['co2_g_kwh']];
     }
 
@@ -254,9 +345,13 @@ final class Tariff
         $t = $this->tariffAt($now);
         $spot = $this->market()->ctAt($now);
         $dynamic = $this->dynamicAt($now, $t);
+        $static = $t['mode'] === 'static';
         return [
             'mode' => $t['mode'],
-            'import_ct' => $t['mode'] === 'static' ? (float) $t['import_ct'] : $dynamic,
+            'import_ct' => $static ? (float) $t['import_ct'] : $dynamic,
+            'car_ct' => $static ? self::staticCt($t, $now, 'car') : $dynamic,
+            'battery_ct' => $static ? self::staticCt($t, $now, 'battery') : $dynamic,
+            'windows' => $static ? $t['windows'] : [],
             'static_ct' => (float) $t['import_ct'],
             'dynamic_ct' => $dynamic,
             'spot_ct' => $spot,
@@ -372,6 +467,26 @@ final class Tariff
         ksort($rows);
         $current = is_numeric($state['state'] ?? null) ? round($toCt((float) $state['state']), 4) : null;
         return ['now' => $current, 'rows' => array_values($rows)];
+    }
+
+    /**
+     * Recorder: den Arbeitspreis des statischen Tarifs aus einer Entität übernehmen (mapping.price_static). Weicht er
+     * vom Satz von heute ab, gilt der neue ab heute; frühere Tage behalten ihren Preis. Gibt den Preis zurück, null ohne.
+     */
+    public function syncStaticPrice(HaSource $ha, string $entity, int $now): ?float
+    {
+        if ($entity === '') {
+            return null;
+        }
+        $ct = self::parseEntity($ha->state($entity), $now)['now'];
+        if ($ct === null || $ct <= 0 || $ct > 200) {
+            return null;
+        }
+        $t = $this->tariffAt($now);
+        if (abs((float) $t['import_ct'] - $ct) >= 0.01) {
+            $this->saveHistory(self::withEntry($this->history(), self::day($now), ['import_ct' => round($ct, 2)] + $t), $now);
+        }
+        return $ct;
     }
 
     /** Recorder: Preise der Anbieter-Entität aufzeichnen, die Viertelstunde von jetzt aus dem Zustand. */

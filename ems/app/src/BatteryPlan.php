@@ -8,8 +8,10 @@ declare(strict_types=1);
  * Speicher im Fenster laden sollte, und nimmt den mit den geringsten Kosten: Netzbezug im Fenster und danach, minus
  * Einspeisung, plus Verschleiß je gespeicherter kWh, mit Verlusten. Füllt die Sonne den Speicher ohnehin, oder ist der
  * Preisunterschied zu klein, rät es ab.
- * Geladen wird nur mit einem Energie-Boost (kv.battery_boost): einmalig in einem gewählten Fenster bis zu einem
- * Ladestand, von Hand oder aus der Empfehlung übernommen; am Ziel oder am Ende des Fensters verfällt er. sync()
+ * Geladen wird mit einem Energie-Boost (kv.battery_boost): einmalig in einem gewählten Fenster bis zu einem
+ * Ladestand, von Hand oder aus der Empfehlung übernommen; am Ziel oder am Ende des Fensters verfällt er. Ohne Boost
+ * lädt sync() in den Viertelstunden, die ein Ladeplan des Speichers geplant hat (BatteryPlans); am Ziel ist der Plan
+ * bis zu seiner nächsten Uhrzeit erledigt. sync()
  * schaltet über Home Assistant: Betriebsmodus manuell und „Laden erzwingen“ mit der Ladeleistung, danach Leistung 0
  * und der Betriebsmodus von vorher. Nur bei aktivem EMS. Zustand und Protokoll in kv.battery_grid.
  */
@@ -176,7 +178,7 @@ final class BatteryPlan
         $out = [];
         for ($q = intdiv($from, 900) * 900; $q < $to; $q += 900) {
             $hour = intdiv($q, 3600) * 3600;
-            $ct = $tariff->importCt($q) ?? $tariff->importCt($q - 86400);
+            $ct = $tariff->importCt($q, 'battery') ?? $tariff->importCt($q - 86400, 'battery');
             $out[] = [$q, $pv[$hour] ?? 0.0, self::houseAt($profile, $q), $ct];
         }
         return $out;
@@ -359,7 +361,7 @@ final class BatteryPlan
     {
         $state = $this->store->get(self::KEY, []);
         return array_merge(
-            ['active' => false, 'since' => null, 'until' => null, 'target_soc' => null, 'restore' => null, 'error' => null, 'error_at' => null, 'log' => []],
+            ['active' => false, 'since' => null, 'until' => null, 'target_soc' => null, 'restore' => null, 'error' => null, 'error_at' => null, 'log' => [], 'source' => null, 'plan_id' => null, 'deadline' => null],
             is_array($state) ? $state : []
         );
     }
@@ -407,8 +409,8 @@ final class BatteryPlan
     {
         if (!empty($state['active'])) {
             $why = match (true) {
-                !$ready || $boost === null => 'off',
                 $now >= (int) $state['until'] => 'end',
+                !$ready || $boost === null => 'off',
                 $soc !== null && $state['target_soc'] !== null && $soc >= (float) $state['target_soc'] => 'target',
                 default => null,
             };
@@ -448,13 +450,19 @@ final class BatteryPlan
             $this->store->put(self::BOOST, []);
         }
         $soc = isset($snap['values']['battery_soc']) ? (float) $snap['values']['battery_soc'] : null;
+        // Ohne Boost der Lauf eines Ladeplans, der jetzt geplant ist.
+        $run = $boost === null ? BatteryPlans::current(BatteryPlans::state($this->store), $now) : null;
+        $order = $boost ?? $run;
+        if (!empty($state['active']) && ($state['source'] ?? 'boost') === 'boost' && $boost === null && $run !== null) {
+            $order = null;
+        }
         try {
             $index = $this->ha->index();
         } catch (Throwable) {
             return $state;
         }
         $blocker = self::blocker($cfg, $index);
-        $step = self::step($state, $boost, $blocker === '', $soc, $now);
+        $step = self::step($state, $order, $blocker === '', $soc, $now);
         if ($step['action'] === 'none') {
             return $state;
         }
@@ -475,26 +483,33 @@ final class BatteryPlan
                 }
                 $this->ha->service('select', 'select_option', ['entity_id' => $modeEntity, 'option' => $manual]);
                 $this->ha->setNumber($powerEntity, round($s['power_kw'] * 1000, -2));
+                $source = $boost !== null ? 'boost' : 'plan';
                 $state = array_merge($state, [
-                    'active' => true, 'since' => $now, 'until' => $boost['end'], 'target_soc' => $boost['target_soc'],
+                    'active' => true, 'since' => $now, 'until' => $order['end'], 'target_soc' => $order['target_soc'],
                     'restore' => $restore, 'mode_entity' => $modeEntity, 'power_entity' => $powerEntity, 'error' => null, 'error_at' => null,
+                    'source' => $source, 'plan_id' => $order['plan_id'] ?? null, 'deadline' => $order['deadline'] ?? null,
                 ]);
-                $state['log'] = self::log($state['log'], $now, 'Energie-Boost: lädt aus dem Netz mit ' . kw($s['power_kw']) . ' bis ' . pct($boost['target_soc']) . ', längstens bis ' . date('H:i', $boost['end']) . '.');
+                $state['log'] = self::log($state['log'], $now, ($source === 'boost' ? 'Energie-Boost' : 'Ladeplan') . ': lädt aus dem Netz mit ' . kw($s['power_kw']) . ' bis ' . pct($order['target_soc']) . ', längstens bis ' . date('H:i', $order['end']) . '.');
             } else {
                 $this->ha->setNumber($powerEntity, 0.0);
                 $restore = (string) (($state['restore'] ?? '') ?: (self::option('auto', $options) ?? 'automatic'));
                 $this->ha->service('select', 'select_option', ['entity_id' => $modeEntity, 'option' => $restore]);
+                $fromPlan = ($state['source'] ?? 'boost') === 'plan';
                 $why = match ($step['why'] ?? '') {
                     'target' => 'Ziel ' . pct((float) $state['target_soc']) . ' erreicht',
-                    'end' => 'Ladefenster vorbei',
+                    'end' => $fromPlan ? 'Geplante Zeit vorbei' : 'Ladefenster vorbei',
                     default => 'abgeschaltet',
                 };
-                $state = array_merge($state, ['active' => false, 'since' => null, 'until' => null, 'target_soc' => null, 'error' => null, 'error_at' => null]);
-                $state['log'] = self::log($state['log'], $now, $why . ', zurück auf ' . $restore . '.');
-                if (in_array($step['why'] ?? '', ['target', 'end'], true)) {
+                if ($fromPlan && ($step['why'] ?? '') === 'target' && $state['deadline'] !== null) {
+                    // Am Ziel ist der Ladeplan bis zu seiner nächsten Uhrzeit erledigt.
+                    $this->store->put(BatteryPlans::DONE, (int) $state['deadline']);
+                    $this->store->put(BatteryPlans::STATE, []);
+                } elseif (!$fromPlan && in_array($step['why'] ?? '', ['target', 'end'], true)) {
                     // Einmalig: Am Ziel oder am Ende des Fensters ist der Boost verbraucht.
                     $this->store->put(self::BOOST, []);
                 }
+                $state = array_merge($state, ['active' => false, 'since' => null, 'until' => null, 'target_soc' => null, 'error' => null, 'error_at' => null, 'source' => null, 'plan_id' => null, 'deadline' => null]);
+                $state['log'] = self::log($state['log'], $now, $why . ', zurück auf ' . $restore . '.');
             }
         } catch (Throwable $e) {
             $state = array_merge($state, ['error' => ($step['action'] === 'start' ? 'Starten' : 'Beenden') . ' fehlgeschlagen: ' . $e->getMessage(), 'error_at' => $now]);

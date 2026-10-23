@@ -36,7 +36,7 @@ $catalog = 'https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_station
   </form>
 </section>
 <?php
-// Jahresertrag von PVGIS für „Lohnt sich dynamisch?“: Stand, Standort (von Hand oder aus Home Assistant), Verluste, Wetterjahr.
+// Jahresertrag von PVGIS für „Welcher Tarif lohnt sich?“: Stand, Standort (von Hand oder aus Home Assistant), Verluste, Wetterjahr.
 $pvgis = (new YearCheck(store(), ha()))->status($p, time());
 $pvgisSet = YearCheck::settings($p);
 $ha = $pvgis['ha'];
@@ -54,7 +54,7 @@ for ($year = YearCheck::LAST_YEAR; $year >= YearCheck::FIRST_YEAR; $year--) {
 ?>
 <section class="card stack" aria-labelledby="pvgis-title">
   <h3 class="card-title" id="pvgis-title">Jahresertrag von PVGIS</h3>
-  <p class="body-sm muted">„Lohnt sich dynamisch?“ unter Prognose → Strompreis rechnet mit dem Ertrag deiner Anlage Stunde für Stunde in einem echten Wetterjahr. Den liefert PVGIS, ein Dienst der Gemeinsamen Forschungsstelle der EU-Kommission, aus Satellitendaten für jeden Ort in Europa, Afrika und großen Teilen Asiens und Amerikas. EMS schickt dafür den Standort, kWp, Neigung und Ausrichtung von oben und die Verluste dorthin, im Hintergrund, höchstens alle sechs Monate und wenn sich etwas davon ändert.</p>
+  <p class="body-sm muted">„Welcher Tarif lohnt sich?“ unter Prognose → Strompreis rechnet mit dem Ertrag deiner Anlage Stunde für Stunde in einem echten Wetterjahr. Den liefert PVGIS, ein Dienst der Gemeinsamen Forschungsstelle der EU-Kommission, aus Satellitendaten für jeden Ort in Europa, Afrika und großen Teilen Asiens und Amerikas. EMS schickt dafür den Standort, kWp, Neigung und Ausrichtung von oben und die Verluste dorthin, im Hintergrund, höchstens alle sechs Monate und wenn sich etwas davon ändert.</p>
   <dl class="kv">
     <div><dt>Stand</dt><dd><?= e($stand) ?></dd></div>
     <div><dt>Standort</dt><dd><?= e($pvgis['location'] === null ? 'unbekannt, bitte unten eintragen' : YearCheck::place($pvgis['location']) . ($pvgis['location']['source'] === 'manual' ? ', von Hand' : ', aus Home Assistant')) ?></dd></div>

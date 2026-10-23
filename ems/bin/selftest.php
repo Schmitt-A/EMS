@@ -1297,6 +1297,20 @@ check($away['year']['grid_car_kwh'] === 35.0 && $away['year']['car_sun_kwh'] ===
 // 2 kW und 2 h Fenster: 4 kWh passen hinein, 1 kWh kostet den Ø Preis des Tages (27,5 ct).
 $tight = YearCheck::simulate($yearDays, ['daily' => array_fill(1, 12, 0.0)], ['car_kw' => 2.0, 'length_h' => 2] + $yearIn);
 check(abs($tight['year']['dynamic_eur'] - ($houseCt + 4 * 20 + 1 * 27.5) / 100 * 365) < 0.01 && $tight['year']['car_rest_kwh'] === 365.0, 'Ladefenster zu kurz: der Rest des Autos zum Ø Preis des Tages');
+// Statisch mit Zeitfenstern: das Auto 2 h zu 23 ct (Arbeitspreis 35 minus 12), der Speicher lädt das Haus vor zu 20 ct.
+$twTariff = Tariff::normalize(['mode' => 'static', 'import_ct' => 35.0, 'windows' => [
+    ['from' => '22:00', 'to' => '00:00', 'days' => [1, 2, 3, 4, 5, 6, 7], 'for' => ['car'], 'kind' => 'minus', 'ct' => '12'],
+    ['from' => '22:00', 'to' => '00:00', 'days' => [], 'for' => ['battery'], 'kind' => 'price', 'ct' => '20'],
+]]);
+$twPlan = YearCheck::windowPlan($twTariff);
+check($twPlan['car'][3] === [[2.0, 23.0]] && $twPlan['battery'][7] === [[2.0, 20.0]], 'Zeitfenster je Verbraucher und Wochentag mit Stunden und Preis');
+$withWindows = YearCheck::simulate($yearDays, ['daily' => array_fill(1, 12, 0.0)], ['static_windows' => $twPlan, 'battery_kwh' => 10.0] + $yearIn);
+// Auto: 5 kWh in 2 h bei 11 kW passen ganz hinein (5 × 23 ct); Speicher: bis 3 kW × 2 h × 0,9 = 5,4 kWh am Tag vorgeladen,
+// je kWh 35 − (20 / 0,9 + 2) gespart; das Haus sonst zum Arbeitspreis (am ersten Tag hilft der halbvolle Speicher).
+$twY = $withWindows['year'];
+$twYear = (5 * 23 * 365 + $twY['grid_house_kwh'] * 365 / 7 * 35 - $twY['windows_shift_kwh'] * (35 - (20 / 0.9 + 2))) / 100;
+check($twY['has_windows'] && abs($twY['windows_energy_eur'] - $twYear) < 0.05 && $twY['windows_shift_kwh'] <= round(5.4 * 365) && $withWindows['year']['windows_eur'] < $withWindows['year']['static_eur']
+    && $withWindows['year']['windows_car_kwh'] === round(5.0 * 365) && !$dark['year']['has_windows'], 'Statisch mit Zeitfenstern: Auto in seinem Fenster, Speicher lädt das Haus vor, sonst Arbeitspreis');
 $partDays = $yearDays;
 foreach ([0, 2, 4] as $i) {
     $partDays[$i] = ['hours' => array_fill(0, 24, null), 'avg' => null, 'window' => null] + $partDays[$i];
@@ -1319,5 +1333,43 @@ $charge = $migrated->get('charge');
 check($charge['mode'] === 'smart' && $charge['grid'] === 'now' && $charge['after_unplug'] === '' && $charge['last_mode'] === 'smart' && !array_key_exists('price_limit_ct', $charge) && $migrated->get('notify_state')['mode'] === 'smart', 'Umstellung: Netzladen wird Intelligent mit Netzladen „Jetzt“');
 unset($migrated);
 @unlink($migrateFile);
+
+// Statischer Tarif mit Zeitfenstern: über Mitternacht, Tag des Beginns, Abzug und Festpreis, das günstigste gilt.
+$tw = Tariff::normalize(['mode' => 'static', 'import_ct' => 34.7, 'windows' => [
+    ['from' => '22:00', 'to' => '06:00', 'days' => ['1', '2', '3', '4', '5'], 'for' => ['car'], 'kind' => 'minus', 'ct' => '12'],
+    ['from' => '22:00', 'to' => '06:00', 'days' => [], 'for' => ['battery'], 'kind' => 'minus', 'ct' => '15,0'],
+    ['from' => '01:00', 'to' => '03:00', 'days' => [], 'for' => ['car', 'battery'], 'kind' => 'price', 'ct' => '15'],
+    ['from' => '10:00', 'to' => '10:00', 'days' => [], 'for' => ['car'], 'kind' => 'minus', 'ct' => '5'],
+    ['from' => '10:00', 'to' => '12:00', 'days' => [], 'for' => [], 'kind' => 'minus', 'ct' => '5'],
+]]);
+$fri23 = (int) strtotime('2026-10-23 23:00:00 Europe/Berlin');
+$sat02 = (int) strtotime('2026-10-24 02:00:00 Europe/Berlin');
+$sat23 = (int) strtotime('2026-10-24 23:00:00 Europe/Berlin');
+$sat04 = (int) strtotime('2026-10-24 04:00:00 Europe/Berlin');
+check(count($tw['windows']) === 3 && $tw['windows'][1]['days'] === [] && abs(Tariff::staticCt($tw, $fri23, 'car') - 22.7) < 1e-9 && abs(Tariff::staticCt($tw, $sat04, 'car') - 22.7) < 1e-9
+    && Tariff::staticCt($tw, $sat23, 'car') === 34.7 && abs(Tariff::staticCt($tw, $sat23, 'battery') - 19.7) < 1e-9 && Tariff::staticCt($tw, $sat02, 'car') === 15.0
+    && Tariff::staticCt($tw, $fri23, 'house') === 34.7 && Tariff::windowCt($tw, ['kind' => 'minus', 'ct' => 50.0]) === 0.0, 'Zeitfenster: über Mitternacht zum Tag des Beginns, das günstigste gilt, das Haus zahlt den Arbeitspreis');
+$twRows = PriceView::staticWindows($tw, $fri23);
+check(count($twRows) === 3 && $twRows[0]['label'] === '22:00–06:00, Mo–Fr' && $twRows[0]['running'] && $twRows[1]['label'] === '22:00–06:00, täglich' && str_contains($twRows[2]['text'], 'Auto 15,0') && str_contains($twRows[2]['text'], '(fest)'), 'Zeitfenster als Liste mit Preisen');
+// Ladeplan des Speichers: Viertelstunde für Viertelstunde, das Haus nimmt nachts, die günstigsten und spätesten zuerst.
+$bpIn = Tariff::normalize([]);
+$bp = BatteryPlans::clean(['days' => ['1', '7'], 'time' => '6:00', 'target_soc' => '80', 'soc_below' => '40']);
+check($bp['error'] === null && $bp['plan']['days'] === [1, 7] && $bp['plan']['time'] === '06:00' && $bp['plan']['soc_below'] === 40.0 && BatteryPlans::clean(['days' => [], 'time' => '06:00', 'target_soc' => 80])['error'] !== null
+    && BatteryPlans::clean(['days' => [1], 'time' => '06:00', 'target_soc' => 5])['error'] !== null && BatteryPlans::headline($bp['plan']) === 'Bis 80' . NNBSP . '% um 06:00', 'Ladeplan des Speichers: Tage, Uhrzeit, Ziel und Bedingung');
+$bpT0 = (int) strtotime('2026-10-24 00:00:00 Europe/Berlin');
+$bpQuarters = [];
+for ($q = $bpT0; $q < $bpT0 + 6 * 3600; $q += 900) {
+    $bpQuarters[] = [$q, 0.0, 0.4, $q >= $bpT0 + 3600 && $q < $bpT0 + 3 * 3600 ? 15.0 : 30.0];
+}
+$bpBase = ['e_kwh' => 4.0, 'capacity_kwh' => 10.0, 'floor_kwh' => 1.0, 'target_kwh' => 8.0, 'power_kw' => 4.0, 'efficiency' => 1.0, 'quarters' => $bpQuarters];
+$bpRun = BatteryPlans::schedule($bpBase);
+// Von 4 auf 8 kWh: das Haus nimmt in den Viertelstunden ohne Laden je 0,1 kWh, sechs Viertelstunden zu je 1 kWh reichen,
+// die spätesten sechs der acht günstigen von 01:00 bis 03:00.
+check($bpRun['status'] === 'ok' && $bpRun['avg_ct'] === 15.0 && count($bpRun['slots']) === 6 && $bpRun['slots'][0] === $bpT0 + 5400 && end($bpRun['slots']) === $bpT0 + 10800 - 900 && $bpRun['end_kwh'] >= 8.0 && $bpRun['drain_kwh'] > 0,
+    'Speicher-Ladeplan: die günstigen Viertelstunden, davon die späten, bis der Ladestand zur Uhrzeit reicht, mit dem Verbrauch des Hauses');
+check(BatteryPlans::schedule(['e_kwh' => 8.5] + $bpBase)['status'] === 'done' && BatteryPlans::schedule(['power_kw' => 0.5] + $bpBase)['status'] === 'tight'
+    && BatteryPlans::schedule(['quarters' => array_map(static fn (array $q): array => [$q[0], 8.0, 0.4, $q[3]], $bpQuarters)] + $bpBase)['status'] === 'sun', 'Speicher-Ladeplan: schon voll, zu knapp, die Sonne schafft es');
+check(BatteryPlans::conditions($bp['plan'], 30.0, null)['ok'] && !BatteryPlans::conditions($bp['plan'], 50.0, null)['ok'] && BatteryPlans::current(['status' => 'ok', 'slots' => [$bpT0, $bpT0 + 900], 'target_soc' => 80, 'plan_id' => 'b1', 'deadline' => $bpT0 + 7200], $bpT0 + 1000)['end'] === $bpT0 + 1800,
+    'Speicher-Ladeplan: Bedingung Ladestand, der laufende Lauf von Viertelstunden');
 
 echo "alle prüfungen bestanden\n";

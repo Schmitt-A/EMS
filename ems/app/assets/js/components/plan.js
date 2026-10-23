@@ -32,8 +32,14 @@ function bind(form) {
   const range = num(d.range);
   const use = num(d.consumption);
 
-  // Was zum Ziel fehlt, in kWh an der Wallbox, mit Ladeverlust; null, wenn Werte des Autos fehlen.
+  const eta = num(d.eta) ?? EFFICIENCY;
+  // Was zum Ziel fehlt, in kWh aus dem Netz, mit Ladeverlust; null, wenn Werte fehlen. Beim Speicher (data-kind
+  // battery) aus seinem Ladestand und seiner Größe.
   const need = () => {
+    if (d.kind === 'battery') {
+      const target = num($('input[name="target_soc"]', form)?.value);
+      return target === null || soc === null || capacity === null ? null : (Math.max(0, target - soc) / 100) * capacity / eta;
+    }
     const type = $('input[name="type"]:checked', form)?.value;
     if (type === 'soc') {
       const wanted = num($('input[name="soc"]', form)?.value);
@@ -78,7 +84,7 @@ function bind(form) {
     const cost = $('[data-plan-cost]', form);
     if (start) {
       if (!list.length) start.textContent = 'Bitte mindestens einen Wochentag wählen.';
-      else if (kwh === null || !power) start.textContent = 'Wann das Laden startet, rechnet EMS, sobald Ladestand, Akku oder Reichweite des Autos bekannt sind.';
+      else if (kwh === null || !power) start.textContent = d.kind === 'battery' ? 'Wann das Laden startet, rechnet EMS, sobald Ladestand und Größe des Speichers bekannt sind.' : 'Wann das Laden startet, rechnet EMS, sobald Ladestand, Akku oder Reichweite des Autos bekannt sind.';
       else {
         const seconds = (kwh / power) * 3600;
         const next = list[0];
@@ -90,7 +96,7 @@ function bind(form) {
     if (cost) {
       cost.textContent = kwh === null || price === null
         ? ''
-        : `Kosten ≈ ${fmt((kwh * price) / 100, 2)}${NNBSP}€ für ${fmt(kwh, 1)}${NNBSP}kWh aus dem Netz zu ${d.dynamic ? 'Ø ' : ''}${fmt(price, 1)}${NNBSP}ct/kWh${d.dynamic ? ' der nächsten 24 Stunden' : ''}.`;
+        : `Kosten ≈ ${fmt((kwh * price) / 100, 2)}${NNBSP}€ für ${fmt(kwh, 1)}${NNBSP}kWh aus dem Netz zu ${d.dynamic ? 'Ø ' : ''}${fmt(price, 1)}${NNBSP}ct/kWh${d.dynamic ? ' der nächsten 24 Stunden' : d.window ? ' im Zeitfenster, wenn es vor der Uhrzeit liegt' : ''}.`;
     }
     const box = $('[data-plan-sun]', form);
     if (box) {

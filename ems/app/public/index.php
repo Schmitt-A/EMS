@@ -30,6 +30,7 @@ if ($path === '/api/live') {
         ]), $snap['cfg']['charge'], time());
         (new Controller(store(), ha()))->tick($snap, time());
         (new Reserve(store(), ha()))->sync($snap['values'], $snap['cfg'], time(), $sessions->open() !== null);
+        BatteryPlans::refresh(store(), $snap, time());
         (new BatteryPlan(store(), ha()))->sync($snap, time());
         (new Notify(store(), ha()))->tick($snap, time());
         (new GridMeter(store()))->record($snap['values'], time());

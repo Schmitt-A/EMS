@@ -11,6 +11,7 @@ import { initHomeAssistant } from './components/homeassistant.js';
 import { initNotify } from './components/notify.js';
 import { initPlans } from './components/plan.js';
 import { initTargets } from './components/target.js';
+import { initTariff } from './components/tariff.js';
 import { initWeekMaps } from './components/weekmap.js';
 import { initDialogs } from './core/dialog.js';
 import { startLive } from './core/live.js';
@@ -23,6 +24,7 @@ if (!initHomeAssistant()) {
   initNotify();
   initTargets();
   initPlans();
+  initTariff();
   initHeatmaps();
   initWeekMaps();
   initFlow();

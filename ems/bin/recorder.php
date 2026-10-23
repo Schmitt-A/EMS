@@ -45,7 +45,9 @@ while (true) {
             $controller->tick($snap, time());
             // Backup-Puffer: beim Netzladen anheben, danach zurücksetzen (auch nach einem Neustart mittendrin).
             $reserve->sync($snap['values'], $snap['cfg'], time(), $sessions->open() !== null);
-            // Speicher im Ladefenster aus dem Netz laden, wenn die Sonne nicht reicht; danach zurück auf den Betriebsmodus.
+            // Ladepläne des Speichers: die günstigsten Viertelstunden vor ihrer Uhrzeit, alle 15 min neu.
+            BatteryPlans::refresh(store(), $snap, time());
+            // Speicher im Energie-Boost oder nach Ladeplan aus dem Netz laden; danach zurück auf den Betriebsmodus.
             $batteryGrid->sync($snap, time());
             // Mitteilungen an die Home-Assistant-App; ein Fehler dort hält den Rest der Runde nicht auf.
             try {
@@ -53,11 +55,13 @@ while (true) {
             } catch (Throwable $e) {
                 file_put_contents(data_dir() . '/recorder.log', date('c') . ' Mitteilungen: ' . $e->getMessage() . PHP_EOL, FILE_APPEND);
             }
-            // Preise der Anbieter-Entität (Tibber, Octopus …) aufzeichnen, alle 5 min.
-            if (time() - $providerAt >= 300 && (string) ($snap['cfg']['mapping']['price_import'] ?? '') !== '') {
+            // Preise der Anbieter-Entität (Tibber, Octopus …) aufzeichnen und den Arbeitspreis aus seiner Entität
+            // übernehmen, alle 5 min.
+            if (time() - $providerAt >= 300) {
                 $providerAt = time();
                 try {
-                    $tariff->recordProvider(ha(), (string) $snap['cfg']['mapping']['price_import'], time());
+                    $tariff->recordProvider(ha(), (string) ($snap['cfg']['mapping']['price_import'] ?? ''), time());
+                    $tariff->syncStaticPrice(ha(), (string) ($snap['cfg']['mapping']['price_static'] ?? ''), time());
                 } catch (Throwable $e) {
                     file_put_contents(data_dir() . '/recorder.log', date('c') . ' Preis-Entität: ' . $e->getMessage() . PHP_EOL, FILE_APPEND);
                 }

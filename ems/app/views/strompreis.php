@@ -1,10 +1,12 @@
 <?php
 declare(strict_types=1);
 /**
- * Prognose → Strompreis: Preis jetzt im aktiven Tarif, Börse, heute und morgen, das Diagramm mit dynamischem und
- * statischem Preis, Börse und Einspeisung (14 Tage zurück bis zum letzten bekannten Preis) und den aktiven
- * Ladefenstern. Darunter die Ladefenster selbst (je Tag das günstigste Fenster, Preisbereich, eigene Fenster) und
- * „Lohnt sich dynamisch?“: ein Jahr Tag für Tag (YearCheck) mit Heatmap nach Kalenderwochen.
+ * Prognose → Strompreis, nur für den aktiven Tarif. Dynamisch: Preis jetzt, Börse, heute und morgen, das Diagramm mit
+ * dynamischem Preis, Börse und Einspeisung (14 Tage zurück bis zum letzten bekannten Preis) und den aktiven
+ * Ladefenstern, darunter die Ladefenster selbst (je Tag das günstigste Fenster, Preisbereich, eigene Fenster).
+ * Statisch: Arbeitspreis, mit Zeitfenstern die Preise von Auto und Speicher jetzt, das Diagramm mit diesen Preisen und
+ * die Zeitfenster als Liste. Für beide „Welcher Tarif lohnt sich?“: ein Jahr Tag für Tag (YearCheck) in drei Varianten
+ * mit Heatmap nach Kalenderwochen.
  * @var array $price PriceView::build()
  * @var array $year YearCheck::build(): Wochen, Jahr, Sonne, Vorschläge und Annahmen
  * @var string $metric Kennzahl der Heatmap aus ?kennzahl, damit „Neu rechnen“ sie behält
@@ -39,10 +41,17 @@ if (!empty($price['meta']['error']) && $price['horizon'] < time()) {
 <section class="card stack price-card" aria-labelledby="price-title">
   <h2 class="card-title" id="price-title">Strompreis</h2>
   <div class="price-now">
-    <?= ui_metric($dynamicActive ? 'Jetzt, dynamisch' : 'Jetzt, statisch', ui_num($active === null ? null : (float) $active, 'ct/kWh'), ['after' => '<span class="caption muted">' . e($dynamicActive ? 'Börse plus deine Aufschläge' : 'dynamisch wären es ' . ct($now['dynamic_ct'] === null ? null : (float) $now['dynamic_ct'])) . '</span>']) ?>
+<?php if ($dynamicActive): ?>
+    <?= ui_metric('Jetzt', ui_num($active === null ? null : (float) $active, 'ct/kWh'), ['after' => '<span class="caption muted">dynamisch, Börse plus deine Aufschläge</span>']) ?>
     <?= ui_metric('Börse jetzt', ui_num($now['spot_ct'] === null ? null : (float) $now['spot_ct'], 'ct/kWh'), ['after' => '<span class="caption muted">netto, ohne Aufschläge</span>']) ?>
-    <?= ui_metric('Heute dynamisch', ui_num($price['today']['avg'] ?? null, 'ct/kWh'), ['after' => '<span class="caption muted">' . e($price['today'] ? 'Ø, ' . ct((float) $price['today']['min']) . ' bis ' . ct((float) $price['today']['max']) : 'noch keine Preise') . '</span>']) ?>
-    <?= ui_metric('Morgen dynamisch', ui_num($price['tomorrow']['avg'] ?? null, 'ct/kWh'), ['after' => '<span class="caption muted">' . e($tomorrowKnown ? 'Ø, ' . ct((float) $price['tomorrow']['min']) . ' bis ' . ct((float) $price['tomorrow']['max']) : 'Preise ab etwa 13 Uhr') . '</span>']) ?>
+    <?= ui_metric('Heute', ui_num($price['today']['avg'] ?? null, 'ct/kWh'), ['after' => '<span class="caption muted">' . e($price['today'] ? 'Ø, ' . ct((float) $price['today']['min']) . ' bis ' . ct((float) $price['today']['max']) : 'noch keine Preise') . '</span>']) ?>
+    <?= ui_metric('Morgen', ui_num($price['tomorrow']['avg'] ?? null, 'ct/kWh'), ['after' => '<span class="caption muted">' . e($tomorrowKnown ? 'Ø, ' . ct((float) $price['tomorrow']['min']) . ' bis ' . ct((float) $price['tomorrow']['max']) : 'Preise ab etwa 13 Uhr') . '</span>']) ?>
+<?php else: ?>
+    <?= ui_metric('Arbeitspreis', ui_num($active === null ? null : (float) $active, 'ct/kWh'), ['after' => '<span class="caption muted">statisch, für das Haus immer</span>']) ?>
+<?php foreach ($price['static_uses'] as $use => $info): ?>
+    <?= ui_metric(Tariff::USES[$use] . ' jetzt', ui_num((float) $info['ct'], 'ct/kWh'), ['after' => '<span class="caption muted">' . e($info['text']) . '</span>']) ?>
+<?php endforeach; ?>
+<?php endif; ?>
   </div>
   <?= ui_chart('time', '/api/series?chart=price', 'Strompreis je Viertelstunde: dynamisch, statisch, Börse und Einspeisung, die aktiven Ladefenster hinterlegt', [
       'window' => '2',
@@ -50,22 +59,31 @@ if (!empty($price['meta']['error']) && $price['horizon'] < time()) {
       'id' => 'price-chart',
       'tools' => '<div class="chart-tools">' . ui_segment('price-window', 'Zeitraum', ['today' => 'Heute', '2' => '2 Tage', '7' => '7 Tage'], '2', ['compact' => true, 'id' => 'prw', 'attrs' => ['data-chart-window' => true]])
           . '<div class="chart-toggles">'
-          . '<button type="button" class="toggle-chip c-price" aria-pressed="true" data-chart-series="dynamic"><span class="swatch swatch-dot"></span>Dynamisch</button>'
-          . '<button type="button" class="toggle-chip c-v1" aria-pressed="true" data-chart-series="static"><span class="swatch swatch-dot"></span>Statisch</button>'
-          . '<button type="button" class="toggle-chip c-muted" aria-pressed="true" data-chart-series="spot"><span class="swatch swatch-dot"></span>Börse</button>'
+          . ($dynamicActive
+              ? '<button type="button" class="toggle-chip c-price" aria-pressed="true" data-chart-series="dynamic"><span class="swatch swatch-dot"></span>Dynamisch</button>'
+                  . '<button type="button" class="toggle-chip c-muted" aria-pressed="true" data-chart-series="spot"><span class="swatch swatch-dot"></span>Börse</button>'
+              : '<button type="button" class="toggle-chip c-price" aria-pressed="true" data-chart-series="static"><span class="swatch swatch-dot"></span>Arbeitspreis</button>'
+                  . (isset($price['static_uses']['car']) ? '<button type="button" class="toggle-chip c-v1" aria-pressed="true" data-chart-series="car"><span class="swatch swatch-dot"></span>Auto</button>' : '')
+                  . (isset($price['static_uses']['battery']) ? '<button type="button" class="toggle-chip c-battery" aria-pressed="true" data-chart-series="battery"><span class="swatch swatch-dot"></span>Speicher</button>' : ''))
           . '<button type="button" class="toggle-chip c-grid-out" aria-pressed="true" data-chart-series="export"><span class="swatch swatch-dot"></span>Einspeisung</button>'
           . ($price['windows_enabled'] ? '<button type="button" class="toggle-chip c-accent" aria-pressed="true" data-chart-bands><span class="swatch"></span>Ladefenster</button>' : '')
           . '</div></div>',
       'style' => [
-          'dynamic' => ['type' => 'step', 'width' => $dynamicActive ? 'bold' : null, 'dash' => !$dynamicActive, 'unit' => 'ct/kWh', 'decimals' => 1],
-          'static' => ['type' => 'step', 'width' => $dynamicActive ? null : 'bold', 'dash' => $dynamicActive, 'unit' => 'ct/kWh', 'decimals' => 1],
+          'dynamic' => ['type' => 'step', 'width' => 'bold', 'unit' => 'ct/kWh', 'decimals' => 1],
+          'static' => ['type' => 'step', 'width' => 'bold', 'unit' => 'ct/kWh', 'decimals' => 1],
+          'car' => ['type' => 'step', 'unit' => 'ct/kWh', 'decimals' => 1],
+          'battery' => ['type' => 'step', 'dash' => true, 'unit' => 'ct/kWh', 'decimals' => 1],
           'spot' => ['type' => 'step', 'width' => 'thin', 'unit' => 'ct/kWh', 'decimals' => 1],
           'export' => ['type' => 'step', 'width' => 'thin', 'unit' => 'ct/kWh', 'decimals' => 1],
       ],
       'empty' => 'Noch keine Börsenpreise. Der Recorder holt sie gleich.',
   ]) ?>
-  <p class="caption muted">Dick der Tarif, nach dem du bezahlst, gestrichelt der andere.<?= $price['windows_enabled'] ? ' Hinterlegt sind die aktiven Ladefenster, kräftiger die Viertelstunden, die ein Ladeplan dazunimmt, und der Preisbereich als waagerechtes Band.' : '' ?> Je Tag stehen der teuerste und der günstigste dynamische Preis. Ändern unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
+<?php if ($dynamicActive): ?>
+  <p class="caption muted">Dein dynamischer Preis, darunter Börse und Einspeisung.<?= $price['windows_enabled'] ? ' Hinterlegt sind die aktiven Ladefenster, kräftiger die Viertelstunden, die ein Ladeplan dazunimmt, und der Preisbereich als waagerechtes Band.' : '' ?> Je Tag stehen der teuerste und der günstigste Preis. Ändern unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
   <p class="caption muted"><?= e(MarketPrices::SOURCE) ?>.</p>
+<?php else: ?>
+  <p class="caption muted">Dein statischer Arbeitspreis<?= $price['static_uses'] ? ', dazu was Auto und Speicher in ihren Zeitfenstern zahlen' : '' ?>, und die Einspeisung. Ändern unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
+<?php endif; ?>
 </section>
 
 <?php
@@ -160,11 +178,24 @@ $windowsUi = ob_get_clean();
 $chosen = $price['users']['car_chosen'];
 $boostWindow = $price['users']['battery'];
 ?>
+<?php if (!$dynamicActive): ?>
+<section class="card stack" aria-labelledby="windows-title">
+  <h2 class="card-title" id="windows-title">Zeitfenster</h2>
+<?php if ($price['static_windows'] === []): ?>
+  <p class="body-sm muted">Dein statischer Tarif hat keine Zeitfenster mit anderem Preis; jede Viertelstunde kostet gleich viel. Hast du etwa zeitvariables Netzentgelt nach §14a oder einen Autostrom-Tarif, trägst du die Fenster unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?> ein.</p>
+<?php else: ?>
+  <p class="body-sm muted">In diesen Zeiten zahlen Auto und Speicher einen anderen Preis; das Haus zahlt immer den Arbeitspreis von <?= e(ct((float) $active)) ?>. Ladepläne für Auto und Speicher laden bevorzugt hier.</p>
+  <ul class="plain-list stack-tight tw-overview" role="list">
+<?php foreach ($price['static_windows'] as $row): ?>
+    <li><span class="body-sm"><strong><?= e($row['label']) ?></strong><?= $row['running'] ? ' <span class="pill">läuft</span>' : '' ?></span><span class="caption muted"><?= e($row['text']) ?></span></li>
+<?php endforeach; ?>
+  </ul>
+  <p class="caption muted">Ändern unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>. Ladepläne: <?= ui_inline('Auto', ['href' => url('/') . '#cp']) ?>, <?= ui_inline('Speicher', ['href' => url('/speicher') . '#outlook-title']) ?>.</p>
+<?php endif; ?>
+</section>
+<?php else: ?>
 <section class="card stack" aria-labelledby="windows-title">
   <h2 class="card-title" id="windows-title">Ladefenster</h2>
-<?php if (!$price['windows_enabled']): ?>
-  <p class="body-sm muted">Mit deinem statischen Tarif kostet jede Viertelstunde gleich viel, Ladefenster gibt es deshalb erst mit dynamischem Tarif. Umstellen unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
-<?php else: ?>
   <p class="body-sm muted">Je Tag sucht EMS das günstigste Fenster am Stück, sobald die Preise da sind; gegen 13 Uhr kommen die für morgen dazu, mit einer Preis-Entität von Tibber oder Octopus auch deren Preise. Dazu kommen die Zeiten in deinem Preisbereich und eigene Fenster. Aus den aktiven Fenstern wählst du in der Ladepunkt-Karte die fürs Auto und unter Speicher → Ausblick das für den Energie-Boost.</p>
   <?= $windowsUi ?>
   <ul class="plain-list stack-tight body-sm" role="list">
@@ -176,9 +207,9 @@ $boostWindow = $price['users']['battery'];
     <li><?= e(ChargePlan::text($price['plan'])) ?></li>
 <?php endif; ?>
   </ul>
-<?php endif; ?>
   <p class="caption muted">Ab jetzt am günstigsten: <?= e($range($price['cheap']['hour'])) ?><?= $price['cheap']['hour'] ? ' · ' . e(ct((float) $price['cheap']['hour']['ct'])) : '' ?>, am teuersten: <?= e($range($price['cheap']['dear'])) ?><?= $price['cheap']['dear'] ? ' · ' . e(ct((float) $price['cheap']['dear']['ct'])) : '' ?>, je eine Stunde, dynamisch. Preise bis <?= e($price['horizon'] > 0 ? $until($price['horizon']) : '—') ?>.<?= $tomorrowKnown ? '' : ' Die Preise für morgen gibt es ab etwa 13 Uhr.' ?></p>
 </section>
+<?php endif; ?>
 
 <?php
 // Heatmap nach Kalenderwochen, je Quartal eine Gruppe: je Kennzahl Farbstärke (0…1 über alle Wochen), kurze Zahl und
@@ -222,8 +253,8 @@ $pvNote = match ($year['pv']['source']) {
 $carSun = $year['inputs']['car_mode'] !== 'fenster';
 ?>
 <section class="card stack" aria-labelledby="decide-title">
-  <h2 class="card-title" id="decide-title">Lohnt sich dynamisch?</h2>
-  <p class="body-sm muted">Ein Jahr Tag für Tag: Börsenpreise der letzten 12 Monate mit deinen Preisen von heute aus <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>, die Sonne deiner Anlage und Haus und Auto aus den Angaben hier, gleichmäßig übers Jahr verteilt.</p>
+  <h2 class="card-title" id="decide-title">Welcher Tarif lohnt sich?</h2>
+  <p class="body-sm muted">Ein Jahr Tag für Tag, statisch, <?= $y['has_windows'] ? 'statisch mit deinen Zeitfenstern' : 'mit Zeitfenstern (sobald du welche einträgst)' ?> und dynamisch: Börsenpreise der letzten 12 Monate mit deinen Preisen von heute aus <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>, die Sonne deiner Anlage und Haus und Auto aus den Angaben hier, gleichmäßig übers Jahr verteilt.</p>
   <form method="get" action="<?= e(url('/prognose/strompreis')) ?>#decide-title" class="stack" id="decide-form">
     <div class="form-rows">
       <?= ui_number_row('haus', 'Haus', (float) $year['inputs']['house_kwh'], 0, 'kWh im Jahr. Vorschlag ' . kwh($year['suggest']['house_kwh'], 0) . ': ' . $year['suggest']['notes']['house'], ['inputmode' => 'numeric']) ?>
@@ -236,17 +267,27 @@ $carSun = $year['inputs']['car_mode'] !== 'fenster';
 <?php if ($y['priced_days'] < 30): ?>
   <p class="body muted">Für das Jahr fehlen noch Börsenpreise; EMS lädt sie nach und nach bis zwei Jahre zurück.</p>
 <?php else: ?>
-  <p class="compare-verdict"><?= e(($y['difference'] >= 0 ? 'Dynamisch wäre im Jahr etwa ' . $eur((float) $y['difference']) : 'Statisch wäre im Jahr etwa ' . $eur(-(float) $y['difference'])) . ' günstiger, Grundpreise eingerechnet.') ?></p>
-  <div class="table-wrap" tabindex="0" role="region" aria-label="Kosten im Jahr, statisch und dynamisch">
+<?php
+    // Die Varianten nach Summe: welche am günstigsten ist und um wie viel vor der nächsten.
+    $variants = ['Statisch' => (float) $y['static_eur'], 'Dynamisch' => (float) $y['dynamic_eur']] + ($y['has_windows'] ? ['Statisch mit Zeitfenstern' => (float) $y['windows_eur']] : []);
+    asort($variants);
+    $names = array_keys($variants);
+    $avg = static fn (?float $v): string => $v === null ? '' : '<span class="sub">' . e('Ø ' . with_unit($v, 1, 'ct')) . '</span>';
+?>
+  <p class="compare-verdict"><?= e($names[0] . ' wäre im Jahr am günstigsten, etwa ' . $eur($variants[$names[1]] - $variants[$names[0]]) . ' weniger als ' . lcfirst($names[1]) . ', Grundpreise eingerechnet.') ?></p>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="Kosten im Jahr je Tarif">
   <table class="compare-table">
-    <thead><tr><th scope="col">€ im Jahr</th><th scope="col">Statisch</th><th scope="col">Dynamisch</th></tr></thead>
+    <thead><tr><th scope="col">€ im Jahr</th><th scope="col">Statisch</th><?= $y['has_windows'] ? '<th scope="col">Mit Zeit&shy;fenstern</th>' : '' ?><th scope="col">Dynamisch</th></tr></thead>
     <tbody>
-      <tr><th scope="row">Arbeitspreis<span class="sub"><?= e(kwh((float) $y['grid_kwh'], 0) . ' aus dem Netz') ?></span></th><td><?= e(num((float) $y['static_energy_eur'], 0)) ?><?= $y['static_avg_ct'] === null ? '' : '<span class="sub">' . e('Ø ' . with_unit((float) $y['static_avg_ct'], 1, 'ct')) . '</span>' ?></td><td><?= e(num((float) $y['dynamic_energy_eur'], 0)) ?><?= $y['dynamic_avg_ct'] === null ? '' : '<span class="sub">' . e('Ø ' . with_unit((float) $y['dynamic_avg_ct'], 1, 'ct')) . '</span>' ?></td></tr>
-      <tr><th scope="row">Grundpreis<span class="sub">zwölf Monate</span></th><td><?= e(num((float) $y['static_base_eur'], 0)) ?><span class="sub"><?= e('12 × ' . euro((float) $year['base_eur'])) ?></span></td><td><?= e(num((float) $y['dynamic_base_eur'], 0)) ?><span class="sub"><?= e('12 × ' . euro((float) $year['dyn_base_eur'])) ?></span></td></tr>
+      <tr><th scope="row">Arbeitspreis<span class="sub"><?= e(kwh((float) $y['grid_kwh'], 0) . ' aus dem Netz') ?></span></th><td><?= e(num((float) $y['static_energy_eur'], 0)) ?><?= $avg($y['static_avg_ct']) ?></td><?= $y['has_windows'] ? '<td>' . e(num((float) $y['windows_energy_eur'], 0)) . $avg($y['windows_avg_ct']) . '</td>' : '' ?><td><?= e(num((float) $y['dynamic_energy_eur'], 0)) ?><?= $avg($y['dynamic_avg_ct']) ?></td></tr>
+      <tr><th scope="row">Grundpreis<span class="sub">zwölf Monate</span></th><td><?= e(num((float) $y['static_base_eur'], 0)) ?><span class="sub"><?= e('12 × ' . euro((float) $year['base_eur'])) ?></span></td><?= $y['has_windows'] ? '<td>' . e(num((float) $y['windows_base_eur'], 0)) . '<span class="sub">wie statisch</span></td>' : '' ?><td><?= e(num((float) $y['dynamic_base_eur'], 0)) ?><span class="sub"><?= e('12 × ' . euro((float) $year['dyn_base_eur'])) ?></span></td></tr>
     </tbody>
-    <tfoot><tr><th scope="row">Summe</th><td><?= e(num((float) $y['static_eur'], 0)) ?></td><td><?= e(num((float) $y['dynamic_eur'], 0)) ?></td></tr></tfoot>
+    <tfoot><tr><th scope="row">Summe</th><td><?= e(num((float) $y['static_eur'], 0)) ?></td><?= $y['has_windows'] ? '<td>' . e(num((float) $y['windows_eur'], 0)) . '</td>' : '' ?><td><?= e(num((float) $y['dynamic_eur'], 0)) ?></td></tr></tfoot>
   </table>
   </div>
+<?php if ($y['has_windows']): ?>
+  <p class="caption muted"><?= e('Mit Zeitfenstern lädt das Auto etwa ' . kwh((float) $y['windows_car_kwh'], 0) . ' im Jahr in seinen Fenstern' . ((float) $y['windows_shift_kwh'] >= 1 ? ', der Speicher lädt etwa ' . kwh((float) $y['windows_shift_kwh'], 0) . ' fürs Haus in seinen vor' : '') . '; das Haus zahlt sonst den Arbeitspreis.') ?></p>
+<?php endif; ?>
 <?php endif; ?>
   <?= ui_segment('kennzahl', 'Kennzahl', array_map(static fn (array $m): string => $m['label'], $metrics), $metric, ['compact' => true, 'id' => 'wkm', 'form' => 'decide-form', 'attrs' => ['data-week-metric' => true]]) ?>
   <figure class="hm wk" data-weekmap<?= ui_attrs(['data-color' => $metrics[$metric]['color'], 'data-metrics' => ui_json(array_map(static fn (array $m): array => ['color' => $m['color'], 'caption' => $m['caption'], 'lo' => $m['lo'], 'hi' => $m['hi']], $metrics))]) ?>>
@@ -290,7 +331,7 @@ $carSun = $year['inputs']['car_mode'] !== 'fenster';
 <?php if ($y['priced_days'] >= 30 && $y['priced_days'] < 360): ?>
     <li><?= e('Börsenpreise gibt es erst für ' . $y['priced_days'] . ' der letzten 365 Tage; die übrigen Tage rechnen mit ihrem Ø Tagesverlauf.') ?></li>
 <?php endif; ?>
-    <li>Die Einspeisevergütung ist in beiden Tarifen gleich und zählt nicht mit. Für die Sonne schickt EMS Standort, kWp, Neigung und Ausrichtung an PVGIS; Standort, Verluste und Wetterjahr stehen unter <?= ui_inline('Einstellungen → Prognose', ['href' => url('/einstellungen/prognose') . '#pvgis-title']) ?>. <?= e(YearCheck::SOURCE) ?>. Börsenpreise: <?= e(MarketPrices::SOURCE) ?>.</li>
+    <li>Die Einspeisevergütung ist in allen Tarifen gleich und zählt nicht mit. Für die Sonne schickt EMS Standort, kWp, Neigung und Ausrichtung an PVGIS; Standort, Verluste und Wetterjahr stehen unter <?= ui_inline('Einstellungen → Prognose', ['href' => url('/einstellungen/prognose') . '#pvgis-title']) ?>. <?= e(YearCheck::SOURCE) ?>. Börsenpreise: <?= e(MarketPrices::SOURCE) ?>.</li>
   </ul>
 </section>
 </div>

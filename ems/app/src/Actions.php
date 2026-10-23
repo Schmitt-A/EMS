@@ -39,7 +39,7 @@ final class Actions
         'battery_operating_mode', 'battery_force_charge',
         'car_soc', 'car_capacity', 'car_range', 'car_odometer', 'car_limit', 'car_time_full', 'car_wakeup', 'grid_import', 'grid_export', 'grid_signed', 'house_power',
         'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force', 'wallbox_energy',
-        'price_import',
+        'price_import', 'price_static',
     ];
 
     /**
@@ -417,6 +417,9 @@ final class Actions
             self::redirectBack();
         } elseif ($section === 'grid_plan') {
             flash(self::saveGridPlan());
+            self::redirectBack();
+        } elseif ($section === 'battery_plan') {
+            flash(self::saveBatteryPlan());
             self::redirectBack();
         } elseif ($section === 'battery_grid') {
             flash(self::saveBatteryGrid());
@@ -808,6 +811,7 @@ final class Actions
             'ui' => ['theme' => $cfg['ui']['theme'] ?? 'system', 'flow_view' => $cfg['ui']['flow_view'] ?? 'bar'],
             'notify' => Notify::stored(Notify::settings($cfg)),
             'grid_plans' => GridPlans::all(store()),
+            'battery_plans' => BatteryPlans::all(store()),
         ];
     }
 
@@ -919,6 +923,16 @@ final class Actions
                 }
             }
             store()->put(GridPlans::KEY, $plans);
+        }
+        if (isset($data['battery_plans']) && is_array($data['battery_plans'])) {
+            $plans = [];
+            foreach (array_slice($data['battery_plans'], 0, BatteryPlans::MAX) as $raw) {
+                $plan = is_array($raw) ? BatteryPlans::clean($raw, (string) ($raw['id'] ?? ''))['plan'] : null;
+                if ($plan !== null) {
+                    $plans[] = $plan;
+                }
+            }
+            store()->put(BatteryPlans::KEY, $plans);
         }
         if (isset($data['chargepoint']['name'])) {
             store()->merge('chargepoint', ['name' => self::name((string) $data['chargepoint']['name'], 'Wallbox')]);
@@ -1046,7 +1060,9 @@ final class Actions
 
     /**
      * Tarif aus Einstellungen → Tarif: beide Tarife, welcher aktiv ist, Einspeisung und CO₂, gültig ab einem Datum.
-     * Gleiches Datum ersetzt den Satz, ein anderes kommt in den Verlauf; frühere Zeiten behalten ihre Preise.
+     * Gleiches Datum ersetzt den Satz, ein anderes kommt in den Verlauf; frühere Zeiten behalten ihre Preise. Die
+     * Zeitfenster des statischen Tarifs kommen als swin[i][from|to|days|for|kind|ct|delete]; ein leeres oder zum
+     * Entfernen markiertes fällt weg. Liefert eine Entität den Arbeitspreis, gilt ihr Wert.
      */
     private static function saveTariff(): void
     {
@@ -1061,9 +1077,26 @@ final class Actions
         for ($i = 0; $i < 3; $i++) {
             $windows[] = ['from' => (string) ($fromTimes[$i] ?? ''), 'to' => (string) ($toTimes[$i] ?? ''), 'ct' => str_replace(',', '.', trim((string) ($cts[$i] ?? '')))];
         }
+        $static = [];
+        foreach ((array) ($_POST['swin'] ?? []) as $w) {
+            // Ohne Wochentag gilt ein Fenster nie; gespeichert heißt eine leere Liste „alle Tage“.
+            if (is_array($w) && ($w['delete'] ?? '') !== '1' && !empty($w['days'])) {
+                $static[] = $w;
+            }
+        }
+        $entity = array_key_exists('price_static', $_POST) ? post_entity('price_static') : (string) (cfg()['mapping']['price_static'] ?? '');
+        $fromEntity = null;
+        if ($entity !== '') {
+            try {
+                $fromEntity = Tariff::parseEntity(ha()->state($entity), $now)['now'];
+            } catch (Throwable) {
+                $fromEntity = null;
+            }
+        }
         $next = [
             'mode' => ($_POST['mode'] ?? '') === 'dynamic' ? 'dynamic' : 'static',
-            'import_ct' => post_float('import_ct', 0, 200, (float) $base['import_ct']),
+            'import_ct' => $fromEntity !== null && $fromEntity > 0 && $fromEntity <= 200 ? round($fromEntity, 2) : post_float('import_ct', 0, 200, (float) $base['import_ct']),
+            'windows' => array_key_exists('swin', $_POST) || array_key_exists('swin_on', $_POST) ? (($_POST['swin_on'] ?? '0') === '1' ? $static : []) : $base['windows'],
             'base_eur' => self::optional('base_eur', 0, 500),
             'dyn_base_eur' => self::optional('dyn_base_eur', 0, 500),
             'dyn_grid_ct' => post_float('dyn_grid_ct', 0, 100, (float) $base['dyn_grid_ct']),
@@ -1077,6 +1110,9 @@ final class Actions
         $tariff->saveHistory(Tariff::withEntry($tariff->history(), $from, $next), $now);
         if (array_key_exists('price_import', $_POST)) {
             store()->merge('mapping', ['price_import' => post_entity('price_import')]);
+        }
+        if (array_key_exists('price_static', $_POST)) {
+            store()->merge('mapping', ['price_static' => $entity]);
         }
         flash('Tarif gespeichert, gültig ab ' . self::dateText($from) . '.');
     }
@@ -1236,6 +1272,59 @@ final class Actions
         store()->merge('charge', ['grid' => $after]);
         (new Controller(store(), ha()))->kick(time());
         return $after === 'windows' ? 'Netzladen „Jetzt“ beendet, die Ladefenster gelten weiter.' : 'Netzladen „Jetzt“ beendet.';
+    }
+
+    /** Ladeplan des Speichers speichern oder löschen (section battery_plan, id, do save oder delete). */
+    private static function saveBatteryPlan(): string
+    {
+        $plans = BatteryPlans::all(store());
+        $id = (string) ($_POST['id'] ?? '');
+        $index = null;
+        foreach ($plans as $i => $plan) {
+            if ($plan['id'] === $id) {
+                $index = $i;
+            }
+        }
+        if (($_POST['do'] ?? '') === 'delete') {
+            if ($index === null) {
+                return 'Diesen Ladeplan gibt es nicht mehr.';
+            }
+            array_splice($plans, $index, 1);
+            store()->put(BatteryPlans::KEY, $plans);
+            store()->put(BatteryPlans::STATE, []);
+            return 'Ladeplan des Speichers gelöscht.';
+        }
+        if ($index === null && count($plans) >= BatteryPlans::MAX) {
+            return 'Höchstens ' . BatteryPlans::MAX . ' Ladepläne.';
+        }
+        $built = BatteryPlans::clean([
+            'on' => ($_POST['on'] ?? '0') === '1',
+            'days' => (array) ($_POST['days'] ?? []),
+            'time' => (string) ($_POST['time'] ?? ''),
+            'target_soc' => $_POST['target_soc'] ?? null,
+            'soc_below' => ($_POST['soc_below_on'] ?? '0') === '1' ? ($_POST['soc_below'] ?? null) : null,
+            'pv_below' => ($_POST['pv_below_on'] ?? '0') === '1' ? ($_POST['pv_below'] ?? null) : null,
+        ], $id);
+        if ($built['error'] !== null) {
+            return $built['error'];
+        }
+        if ($index === null) {
+            $plans[] = $built['plan'];
+        } else {
+            $plans[$index] = $built['plan'];
+        }
+        store()->put(BatteryPlans::KEY, $plans);
+        store()->put(BatteryPlans::DONE, 0);
+        store()->put(BatteryPlans::ARMED, '');
+        $now = time();
+        $state = BatteryPlans::refresh(store(), (new Snapshot(store(), ha()))->build(), $now, true);
+        $next = GridPlans::next($built['plan'], $now);
+        $text = 'Ladeplan des Speichers gespeichert: ' . GridPlans::daysText($built['plan']['days']) . ' · ' . BatteryPlans::headline($built['plan']) . ($built['plan']['on'] ? '' : ', ausgeschaltet') . '.';
+        if ($built['plan']['on'] && $next !== null) {
+            $text .= ' Als Nächstes ' . rtrim(GridPlans::nextText($built['plan'], $next, $now), '.') . '.';
+        }
+        $planText = $state !== null && $state['plan_id'] === $built['plan']['id'] ? BatteryPlans::text($state, $now) : '';
+        return $planText === '' ? $text : $text . ' ' . $planText;
     }
 
     /** Ladeplan fürs Netzladen speichern oder löschen (section grid_plan, id, do save oder delete). */

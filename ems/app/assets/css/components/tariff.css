@@ -180,6 +180,25 @@
   width: 40%;
 }
 
+/* Drei Tarife: die erste Spalte schmaler, die Tabelle nie schmaler als ihre Wörter; reicht der Platz nicht, scrollt
+   sie in ihrem Rahmen, statt „Dynamisch“ zu trennen. */
+.compare-table:has(thead th:nth-child(4)) {
+  min-width: 17rem;
+}
+
+.compare-table:has(thead th:nth-child(4)) thead th:first-child {
+  width: 28%;
+}
+
+.compare-table:has(thead th:nth-child(4)) thead th {
+  font-size: 0.75rem;
+}
+
+.compare-table th,
+.compare-table td {
+  overflow-wrap: normal;
+}
+
 .compare-table th,
 .compare-table td {
   padding: var(--s-2) var(--s-1);
@@ -323,3 +342,96 @@
   min-width: 0;
 }
 
+
+/* Einstellungen → Tarif: nur die Felder des aktiven Tarifs; die des anderen bleiben im Formular und behalten ihre Werte. */
+.tariff-form:has(input[name="mode"][value="static"]:checked) [data-tariff-panel="dynamic"],
+.tariff-form:has(input[name="mode"][value="dynamic"]:checked) [data-tariff-panel="static"],
+.tariff-form:not(:has(#f-swin-on:checked)) [data-tw-list] {
+  display: none;
+}
+
+/* Zeitfenster des statischen Tarifs: je Fenster eine Karte, Zeiten und Preis je zwei Spalten, darunter die Tage. */
+.tw-card {
+  display: grid;
+  gap: var(--s-3);
+  min-width: 0;
+  margin: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+}
+
+.tw-card > legend {
+  padding: 0 var(--s-1);
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.tw-times,
+.tw-price {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+
+.tw-times label,
+.tw-price label {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.tw-result:empty {
+  display: none;
+}
+
+.tw-delete {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  color: var(--text-2);
+  font-size: 0.875rem;
+}
+
+.tw-delete input {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--accent-strong);
+}
+
+.tw-add > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  color: var(--accent-on-soft);
+  font-size: 0.875rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.tw-add > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tw-add > summary:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+  border-radius: var(--r-field);
+}
+
+.tw-add[open] > summary {
+  margin-block-end: var(--s-2);
+}
+
+/* Prognose → Strompreis: Zeitfenster des statischen Tarifs, je Zeile Zeit und darunter die Preise. */
+.tw-overview li {
+  display: grid;
+  gap: 0.125rem;
+}
