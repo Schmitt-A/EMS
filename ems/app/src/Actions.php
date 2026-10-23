@@ -424,9 +424,6 @@ final class Actions
         } elseif ($section === 'battery_grid') {
             flash(self::saveBatteryGrid());
             self::redirectBack();
-        } elseif ($section === 'battery_boost') {
-            flash(self::saveBoost());
-            self::redirectBack();
         }
         flash('Gespeichert.');
         self::redirectBack();
@@ -463,52 +460,6 @@ final class Actions
             store()->put('mapping', $mapping);
         }
         return 'Gespeichert.';
-    }
-
-    /**
-     * Energie-Boost unter Speicher → Ausblick: aus der Empfehlung übernehmen (do=recommend), mit Fenster und Ladestand
-     * setzen (do=set) oder abbrechen (do=clear). Danach gleich ein Schritt, damit ein Boost im laufenden Fenster sofort
-     * startet und Abbrechen ein laufendes Laden beendet.
-     */
-    private static function saveBoost(): string
-    {
-        $now = time();
-        $do = (string) ($_POST['do'] ?? 'set');
-        $battery = new BatteryPlan(store(), ha());
-        $snap = (new Snapshot(store(), ha()))->build();
-        if ($do === 'clear') {
-            store()->put(BatteryPlan::BOOST, []);
-            $battery->sync($snap, $now);
-            return 'Energie-Boost abgebrochen.';
-        }
-        if ($do === 'recommend') {
-            $plan = $snap['battery_plan'] ?? null;
-            if (!is_array($plan) || ($plan['reason'] ?? '') !== 'charge') {
-                return 'Gerade empfiehlt EMS kein Laden aus dem Netz.';
-            }
-            $window = $plan['window'];
-            $target = (float) $plan['target_soc'];
-        } else {
-            $key = (string) ($_POST['window'] ?? '');
-            $window = null;
-            foreach ((new PriceWindows(store()))->offered($now, 20) as $w) {
-                if ($w['start'] . '-' . $w['end'] === $key) {
-                    $window = $w;
-                }
-            }
-            if ($window === null) {
-                return 'Bitte ein aktives Ladefenster wählen.';
-            }
-            $target = (float) post_int('target_soc', 20, 100, 80);
-        }
-        store()->put(BatteryPlan::BOOST, ['start' => (int) $window['start'], 'end' => (int) $window['end'], 'target_soc' => round($target), 'set_at' => $now]);
-        $battery->sync($snap, $now);
-        try {
-            $blocker = BatteryPlan::blocker(cfg(), ha()->index());
-        } catch (Throwable) {
-            $blocker = 'Home Assistant ist nicht erreichbar.';
-        }
-        return 'Energie-Boost: im Fenster ' . PriceWindows::label($window, $now) . ' bis ' . pct($target) . ' aus dem Netz laden.' . ($blocker !== '' ? ' Noch schaltet EMS nicht: ' . $blocker : '');
     }
 
     /**
@@ -1299,11 +1250,14 @@ final class Actions
         }
         $built = BatteryPlans::clean([
             'on' => ($_POST['on'] ?? '0') === '1',
+            'when' => (string) ($_POST['when'] ?? 'window'),
+            'once' => ($_POST['once'] ?? '0') === '1',
             'days' => (array) ($_POST['days'] ?? []),
             'time' => (string) ($_POST['time'] ?? ''),
+            'amount' => (string) ($_POST['amount'] ?? 'soc'),
             'target_soc' => $_POST['target_soc'] ?? null,
+            'start' => (string) ($_POST['start'] ?? 'late'),
             'soc_below' => ($_POST['soc_below_on'] ?? '0') === '1' ? ($_POST['soc_below'] ?? null) : null,
-            'pv_below' => ($_POST['pv_below_on'] ?? '0') === '1' ? ($_POST['pv_below'] ?? null) : null,
         ], $id);
         if ($built['error'] !== null) {
             return $built['error'];
@@ -1318,10 +1272,11 @@ final class Actions
         store()->put(BatteryPlans::ARMED, '');
         $now = time();
         $state = BatteryPlans::refresh(store(), (new Snapshot(store(), ha()))->build(), $now, true);
-        $next = GridPlans::next($built['plan'], $now);
-        $text = 'Ladeplan des Speichers gespeichert: ' . GridPlans::daysText($built['plan']['days']) . ' · ' . BatteryPlans::headline($built['plan']) . ($built['plan']['on'] ? '' : ', ausgeschaltet') . '.';
-        if ($built['plan']['on'] && $next !== null) {
-            $text .= ' Als Nächstes ' . rtrim(GridPlans::nextText($built['plan'], $next, $now), '.') . '.';
+        $plan = $built['plan'];
+        $occ = BatteryPlans::occurrence($plan, BatteryPlans::windows(store(), new Tariff(store()), $now), $now);
+        $text = 'Ladeplan des Speichers gespeichert: ' . ($plan['once'] ? 'einmalig' : GridPlans::daysText($plan['days'])) . ' · ' . BatteryPlans::headline($plan) . ($plan['on'] ? '' : ', ausgeschaltet') . '.';
+        if ($plan['on']) {
+            $text .= $occ !== null ? ' Als Nächstes ' . BatteryPlans::whenText($occ['start'], $occ['end'], $now) . '.' : ($plan['when'] === 'window' ? ' Gerade ist kein passendes Fenster bekannt.' : '');
         }
         $planText = $state !== null && $state['plan_id'] === $built['plan']['id'] ? BatteryPlans::text($state, $now) : '';
         return $planText === '' ? $text : $text . ' ' . $planText;

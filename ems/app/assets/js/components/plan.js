@@ -32,14 +32,8 @@ function bind(form) {
   const range = num(d.range);
   const use = num(d.consumption);
 
-  const eta = num(d.eta) ?? EFFICIENCY;
-  // Was zum Ziel fehlt, in kWh aus dem Netz, mit Ladeverlust; null, wenn Werte fehlen. Beim Speicher (data-kind
-  // battery) aus seinem Ladestand und seiner Größe.
+  // Was zum Ziel fehlt, in kWh an der Wallbox, mit Ladeverlust; null, wenn Werte des Autos fehlen.
   const need = () => {
-    if (d.kind === 'battery') {
-      const target = num($('input[name="target_soc"]', form)?.value);
-      return target === null || soc === null || capacity === null ? null : (Math.max(0, target - soc) / 100) * capacity / eta;
-    }
     const type = $('input[name="type"]:checked', form)?.value;
     if (type === 'soc') {
       const wanted = num($('input[name="soc"]', form)?.value);
@@ -84,7 +78,7 @@ function bind(form) {
     const cost = $('[data-plan-cost]', form);
     if (start) {
       if (!list.length) start.textContent = 'Bitte mindestens einen Wochentag wählen.';
-      else if (kwh === null || !power) start.textContent = d.kind === 'battery' ? 'Wann das Laden startet, rechnet EMS, sobald Ladestand und Größe des Speichers bekannt sind.' : 'Wann das Laden startet, rechnet EMS, sobald Ladestand, Akku oder Reichweite des Autos bekannt sind.';
+      else if (kwh === null || !power) start.textContent = 'Wann das Laden startet, rechnet EMS, sobald Ladestand, Akku oder Reichweite des Autos bekannt sind.';
       else {
         const seconds = (kwh / power) * 3600;
         const next = list[0];

@@ -665,3 +665,11 @@
   list-style: none;
   color: var(--text-2);
 }
+
+/* Ladeplan des Speichers: nur, was zur Wahl passt. */
+.bp-form:has(input[name="when"][value="window"]:checked) [data-bp="time"],
+.bp-form:has(input[name="when"][value="time"]:checked) [data-bp="window"],
+.bp-form:has(input[name="once"][type="checkbox"]:checked) [data-bp="days"],
+.bp-form:has(input[name="amount"][value="soc"]:checked) [data-bp="need"] {
+  display: none;
+}

@@ -3,7 +3,7 @@
 //   npm run check:ui                      alle Seiten
 //   CHECK_ROUTES=/,/speicher npm run check:ui
 //   CHECK_SHOTS=0 npm run check:ui        ohne Screenshots
-//   CHECK_TARIFF=dynamic npm run check:ui mit dynamischem Tarif (Ladefenster, Fensterwahl, Energie-Boost)
+//   CHECK_TARIFF=dynamic npm run check:ui mit dynamischem Tarif (Ladefenster, Fensterwahl)
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -59,7 +59,7 @@ if (seeded.status !== 0) {
   process.exit(1);
 }
 // CHECK_TARIFF=dynamic: dieselbe Demo mit dynamischem Tarif und Netzladen „In Ladefenstern“, damit Ladefenster,
-// Fensterwahl, Preisbereich und Energie-Boost geprüft werden; mit statischem Tarif gibt es sie nicht.
+// Fensterwahl und Preisbereich geprüft werden; mit statischem Tarif gibt es sie nicht.
 if (process.env.CHECK_TARIFF === 'dynamic') {
   const php = "require 'app/src/bootstrap.php'; $t = new Tariff(store()); $c = $t->tariffAt(time()); $c['mode'] = 'dynamic'; "
     + "$t->saveHistory(Tariff::withEntry($t->history(), date('Y-m-d'), $c), time()); store()->merge('charge', ['grid' => 'windows']); "

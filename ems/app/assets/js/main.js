@@ -1,6 +1,7 @@
 // Solar Amber: Einstieg. bin/build.mjs bündelt die Module mit esbuild zu einem Modul-Skript.
 import { initCharts } from './charts/index.js';
 import { initBattery } from './components/battery.js';
+import { initBatteryPlans } from './components/battery-plan.js';
 import { initChargepoints } from './components/chargepoint.js';
 import { initControl } from './components/control.js';
 import { initEnergyFlow } from './components/energy-flow.js';
@@ -24,6 +25,7 @@ if (!initHomeAssistant()) {
   initNotify();
   initTargets();
   initPlans();
+  initBatteryPlans();
   initTariff();
   initHeatmaps();
   initWeekMaps();

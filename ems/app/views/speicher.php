@@ -4,8 +4,8 @@ declare(strict_types=1);
  * Speicher (8): oben die Heimspeicher-Säule mit drei Zonen und daneben, gleich hoch, der Speicherverlauf; darunter in
  * voller Breite „So wird geladen“ und der Ausblick: wann Speicher-Vorrang, batteriegestütztes Laden und voll erreicht
  * sind, Überschuss und Hausverbrauch, die nächsten Tage (Speicher am Anfang, Sonne, Haus, Bilanz, Netz und Speicher am
- * Ende, BatteryPlan::days()), der Energie-Boost mit der Empfehlung (nur mit dynamischem Tarif) und die Ladepläne des
- * Speichers (BatteryPlans) mit dem, was der nächste gerade plant; je Plan ein Sheet.
+ * Ende, BatteryPlan::days()) und die Ladepläne des Speichers (BatteryPlans) mit dem, was der nächste gerade plant, und
+ * dem Protokoll; je Plan ein Sheet.
  * Ebene 2: Grenzen mit Reglern und die Zonen-Tabelle.
  * @var array $snap
  * @var array $live
@@ -24,29 +24,20 @@ $saved = (float) $overview['periods']['all']['saved'];
 $mode = (string) ($snap['cfg']['charge']['mode'] ?? 'smart');
 $now = time();
 $outlook = $live['outlook'];
-// Energie-Boost (BatteryPlan): Fenster zur Wahl, laufender Boost, Stand, was das Schalten gerade verhindert, Empfehlung.
-$windows = new PriceWindows(store());
-$enabled = $windows->enabled($now);
-$offered = $windows->offered($now, 8);
-$boost = BatteryPlan::boost(store(), $now);
-$gridSettings = BatteryPlan::settings($snap['cfg']);
+// Laden aus dem Netz (BatteryPlan): Stand, Protokoll und was das Schalten gerade verhindert.
 $gridState = (new BatteryPlan(store(), ha()))->state();
 try {
     $gridBlocker = BatteryPlan::blocker($snap['cfg'], ha()->index());
 } catch (Throwable) {
     $gridBlocker = 'Home Assistant ist nicht erreichbar.';
 }
-$plan = $snap['battery_plan'] ?? null;
-$advice = BatteryPlan::recommendation($plan, $gridSettings, $now);
-$boostTarget = $boost['target_soc'] ?? (($plan['reason'] ?? '') === 'charge' ? (float) $plan['target_soc'] : 80.0);
 // Ladepläne des Speichers: Liste und was der nächste fällige gerade plant.
 $batteryPlans = BatteryPlans::all(store());
 $planState = BatteryPlans::state(store());
-$planRows = BatteryPlans::rows($batteryPlans, $planState, $now);
+$planRows = BatteryPlans::rows($batteryPlans, $planState, BatteryPlans::windows(store(), new Tariff(store()), $now), $now, (int) store()->get(BatteryPlans::DONE, 0));
 $planText = BatteryPlans::text($planState, $now);
 $read = static fn (string $key, int $value): string => '<span data-zone-read="' . e($key) . '">' . $value . '</span>' . NNBSP . '%';
 $limit = static fn (string $key, int $value): string => ui_inline('<span class="sr-only">Grenze ändern, </span>' . $read($key, $value), ['data-open-dialog' => 'battery-limits']);
-$post = static fn (string $do): string => csrf_field() . '<input type="hidden" name="section" value="battery_boost"><input type="hidden" name="back" value="/speicher"><input type="hidden" name="do" value="' . e($do) . '">';
 
 echo ui_page_head('Speicher', ui_head_chip('coins', e(num($saved, 2)) . NNBSP . '€', 'Ersparnis ' . euro($saved) . '. Energieübersicht öffnen'));
 
@@ -144,53 +135,11 @@ $floorSoc = (float) ($snap['floor_soc'] ?? 0);
 <?php else: ?>
     <p class="caption muted">Sonne laut Prognose, Haus aus dem üblichen Tagesverlauf; heute nur noch der Rest des Tages. Was fehlt, deckt der Speicher, solange er reicht, danach das Netz. Mit Ladestand und Größe des Speichers stünde hier auch, was er dazu beiträgt.</p>
 <?php endif; ?>
-    <?= ui_divider('Energie-Boost') ?>
-<?php if (!$enabled): ?>
-    <p class="body-sm muted">Den Speicher einmalig in einem Ladefenster aus dem Netz laden gibt es nur mit dynamischem Tarif. Mit deinem statischen lädt er über die Ladepläne darunter, bevorzugt in seinen Zeitfenstern unter <?= ui_inline('Einstellungen → Tarif', ['href' => url('/einstellungen/tarif')]) ?>.</p>
-<?php else: ?>
-    <div class="boost-advice<?= $advice['charge'] ? ' boost-advice-charge' : '' ?>">
-      <p class="body boost-advice-head"><?= icon($advice['charge'] ? 'battery-charging' : 'info', 'icon-20') ?><span><?= e($advice['head']) ?></span></p>
-<?php if ($advice['lines']): ?>
-      <ul class="plain-list stack-tight body-sm" role="list">
-<?php foreach ($advice['lines'] as $line): ?>
-        <li><?= e($line) ?></li>
-<?php endforeach; ?>
-      </ul>
-<?php endif; ?>
-<?php if ($advice['charge'] && $boost === null): ?>
-      <form method="post" action="<?= e(url('/einstellungen')) ?>"><?= $post('recommend') ?><button class="btn btn-primary" type="submit">Empfehlung übernehmen</button></form>
-<?php endif; ?>
-    </div>
-<?php if ($boost !== null): ?>
-    <div class="boost-active">
-      <p class="body"><strong>Energie-Boost:</strong> <?= e(ucfirst(PriceWindows::label($boost, $now)) . ' bis ' . pct($boost['target_soc'])) ?>, <?= e(!empty($gridState['active']) ? 'lädt gerade.' : ($boost['start'] <= $now ? 'wartet auf den Start.' : 'geplant.')) ?></p>
-      <form method="post" action="<?= e(url('/einstellungen')) ?>"><?= $post('clear') ?><button class="btn btn-secondary" type="submit">Boost abbrechen</button></form>
-    </div>
-<?php elseif ($offered): ?>
-    <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack">
-      <?= $post('set') ?>
-      <div class="form-rows">
-        <?= ui_form_row('Fenster', ui_select('window', array_combine(array_map(static fn (array $w): string => $w['start'] . '-' . $w['end'], $offered), array_map(static fn (array $w): string => ucfirst(PriceWindows::label($w, $now)) . ($w['ct'] !== null ? ' · Ø ' . ct((float) $w['ct']) : ''), $offered)), (string) (($plan['window']['start'] ?? '') . '-' . ($plan['window']['end'] ?? '')), ['id' => 'f-boost-window']), ['for' => 'f-boost-window', 'stack' => true]) ?>
-      </div>
-      <?= ui_range('target_soc', 'Laden bis', $boostTarget, 20, 100, 5, '%', 'Einmalig: Ist der Stand erreicht oder das Fenster vorbei, endet der Boost.') ?>
-      <div class="form-actions"><button class="btn btn-primary" type="submit">Boost aktivieren</button></div>
-    </form>
-<?php else: ?>
-    <p class="body-sm muted">Gerade gibt es kein aktives Ladefenster. Die Fenster stehen unter <?= ui_inline('Prognose → Strompreis', ['href' => url('/prognose/strompreis') . '#windows-title']) ?>.</p>
-<?php endif; ?>
-<?php if ($boost !== null && $gridBlocker !== ''): ?>
-    <?= ui_notice('info', e('Noch schaltet EMS nicht: ' . $gridBlocker)) ?>
-<?php endif; ?>
-<?php if (!empty($gridState['error'])): ?>
-    <?= ui_notice('triangle-alert', e((string) $gridState['error']), 'warn') ?>
-<?php endif; ?>
-    <p class="caption muted">Der Boost lädt den Speicher einmalig im gewählten Fenster aus dem Netz, bis zum gewählten Stand; ins Netz geht davon nichts zurück. Ladeleistung, Wirkungsgrad, Verschleiß und die Entitäten stehen unter <?= ui_inline('Einstellungen → Speicher', ['href' => url('/einstellungen/speicher')]) ?>.</p>
-<?php endif; ?>
     <?= ui_divider('Ladepläne') ?>
     <div class="cp-plans stack-tight" id="battery-plans">
-      <p class="body-sm muted">An gewählten Tagen bis zu einer Uhrzeit einen Ladestand erreichen, aus dem Netz in den günstigsten Viertelstunden davor.</p>
-<?php if ($planText !== ''): ?>
-      <p class="body-sm"><?= e($planText) ?></p>
+      <p class="body-sm muted">Den Speicher aus dem Netz laden, wenn Strom günstig ist: im Zeitfenster deines Tarifs oder, dynamisch, in den Ladefenstern, an gewählten Tagen oder einmalig, auf einen Ladestand oder nach Bedarf.</p>
+<?php if ($planText !== ''): $charging = in_array($planState['status'] ?? '', ['ok', 'tight'], true); ?>
+      <div class="boost-advice<?= $charging ? ' boost-advice-charge' : '' ?>"><p class="body-sm boost-advice-head"><?= icon($charging ? 'battery-charging' : 'info', 'icon-20') ?><span><?= e($planText) ?></span></p></div>
 <?php endif; ?>
 <?php if ($planRows): ?>
       <ul class="cp-plan-list" role="list">
@@ -202,6 +151,9 @@ $floorSoc = (float) ($snap['floor_soc'] ?? 0);
       <button type="button" class="text-action" data-open-dialog="bp-plan-new" aria-haspopup="dialog"><?= icon('plus', 'icon-16') ?><span>Ladeplan hinzufügen</span></button>
 <?php if ($batteryPlans && $gridBlocker !== ''): ?>
       <?= ui_notice('info', e('Noch lädt EMS nicht: ' . $gridBlocker)) ?>
+<?php endif; ?>
+<?php if (!empty($gridState['error'])): ?>
+      <?= ui_notice('triangle-alert', e((string) $gridState['error']), 'warn') ?>
 <?php endif; ?>
     </div>
 <?php if (!empty($gridState['log'])): ?>

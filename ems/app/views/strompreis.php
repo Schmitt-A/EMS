@@ -176,7 +176,7 @@ for ($i = 0; $i < 3; $i++) {
 <?php
 $windowsUi = ob_get_clean();
 $chosen = $price['users']['car_chosen'];
-$boostWindow = $price['users']['battery'];
+$batteryText = (string) $price['users']['battery'];
 ?>
 <?php if (!$dynamicActive): ?>
 <section class="card stack" aria-labelledby="windows-title">
@@ -196,13 +196,13 @@ $boostWindow = $price['users']['battery'];
 <?php else: ?>
 <section class="card stack" aria-labelledby="windows-title">
   <h2 class="card-title" id="windows-title">Ladefenster</h2>
-  <p class="body-sm muted">Je Tag sucht EMS das günstigste Fenster am Stück, sobald die Preise da sind; gegen 13 Uhr kommen die für morgen dazu, mit einer Preis-Entität von Tibber oder Octopus auch deren Preise. Dazu kommen die Zeiten in deinem Preisbereich und eigene Fenster. Aus den aktiven Fenstern wählst du in der Ladepunkt-Karte die fürs Auto und unter Speicher → Ausblick das für den Energie-Boost.</p>
+  <p class="body-sm muted">Je Tag sucht EMS das günstigste Fenster am Stück, sobald die Preise da sind; gegen 13 Uhr kommen die für morgen dazu, mit einer Preis-Entität von Tibber oder Octopus auch deren Preise. Dazu kommen die Zeiten in deinem Preisbereich und eigene Fenster. Aus den aktiven Fenstern wählst du in der Ladepunkt-Karte die fürs Auto; die Ladepläne des Speichers unter Speicher → Ausblick laden ebenfalls darin.</p>
   <?= $windowsUi ?>
   <ul class="plain-list stack-tight body-sm" role="list">
     <li>Auto: <?= e($price['users']['car'] !== 'windows'
         ? 'Netzladen steht auf „' . Energy::gridLabel((string) $price['users']['car']) . '“.'
         : ($chosen ? 'lädt in ' . implode(', ', array_map(static fn (array $w): string => PriceWindows::label($w, $ts), $chosen)) . '.' : 'In Ladefenstern, aber noch kein Fenster gewählt.')) ?> <?= ui_inline('Laden', ['href' => url('/') . '#cp']) ?></li>
-    <li>Speicher: <?= e($boostWindow !== null ? 'Energie-Boost ' . PriceWindows::label($boostWindow, $ts) . ' bis ' . pct((float) $boostWindow['target_soc']) . '.' : 'kein Energie-Boost geplant.') ?> <?= ui_inline('Speicher → Ausblick', ['href' => url('/speicher') . '#outlook-title']) ?></li>
+    <li>Speicher: <?= e($batteryText !== '' ? $batteryText : 'kein Ladeplan in den nächsten 24 Stunden.') ?> <?= ui_inline('Speicher → Ausblick', ['href' => url('/speicher') . '#battery-plans']) ?></li>
 <?php if ($price['plan'] !== null): ?>
     <li><?= e(ChargePlan::text($price['plan'])) ?></li>
 <?php endif; ?>

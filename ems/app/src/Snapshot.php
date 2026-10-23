@@ -323,7 +323,6 @@ final class Snapshot
             }
         }
         // Speicher in Ladefenstern aus dem Netz laden: die Entscheidung für das laufende oder nächste aktive Fenster.
-        $base['battery_plan'] = BatteryPlan::plan($cfg, $values, $series, $houseHours, $windows, $pricing, $now);
         $charging = ((float) ($values['wallbox_kw'] ?? 0) > 0.05)
             || Sessions::carState($values['wallbox_car_raw'] ?? null) === 'charging';
         $actualToday = null;

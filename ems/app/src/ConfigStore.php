@@ -274,7 +274,7 @@ final class ConfigStore
             'control' => ['active' => false],
             // backup_soc: Standardwert des Backup-Puffers (null: nicht gesetzt; Netzladen hebt den Puffer an),
             // discharge_kw: höchste Entladeleistung des Speichers (null: unbekannt).
-            // Laden aus dem Netz (BatteryPlan, Energie-Boost): grid_kw (Ladeleistung, null: Entladeleistung oder
+            // Laden aus dem Netz (BatteryPlan, Ladepläne des Speichers): grid_kw (Ladeleistung, null: Entladeleistung oder
             // 2,5 kW), grid_max_soc (Obergrenze der Empfehlung), Wirkungsgrad hin und zurück, Verschleiß je kWh.
             'battery_strategy' => [
                 'priority_soc' => 80.0,

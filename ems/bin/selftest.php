@@ -1225,8 +1225,6 @@ check(BatteryPlan::step([], $boost, true, 40.0, 1500) === ['action' => 'start'] 
 $boostStore = new ConfigStore(':memory:');
 $boostStore->put(BatteryPlan::BOOST, $boost + ['set_at' => 900]);
 check(BatteryPlan::boost($boostStore, 1500)['target_soc'] === 70.0 && BatteryPlan::boost($boostStore, 2000) === null, 'Der Boost gilt nur bis zum Ende seines Fensters');
-$advice = BatteryPlan::recommendation(['window' => ['start' => $p0, 'end' => $p0 + 3 * 3600]] + $winter, BatteryPlan::settings([]), $p0 - 3600);
-check($advice['charge'] && str_starts_with($advice['head'], 'Empfehlung: im Fenster heute 18:00–21:00 bis ') && BatteryPlan::recommendation(null, BatteryPlan::settings([]), $p0)['charge'] === false, 'Empfehlung in einem Satz, übernehmbar nur beim Laden');
 check(BatteryPlan::meaning('manual') === 'manual' && BatteryPlan::meaning('2') === 'auto' && BatteryPlan::option('auto', ['manual', 'automatic', 'timeofuse']) === 'automatic' && BatteryPlan::option('manual', ['automatic']) === null, 'Betriebsmodus nach Bedeutung');
 
 // Üblicher Hausverbrauch: je Stunde der Median, Ladetage ohne Wallbox-Messung schlagen nicht durch.
@@ -1354,8 +1352,43 @@ check(count($twRows) === 3 && $twRows[0]['label'] === '22:00–06:00, Mo–Fr' &
 // Ladeplan des Speichers: Viertelstunde für Viertelstunde, das Haus nimmt nachts, die günstigsten und spätesten zuerst.
 $bpIn = Tariff::normalize([]);
 $bp = BatteryPlans::clean(['days' => ['1', '7'], 'time' => '6:00', 'target_soc' => '80', 'soc_below' => '40']);
+$bpOld = BatteryPlans::clean(['days' => [3], 'time' => '06:00', 'target_soc' => 90, 'pv_below' => 10]);
+$bpOnce = BatteryPlans::clean(['when' => 'window', 'once' => '1', 'days' => [1], 'amount' => 'need', 'target_soc' => 90, 'start' => 'early']);
 check($bp['error'] === null && $bp['plan']['days'] === [1, 7] && $bp['plan']['time'] === '06:00' && $bp['plan']['soc_below'] === 40.0 && BatteryPlans::clean(['days' => [], 'time' => '06:00', 'target_soc' => 80])['error'] !== null
-    && BatteryPlans::clean(['days' => [1], 'time' => '06:00', 'target_soc' => 5])['error'] !== null && BatteryPlans::headline($bp['plan']) === 'Bis 80' . NNBSP . '% um 06:00', 'Ladeplan des Speichers: Tage, Uhrzeit, Ziel und Bedingung');
+    && BatteryPlans::clean(['days' => [1], 'time' => '06:00', 'target_soc' => 5])['error'] !== null && BatteryPlans::headline($bp['plan']) === 'Bis 80' . NNBSP . '% um 06:00'
+    && $bpOld['plan']['when'] === 'time' && $bpOld['plan']['amount'] === 'soc' && !array_key_exists('pv_below', $bpOld['plan'])
+    && $bpOnce['plan']['once'] && $bpOnce['plan']['days'] === [] && $bpOnce['plan']['start'] === 'early' && BatteryPlans::headline($bpOnce['plan']) === 'Im Fenster nach Bedarf',
+    'Ladeplan des Speichers: Fenster oder Uhrzeit, Tage oder einmalig, Ladestand oder Bedarf; alte Pläne gelten als Uhrzeit');
+// Fenster des statischen Tarifs für den Speicher: 00:00–06:00 an Werktagen, 22:00–02:00 täglich (über Mitternacht).
+$bpStore = new ConfigStore(':memory:');
+$bpStore->put('tariffs', Tariff::normalize(['mode' => 'static', 'import_ct' => 34.7, 'windows' => [
+    ['from' => '00:00', 'to' => '06:00', 'days' => [1, 2, 3, 4, 5], 'for' => ['battery'], 'kind' => 'minus', 'ct' => 15],
+    ['from' => '22:00', 'to' => '02:00', 'days' => [6], 'for' => ['battery', 'car'], 'kind' => 'price', 'ct' => 20],
+]]));
+$bpNow = (int) strtotime('2026-10-23 12:00:00 Europe/Berlin');
+$bpWins = BatteryPlans::windows($bpStore, new Tariff($bpStore), $bpNow);
+$sat22 = (int) strtotime('2026-10-24 22:00:00 Europe/Berlin');
+$mon00 = (int) strtotime('2026-10-26 00:00:00 Europe/Berlin');
+check($bpWins[0]['start'] === $sat22 && $bpWins[0]['end'] === $sat22 + 4 * 3600 && $bpWins[1]['start'] === $mon00 && $bpWins[1]['end'] === $mon00 + 6 * 3600,
+    'Speicher-Fenster aus dem Tarif: an ihren Tagen, über Mitternacht bis zum nächsten Tag');
+// Einmalig: planen, im Fenster laden, danach verschwindet der Plan.
+$bpOnceRaw = BatteryPlans::clean(['when' => 'window', 'once' => '1', 'amount' => 'soc', 'target_soc' => 80, 'start' => 'early'])['plan'];
+$bpStore->put(BatteryPlans::KEY, [$bpOnceRaw]);
+$bpSnap = ['cfg' => $bpStore->all(), 'values' => ['battery_soc' => 30.0, 'battery_total_kwh' => 10.0], 'house_profile' => array_fill(0, 24, 0.4)];
+$bpState = BatteryPlans::refresh($bpStore, $bpSnap, $sat22 - 10 * 3600, true);
+$bpRunNow = BatteryPlans::current($bpState, $sat22 + 600);
+check(($bpState['status'] ?? '') === 'ok' && $bpState['start'] === $sat22 && $bpState['slots'][0] === $sat22 && $bpRunNow !== null && $bpRunNow['target_soc'] === 80.0 && BatteryPlans::current($bpState, $sat22 - 3600) === null
+    && BatteryPlans::refresh($bpStore, $bpSnap, $bpNow, true) === null,
+    'Einmaliger Plan: sofort ab Beginn des nächsten Fensters, mit Stopp am Ziel');
+$bpStore->put(BatteryPlans::STATE, ['status' => 'done'] + $bpState);
+BatteryPlans::refresh($bpStore, $bpSnap, $sat22 + 3600);
+check(BatteryPlans::all($bpStore) === [] && BatteryPlans::state($bpStore) === null, 'Einmaliger Plan verschwindet, sobald er erreicht ist');
+$bpWeekday = ['on' => true, 'when' => 'window', 'once' => false, 'days' => [1, 2, 3, 4, 5], 'time' => '06:00'];
+check(BatteryPlans::occurrence($bpWeekday, $bpWins, $bpNow) === ['start' => $mon00, 'end' => $mon00 + 6 * 3600]
+    && BatteryPlans::occurrence(['once' => true] + $bpWeekday, $bpWins, $bpNow)['start'] === $sat22
+    && BatteryPlans::occurrence($bpWeekday, $bpWins, $bpNow, $mon00 + 6 * 3600)['start'] === $mon00 + 86400
+    && BatteryPlans::occurrence(['when' => 'time', 'days' => [6]] + $bpWeekday, $bpWins, $bpNow) === ['start' => null, 'end' => (int) strtotime('2026-10-24 06:00:00 Europe/Berlin')],
+    'Das nächste Mal eines Plans: im Fenster an seinen Tagen, einmalig das nächste, ein erledigtes zählt nicht, sonst die Uhrzeit');
 $bpT0 = (int) strtotime('2026-10-24 00:00:00 Europe/Berlin');
 $bpQuarters = [];
 for ($q = $bpT0; $q < $bpT0 + 6 * 3600; $q += 900) {
@@ -1367,6 +1400,9 @@ $bpRun = BatteryPlans::schedule($bpBase);
 // die spätesten sechs der acht günstigen von 01:00 bis 03:00.
 check($bpRun['status'] === 'ok' && $bpRun['avg_ct'] === 15.0 && count($bpRun['slots']) === 6 && $bpRun['slots'][0] === $bpT0 + 5400 && end($bpRun['slots']) === $bpT0 + 10800 - 900 && $bpRun['end_kwh'] >= 8.0 && $bpRun['drain_kwh'] > 0,
     'Speicher-Ladeplan: die günstigen Viertelstunden, davon die späten, bis der Ladestand zur Uhrzeit reicht, mit dem Verbrauch des Hauses');
+$bpEarly = BatteryPlans::schedule(['order' => 'early', 'allowed' => array_map(static fn (array $q): int => $q[0], array_slice($bpQuarters, 8))] + $bpBase);
+check($bpEarly['status'] === 'ok' && $bpEarly['slots'][0] === $bpT0 + 2 * 3600 && count(array_filter($bpEarly['slots'], static fn (int $q): bool => $q < $bpT0 + 2 * 3600)) === 0,
+    'Speicher-Ladeplan: sofort ab Beginn des Fensters, nur im erlaubten Fenster');
 check(BatteryPlans::schedule(['e_kwh' => 8.5] + $bpBase)['status'] === 'done' && BatteryPlans::schedule(['power_kw' => 0.5] + $bpBase)['status'] === 'tight'
     && BatteryPlans::schedule(['quarters' => array_map(static fn (array $q): array => [$q[0], 8.0, 0.4, $q[3]], $bpQuarters)] + $bpBase)['status'] === 'sun', 'Speicher-Ladeplan: schon voll, zu knapp, die Sonne schafft es');
 check(BatteryPlans::conditions($bp['plan'], 30.0, null)['ok'] && !BatteryPlans::conditions($bp['plan'], 50.0, null)['ok'] && BatteryPlans::current(['status' => 'ok', 'slots' => [$bpT0, $bpT0 + 900], 'target_soc' => 80, 'plan_id' => 'b1', 'deadline' => $bpT0 + 7200], $bpT0 + 1000)['end'] === $bpT0 + 1800,

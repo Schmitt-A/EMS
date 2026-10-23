@@ -6,7 +6,7 @@ declare(strict_types=1);
  * nach dem dynamischen Preis (Börse plus Aufschläge oder die Preis-Entität des Anbieters), optional jede Zeit in einem
  * Preisbereich, dazu eigene Fenster; jedes einzeln abschaltbar. Es gibt sie nur mit dynamischem Tarif (enabled()), mit
  * statischem fehlen sie überall. Aus den aktiven Fenstern (offered()) wählt man in der Ladepunkt-Karte
- * die fürs Auto und unter Speicher → Ausblick das für den Energie-Boost.
+ * die fürs Auto; die Ladepläne des Speichers unter Speicher → Ausblick laden ebenfalls darin.
  * kv.price_windows: length_h (Länge des Vorschlags), off (Tage Y-m-d, deren Vorschlag aus ist), range_from und
  * range_to (Preisbereich in ct/kWh brutto, ohne range_to aus), range_off (Beginn abgeschalteter Fenster im
  * Preisbereich), custom (eigene Fenster als start/end in Sekunden, auf die Viertelstunde).

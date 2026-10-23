@@ -135,7 +135,7 @@ final class Notify
         ],
         'boost' => [
             'group' => 'speicher', 'label' => 'Speicher lädt aus dem Netz', 'icon' => 'battery-charging', 'on' => true, 'important' => false,
-            'hint' => 'Wenn ein Energie-Boost oder ein Ladeplan den Speicher aus dem Netz zu laden beginnt und wenn er endet. Nur, wenn EMS regelt.',
+            'hint' => 'Wenn ein Ladeplan des Speichers ihn aus dem Netz zu laden beginnt und wenn er endet. Nur, wenn EMS regelt.',
             'title' => 'Speicher lädt aus dem Netz', 'message' => '{grund} Speicher {speicher}.',
             'vars' => ['grund', 'speicher', 'speicher_kwh', 'preis'], 'labels' => ['grund' => 'Was der Speicher tut'], 'params' => [],
         ],
@@ -594,7 +594,7 @@ final class Notify
     }
 
     /**
-     * Ladeplan, Energie-Boost, Ladefenster und der Preis von morgen für die Platzhalter; je Aufruf-Zeitpunkt einmal
+     * Ladeplan, Ladeplan des Speichers, Ladefenster und der Preis von morgen für die Platzhalter; je Aufruf-Zeitpunkt einmal
      * gerechnet, weil die Seite Mitteilungen alle Meldungen auf einmal zeigt.
      */
     private function planContext(int $now): array
@@ -610,10 +610,10 @@ final class Notify
         $plan = ChargePlan::get($this->store);
         $out['plan'] = $plan === null ? 'kein Ladeplan' : (ChargePlan::text($plan) ?: '—');
         $state = (new BatteryPlan($this->store, $this->ha))->state();
-        $boost = BatteryPlan::boost($this->store, $now);
+        $planText = BatteryPlans::text(BatteryPlans::state($this->store), $now);
         $out['boost'] = !empty($state['active'])
             ? 'lädt bis ' . pct((float) $state['target_soc']) . ' aus dem Netz'
-            : ($boost !== null ? 'geplant ' . PriceWindows::label($boost, $now) . ' bis ' . pct((float) $boost['target_soc']) : 'keiner geplant');
+            : ($planText !== '' ? $planText : 'kein Ladeplan in den nächsten 24 Stunden');
         if ($windows->enabled($now)) {
             $next = $windows->offered($now, 1)[0] ?? null;
             $out['fenster'] = $next === null ? 'keins' : PriceWindows::label($next, $now) . ($next['ct'] !== null ? ', Ø ' . ct((float) $next['ct']) : '');
@@ -809,7 +809,7 @@ final class Notify
             $s['prices_day'] = $today;
         }
 
-        // Energie-Boost: Beginn und Ende.
+        // Speicher lädt aus dem Netz: Beginn und Ende.
         $boost = isset($in['boost_active']) ? (bool) $in['boost_active'] : null;
         if ($boost !== null && $s['boost'] !== null && $boost !== (bool) $s['boost']) {
             $emit('boost', ['grund' => (string) ($in['boost_text'] ?? '')]);
@@ -936,7 +936,7 @@ final class Notify
             }
         }
         $done = $this->store->get(Target::DONE, null);
-        // Netzladen, Ladeplan, Preise für morgen, Ladefenster und Energie-Boost.
+        // Netzladen, Ladeplan, Preise für morgen, Ladefenster und Laden des Speichers aus dem Netz.
         $plan = ChargePlan::get($this->store);
         $gridTarget = Target::get($this->store, 'grid');
         $tariff = new Tariff($this->store);

@@ -45,7 +45,7 @@ final class PriceView
             'users' => [
                 'car' => Energy::grid($cfg['charge']['grid'] ?? 'off'),
                 'car_chosen' => ChargePlan::chosen($this->store, $now),
-                'battery' => BatteryPlan::boost($this->store, $now),
+                'battery' => BatteryPlans::text(BatteryPlans::state($this->store), $now),
             ],
             'now' => $tariff->now($now),
             'today' => self::stats($tariff, $today->getTimestamp(), $tomorrow->getTimestamp()),
