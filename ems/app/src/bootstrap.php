@@ -29,6 +29,7 @@ require EMS_APP . '/src/PriceWindows.php';
 require EMS_APP . '/src/ChargePlan.php';
 require EMS_APP . '/src/GridPlans.php';
 require EMS_APP . '/src/BatteryPlans.php';
+require EMS_APP . '/src/ProviderControl.php';
 require EMS_APP . '/src/BatteryPlan.php';
 require EMS_APP . '/src/Controller.php';
 require EMS_APP . '/src/Notify.php';

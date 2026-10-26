@@ -30,6 +30,9 @@ final class DemoHaClient implements HaSource
         'number.demo_battery_reserve' => [null, '%', 'Speicher Backup-Puffer', 1],
         'select.demo_battery_mode' => [null, '', 'Speicher Betriebsmodus', 1],
         'number.demo_battery_charge' => [null, 'W', 'Speicher Laden erzwingen', 1],
+        // Wie die Octopus-Integration: Smart Control (Hauptschalter) und Boost Charge (nur mit Smart Control verfügbar).
+        'switch.demo_octopus_smart_control' => [null, '', 'Octopus Smart Control', 1],
+        'switch.demo_octopus_boost_charge' => [null, '', 'Octopus Boost Charge', 1],
     ];
 
     public function __construct(private DemoModel $model) {}
@@ -84,7 +87,11 @@ final class DemoHaClient implements HaSource
         }
         $writes = store()->get('demo_writes', []);
         $writes = is_array($writes) ? $writes : [];
-        $writes[$id] = $domain === 'select' ? (string) ($data['option'] ?? '') : (float) ($data['value'] ?? 0);
+        $writes[$id] = match ($domain) {
+            'select' => (string) ($data['option'] ?? ''),
+            'switch' => $service === 'turn_on' ? 'on' : 'off',
+            default => (float) ($data['value'] ?? 0),
+        };
         store()->put('demo_writes', $writes);
     }
 
@@ -208,6 +215,8 @@ final class DemoHaClient implements HaSource
             // Wie die sonnenBatterie: manual, automatic oder timeofuse; „Laden erzwingen“ in W.
             'select.demo_battery_mode' => (string) ($writes['select.demo_battery_mode'] ?? 'automatic'),
             'number.demo_battery_charge' => (float) ($writes['number.demo_battery_charge'] ?? 0),
+            'switch.demo_octopus_smart_control' => (string) ($writes['switch.demo_octopus_smart_control'] ?? 'on'),
+            'switch.demo_octopus_boost_charge' => ($writes['switch.demo_octopus_smart_control'] ?? 'on') === 'off' ? 'unavailable' : (string) ($writes['switch.demo_octopus_boost_charge'] ?? 'off'),
         ];
         $stamp = gmdate('Y-m-d\TH:i:s\Z', $now);
         $index = [];

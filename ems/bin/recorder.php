@@ -7,6 +7,7 @@ $snapshot = new Snapshot(store(), ha());
 $sessions = new Sessions(store());
 $reserve = new Reserve(store(), ha());
 $batteryGrid = new BatteryPlan(store(), ha());
+$provider = new ProviderControl(store(), ha());
 $controller = new Controller(store(), ha());
 $notify = new Notify(store(), ha());
 $sessions->repairVehicleNames((string) (cfg()['vehicle']['name'] ?? ''));
@@ -43,6 +44,8 @@ while (true) {
             ChargePlan::refresh(store(), $snap, time());
             // Regelung der Wallbox wie evcc: Timer alle 10 s, Schritt alle 30 s, schreibt nur bei aktivem EMS.
             $controller->tick($snap, time());
+            // Stromanbieter (etwa Octopus): Boost Charge nach Zeitraum, Smart Control an.
+            $provider->sync($snap, time());
             // Backup-Puffer: beim Netzladen anheben, danach zurücksetzen (auch nach einem Neustart mittendrin).
             $reserve->sync($snap['values'], $snap['cfg'], time(), $sessions->open() !== null);
             // Ladepläne des Speichers: die günstigsten Viertelstunden vor ihrer Uhrzeit, alle 15 min neu.

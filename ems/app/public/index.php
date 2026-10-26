@@ -29,6 +29,7 @@ if ($path === '/api/live') {
             'loadpoint_name' => (string) ($snap['cfg']['chargepoint']['name'] ?? 'Wallbox'),
         ]), $snap['cfg']['charge'], time());
         (new Controller(store(), ha()))->tick($snap, time());
+        (new ProviderControl(store(), ha()))->sync($snap, time());
         (new Reserve(store(), ha()))->sync($snap['values'], $snap['cfg'], time(), $sessions->open() !== null);
         BatteryPlans::refresh(store(), $snap, time());
         (new BatteryPlan(store(), ha()))->sync($snap, time());

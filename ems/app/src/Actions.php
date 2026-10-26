@@ -36,7 +36,7 @@ final class Actions
     /** Alle Zuordnungen, die eine Entität aufnehmen; Formulare und Import nehmen nur diese an. */
     private const ENTITY_KEYS = [
         'pv_power', 'pv_energy', 'battery_soc', 'battery_charge', 'battery_discharge', 'battery_signed', 'battery_capacity', 'battery_total', 'battery_reserve',
-        'battery_operating_mode', 'battery_force_charge',
+        'battery_operating_mode', 'battery_force_charge', 'battery_charge_command', 'provider_boost', 'provider_control',
         'car_soc', 'car_capacity', 'car_range', 'car_odometer', 'car_limit', 'car_time_full', 'car_wakeup', 'grid_import', 'grid_export', 'grid_signed', 'house_power',
         'wallbox_power', 'wallbox_car', 'wallbox_amps', 'wallbox_amps_max', 'wallbox_phases', 'wallbox_force', 'wallbox_energy',
         'price_import', 'price_static',
@@ -56,8 +56,14 @@ final class Actions
         'wallbox_phases' => ['/^select\.goe_\w+_psm$/', ['']],
         'wallbox_force' => ['/^select\.goe_\w+_frc$/', ['']],
         'battery_reserve' => ['/^number\.\w*(battery_reserve|backup_buffer|backup_reserve|backup_puffer)$/', ['%']],
-        'battery_operating_mode' => ['/^select\.sonnenbatterie_\w+_operating_mode$/', ['']],
-        'battery_force_charge' => ['/^number\.sonnenbatterie_\w+_number_charge$/', ['w', 'kw']],
+        // sonnenBatterie und Sungrow (Modbus-Paket von mkaiser: select.ems_mode, select.battery_forced_charge_discharge,
+        // number.battery_forced_charge_discharge_power; ältere Fassungen als input_select/input_number set_sg_…).
+        'battery_operating_mode' => ['/^(input_)?select\.(sonnenbatterie_\w+_operating_mode|(\w+_)?ems_mode(_inv_?\d+)?|set_sg_ems_mode)$/', ['']],
+        'battery_force_charge' => ['/^(input_)?number\.(sonnenbatterie_\w+_number_charge|(\w+_)?battery_forced_charge_discharge_power(_inv_?\d+)?|set_sg_forced_charge_discharge_power)$/', ['w', 'kw']],
+        'battery_charge_command' => ['/^(input_)?select\.((\w+_)?battery_forced_charge_discharge(_cmd)?(_inv_?\d+)?|set_sg_battery_forced_charge_discharge_cmd)$/', ['']],
+        // Octopus (Deutschland und UK): Boost Charge und Smart Control.
+        'provider_boost' => ['/^switch\.\w*octopus\w*_(boost_charge|bump_charge)$/', ['']],
+        'provider_control' => ['/^switch\.\w*octopus\w*_(smart_control|smart_charge)$/', ['']],
         'car_soc' => ['/^sensor\.\w*tesla\w*_(charge_level|battery_level|ladezustand(_\d)?)$/', ['%']],
         'car_range' => ['/^sensor\.\w*tesla\w*_(range|battery_range|reichweite)$/', ['km', 'mi']],
         'car_odometer' => ['/^sensor\.\w*tesla\w*_(odometer|kilometerstand)$/', ['km', 'mi']],
@@ -421,6 +427,9 @@ final class Actions
         } elseif ($section === 'battery_plan') {
             flash(self::saveBatteryPlan());
             self::redirectBack();
+        } elseif ($section === 'provider') {
+            flash(self::saveProvider());
+            self::redirectBack();
         } elseif ($section === 'battery_grid') {
             flash(self::saveBatteryGrid());
             self::redirectBack();
@@ -450,7 +459,7 @@ final class Actions
         $mapping = store()->get('mapping', []);
         $mapping = is_array($mapping) ? $mapping : [];
         $mapped = false;
-        foreach (['battery_operating_mode', 'battery_force_charge'] as $key) {
+        foreach (['battery_operating_mode', 'battery_force_charge', 'battery_charge_command'] as $key) {
             if (array_key_exists($key, $_POST)) {
                 $mapping[$key] = post_entity($key);
                 $mapped = true;
@@ -458,6 +467,16 @@ final class Actions
         }
         if ($mapped) {
             store()->put('mapping', $mapping);
+        }
+        // Gewählte Optionen von Betriebsmodus und Lade-Befehl, leer heißt automatisch.
+        $options = [];
+        foreach (['grid_mode_on', 'grid_mode_off', 'grid_cmd_on', 'grid_cmd_off'] as $key) {
+            if (array_key_exists($key, $_POST)) {
+                $options[$key] = mb_substr(trim((string) $_POST[$key]), 0, 100);
+            }
+        }
+        if ($options) {
+            store()->merge('battery_strategy', $options);
         }
         return 'Gespeichert.';
     }
@@ -763,6 +782,7 @@ final class Actions
             'notify' => Notify::stored(Notify::settings($cfg)),
             'grid_plans' => GridPlans::all(store()),
             'battery_plans' => BatteryPlans::all(store()),
+            'provider' => ProviderControl::settings(cfg()),
         ];
     }
 
@@ -874,6 +894,24 @@ final class Actions
                 }
             }
             store()->put(GridPlans::KEY, $plans);
+        }
+        if (isset($data['provider']) && is_array($data['provider'])) {
+            $p = $data['provider'];
+            store()->put('provider', [
+                'on' => !empty($p['on']),
+                'window' => ($p['window'] ?? 'tariff') === 'time' ? 'time' : 'tariff',
+                'from' => Tariff::clock((string) ($p['from'] ?? '')) ?? '00:00',
+                'to' => Tariff::clock((string) ($p['to'] ?? '')) ?? '06:00',
+            ]);
+            $mapping = [];
+            foreach (['boost' => 'provider_boost', 'control' => 'provider_control'] as $from => $key) {
+                if (isset($p[$from]) && (is_entity_id((string) $p[$from]) || $p[$from] === '')) {
+                    $mapping[$key] = (string) $p[$from];
+                }
+            }
+            if ($mapping) {
+                store()->merge('mapping', $mapping);
+            }
         }
         if (isset($data['battery_plans']) && is_array($data['battery_plans'])) {
             $plans = [];
@@ -1223,6 +1261,40 @@ final class Actions
         store()->merge('charge', ['grid' => $after]);
         (new Controller(store(), ha()))->kick(time());
         return $after === 'windows' ? 'Netzladen „Jetzt“ beendet, die Ladefenster gelten weiter.' : 'Netzladen „Jetzt“ beendet.';
+    }
+
+    /**
+     * Stromanbieter plant das Laden (section provider): an/aus, Zeitraum aus dem Tarif oder eigene Zeit, die Schalter
+     * Boost Charge und Smart Control. Danach gleich ein Schritt, damit der Schalter zum Zeitraum passt.
+     */
+    private static function saveProvider(): string
+    {
+        $current = ProviderControl::settings(cfg());
+        $patch = [
+            'on' => ($_POST['provider_on'] ?? '0') === '1',
+            'window' => ($_POST['provider_window'] ?? 'tariff') === 'time' ? 'time' : 'tariff',
+            'from' => Tariff::clock((string) ($_POST['provider_from'] ?? '')) ?? $current['from'],
+            'to' => Tariff::clock((string) ($_POST['provider_to'] ?? '')) ?? $current['to'],
+        ];
+        if ($patch['window'] === 'time' && $patch['from'] === $patch['to']) {
+            return 'Bitte zwei verschiedene Uhrzeiten angeben.';
+        }
+        store()->put('provider', $patch);
+        $mapping = [];
+        foreach (['provider_boost', 'provider_control'] as $key) {
+            if (array_key_exists($key, $_POST)) {
+                $mapping[$key] = post_entity($key);
+            }
+        }
+        if ($mapping) {
+            store()->merge('mapping', $mapping);
+        }
+        $now = time();
+        $snap = (new Snapshot(store(), ha()))->build();
+        (new ProviderControl(store(), ha()))->sync($snap, $now);
+        (new Controller(store(), ha()))->kick($now);
+        $view = ProviderControl::view(cfg(), new Tariff(store()), $now);
+        return $patch['on'] ? 'Gespeichert. ' . $view['text'] : 'Gespeichert, der Anbieter plant nicht mehr.';
     }
 
     /** Ladeplan des Speichers speichern oder löschen (section battery_plan, id, do save oder delete). */

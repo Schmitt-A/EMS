@@ -184,6 +184,9 @@ final class ConfigStore
                 // Laden aus dem Netz (BatteryPlan): Betriebsmodus (select, manual/automatic) und „Laden erzwingen“ (number, W).
                 'battery_operating_mode' => '',
                 'battery_force_charge' => '',
+                'battery_charge_command' => '',
+                'provider_boost' => '',
+                'provider_control' => '',
                 'car_soc' => '',
                 'car_capacity' => '',
                 'car_range' => '',
@@ -275,7 +278,8 @@ final class ConfigStore
             // backup_soc: Standardwert des Backup-Puffers (null: nicht gesetzt; Netzladen hebt den Puffer an),
             // discharge_kw: höchste Entladeleistung des Speichers (null: unbekannt).
             // Laden aus dem Netz (BatteryPlan, Ladepläne des Speichers): grid_kw (Ladeleistung, null: Entladeleistung oder
-            // 2,5 kW), grid_max_soc (Obergrenze der Empfehlung), Wirkungsgrad hin und zurück, Verschleiß je kWh.
+            // 2,5 kW), grid_max_soc (Obergrenze der Empfehlung), Wirkungsgrad hin und zurück, Verschleiß je kWh;
+            // grid_mode_on/off und grid_cmd_on/off: die Optionen von Betriebsmodus und Lade-Befehl (leer: nach Bedeutung).
             'battery_strategy' => [
                 'priority_soc' => 80.0,
                 'reserve_soc' => 100.0,
@@ -287,7 +291,14 @@ final class ConfigStore
                 'grid_max_soc' => 100.0,
                 'grid_efficiency_pct' => 90.0,
                 'grid_wear_ct' => 2.0,
+                'grid_mode_on' => '',
+                'grid_mode_off' => '',
+                'grid_cmd_on' => '',
+                'grid_cmd_off' => '',
             ],
+            // Der Stromanbieter plant im Zeitraum das Laden des Autos (etwa Octopus Intelligent): window tariff (Zeitfenster
+            // des Tarifs fürs Auto) oder time (from bis to); ProviderControl schaltet „Boost Charge“ und gibt die Wallbox frei.
+            'provider' => ['on' => false, 'window' => 'tariff', 'from' => '00:00', 'to' => '06:00'],
             'chargepoint' => ['name' => 'Wallbox'],
             // capacity_kwh: Akku des Autos, wenn keine Entität ihn meldet (Tesla BLE meldet keinen). consumption_kwh:
             // Verbrauch in kWh/100 km, für die Reichweite, wenn keine Entität sie meldet.

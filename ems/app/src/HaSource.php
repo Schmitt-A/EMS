@@ -11,7 +11,7 @@ interface HaSource
     /** Setzt eine number- oder input_number-Entität (Dienst set_value). Wirft bei Fehlern. */
     public function setNumber(string $entityId, float $value): void;
 
-    /** Ruft einen Dienst auf, etwa select.select_option oder button.press. Wirft bei Fehlern. */
+    /** Ruft einen Dienst auf, etwa select.select_option, button.press oder switch.turn_on. Wirft bei Fehlern. */
     public function service(string $domain, string $service, array $data): void;
 
     /** Die Dienste der Domäne notify, etwa mobile_app_pixel_8, ohne notify. davor. @return list<string> */

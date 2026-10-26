@@ -1408,4 +1408,89 @@ check(BatteryPlans::schedule(['e_kwh' => 8.5] + $bpBase)['status'] === 'done' &&
 check(BatteryPlans::conditions($bp['plan'], 30.0, null)['ok'] && !BatteryPlans::conditions($bp['plan'], 50.0, null)['ok'] && BatteryPlans::current(['status' => 'ok', 'slots' => [$bpT0, $bpT0 + 900], 'target_soc' => 80, 'plan_id' => 'b1', 'deadline' => $bpT0 + 7200], $bpT0 + 1000)['end'] === $bpT0 + 1800,
     'Speicher-Ladeplan: Bedingung Ladestand, der laufende Lauf von Viertelstunden');
 
+// Speicher aus dem Netz laden, universell: sonnenBatterie (Modus und Leistung) und Sungrow (Modus, Leistung, Befehl).
+$gridHa = new class implements HaSource {
+    public array $calls = [];
+    public array $states = [];
+    public function setNumber(string $entityId, float $value): void { $this->calls[] = [$entityId, $value]; }
+    public function service(string $domain, string $service, array $data): void { $this->calls[] = [$data['entity_id'], $data['option'] ?? $service]; }
+    public function notifyServices(): array { return []; }
+    public function notify(string $service, array $payload): void {}
+    public function configured(): bool { return true; }
+    public function ping(): array { return ['ok' => true]; } public function coordinates(): ?array { return null; }
+    public function states(): array { return array_values($this->states); }
+    public function state(string $entityId): ?array { return $this->states[$entityId] ?? null; }
+    public function index(): array { return $this->states; }
+    public function history(string $entityId, int $start, ?int $end = null): array { return []; }
+    public function stateHistory(string $entityId, int $start, ?int $end = null): array { return []; }
+    public function statistics(string $entityId, int $start, int $end, string $period = 'hour'): array { return []; }
+    public function search(string $query, int $limit = 20): array { return []; }
+};
+$entity = static fn (string $state, array $attributes = []): array => ['state' => $state, 'attributes' => $attributes];
+$sungrowIndex = [
+    'select.ems_mode' => $entity('Self-consumption mode (default)', ['options' => ['Self-consumption mode (default)', 'Forced mode', 'External EMS', 'VPP']]),
+    'select.battery_forced_charge_discharge' => $entity('Stop (default)', ['options' => ['Stop (default)', 'Forced charge', 'Forced discharge']]),
+    'number.battery_forced_charge_discharge_power' => $entity('0', ['unit_of_measurement' => 'W', 'min' => 0, 'max' => 5000, 'step' => 100]),
+];
+$sungrowCfg = ['control' => ['active' => true], 'battery_strategy' => ['grid_kw' => 6.33], 'mapping' => ['battery_operating_mode' => 'select.ems_mode',
+    'battery_force_charge' => 'number.battery_forced_charge_discharge_power', 'battery_charge_command' => 'select.battery_forced_charge_discharge']];
+$sungrowSteps = BatteryPlan::steps($sungrowCfg, $sungrowIndex);
+check($sungrowSteps['error'] === '' && $sungrowSteps['mode']['on'] === 'Forced mode' && $sungrowSteps['mode']['off'] === null && $sungrowSteps['cmd']['on'] === 'Forced charge'
+    && $sungrowSteps['cmd']['off'] === 'Stop (default)' && $sungrowSteps['power']['on'] === 5000.0 && $sungrowSteps['power']['unit'] === 'W', 'Sungrow: Optionen nach Bedeutung erkannt, Leistung in W auf die Grenze der Entität');
+$sonnenIndex = ['select.sonnen_mode' => $entity('automatic', ['options' => ['manual', 'automatic', 'timeofuse']]), 'number.sonnen_charge' => $entity('0', ['unit_of_measurement' => 'kW'])];
+$sonnenCfg = ['control' => ['active' => true], 'battery_strategy' => ['grid_kw' => 3.0, 'grid_mode_on' => 'manual', 'grid_mode_off' => 'timeofuse'],
+    'mapping' => ['battery_operating_mode' => 'select.sonnen_mode', 'battery_force_charge' => 'number.sonnen_charge']];
+$sonnenSteps = BatteryPlan::steps($sonnenCfg, $sonnenIndex);
+check($sonnenSteps['error'] === '' && $sonnenSteps['cmd'] === null && $sonnenSteps['mode']['off'] === 'timeofuse' && $sonnenSteps['power']['on'] === 3.0 && $sonnenSteps['power']['unit'] === 'kW'
+    && BatteryPlan::steps(['mapping' => ['battery_charge_command' => 'select.battery_forced_charge_discharge']] + $sungrowCfg, ['select.battery_forced_charge_discharge' => $entity('Stop', ['options' => ['Aus', 'An']])] + $sungrowIndex)['error'] !== ''
+    && str_contains(BatteryPlan::steps(['mapping' => []] + $sonnenCfg, $sonnenIndex)['error'], 'Ladeleistung'), 'sonnenBatterie mit gewählten Optionen und kW; ohne passende Option oder Leistung ein Grund');
+$gridStore = new ConfigStore(':memory:');
+$gridStore->put(BatteryPlan::BOOST, ['start' => 1000, 'end' => 9000, 'target_soc' => 80, 'set_at' => 900]);
+$gridHa->states = $sungrowIndex;
+$gridPlan = new BatteryPlan($gridStore, $gridHa);
+$gridPlan->sync(['cfg' => $sungrowCfg, 'values' => ['battery_soc' => 40.0]], 2000);
+$started = $gridHa->calls;
+$gridHa->calls = [];
+$gridHa->states['select.ems_mode'] = $entity('Forced mode', $sungrowIndex['select.ems_mode']['attributes']);
+$gridPlan->sync(['cfg' => $sungrowCfg, 'values' => ['battery_soc' => 80.0]], 3000);
+check($started === [['select.ems_mode', 'Forced mode'], ['number.battery_forced_charge_discharge_power', 5000.0], ['select.battery_forced_charge_discharge', 'Forced charge']]
+    && $gridHa->calls === [['select.battery_forced_charge_discharge', 'Stop (default)'], ['number.battery_forced_charge_discharge_power', 0.0], ['select.ems_mode', 'Self-consumption mode (default)']],
+    'Sungrow: Start mit Modus, Leistung, Befehl; am Ziel Befehl Stop, Leistung 0, Modus von vorher');
+// Stromanbieter (Octopus): Zeitraum, Boost Charge aus im Zeitraum, an danach bei angestecktem Auto, Smart Control an.
+$prov = ['on' => true, 'window' => 'time', 'from' => '00:00', 'to' => '06:00', 'boost' => 'switch.boost', 'control' => 'switch.smart'];
+$night = (int) strtotime('2026-10-26 02:00:00 Europe/Berlin');
+$day = (int) strtotime('2026-10-26 10:00:00 Europe/Berlin');
+$provTariff = Tariff::normalize(['mode' => 'static', 'windows' => [['from' => '23:30', 'to' => '05:30', 'days' => [], 'for' => ['car'], 'kind' => 'price', 'ct' => 20]]]);
+check(ProviderControl::inWindow($prov, $provTariff, $night) && !ProviderControl::inWindow($prov, $provTariff, $day) && !ProviderControl::inWindow(['on' => false] + $prov, $provTariff, $night)
+    && ProviderControl::inWindow(['window' => 'tariff'] + $prov, $provTariff, $night) && !ProviderControl::inWindow(['window' => 'tariff'] + $prov, ['mode' => 'dynamic'] + $provTariff, $night)
+    && ProviderControl::wantBoost(false, 'off') && !ProviderControl::wantBoost(true, 'windows') && ProviderControl::wantBoost(true, 'now'), 'Zeitraum des Anbieters: eigene Zeit oder Zeitfenster fürs Auto; Boost Charge außerhalb an, im Zeitraum nur bei „Jetzt“');
+check(ChargePlan::effective('smart', 'off', true, false, null, false, $night, true) === ['mode' => 'netz', 'reason' => 'provider']
+    && ChargePlan::effective('smart', 'now', true, false, null, false, $night, true)['reason'] === 'now' && ChargePlan::effective('aus', 'off', true, false, null, false, $night, true)['mode'] === 'aus',
+    'Im Zeitraum des Anbieters ist die Wallbox frei (Netzladen mit Grund Anbieter), „Jetzt“ und „Laden aus“ gehen vor');
+$provStore = new ConfigStore(':memory:');
+$provStore->put('provider', ['on' => true, 'window' => 'time', 'from' => '00:00', 'to' => '06:00']);
+$provCfg = ['control' => ['active' => true], 'provider' => ['on' => true, 'window' => 'time', 'from' => '00:00', 'to' => '06:00'], 'charge' => ['grid' => 'off'],
+    'mapping' => ['provider_boost' => 'switch.boost', 'provider_control' => 'switch.smart']];
+$provHa = clone $gridHa;
+$provHa->calls = [];
+$provHa->states = ['switch.smart' => $entity('off'), 'switch.boost' => $entity('unavailable')];
+$provider = new ProviderControl($provStore, $provHa);
+$plugged = ['cfg' => $provCfg, 'vehicle' => ['connected' => true], 'values' => ['wallbox_car_raw' => 'wait_car']];
+$provider->sync($plugged, $day);
+$smartOn = $provHa->calls;
+$provHa->calls = [];
+$provHa->states = ['switch.smart' => $entity('on'), 'switch.boost' => $entity('off')];
+$provider->sync($plugged, $day + 10);
+$boostOn = $provHa->calls;
+$provHa->calls = [];
+$provHa->states['switch.boost'] = $entity('on');
+$provider->sync($plugged, $night + 86400);
+$boostOff = $provHa->calls;
+$provHa->calls = [];
+$provHa->states['switch.boost'] = $entity('off');
+$provider->sync(['cfg' => $provCfg, 'vehicle' => ['connected' => false], 'values' => ['wallbox_car_raw' => 'idle']], $day + 86400);
+check($smartOn === [['switch.smart', 'turn_on']] && $boostOn === [['switch.boost', 'turn_on']] && $boostOff === [['switch.boost', 'turn_off']] && $provHa->calls === []
+    && str_contains($provider->state()['log'][0]['text'], 'Zeitraum des Anbieters'),
+    'Octopus: erst Smart Control an, tagsüber Boost Charge an, nachts aus; ohne Auto kein Boost');
+
 echo "alle prüfungen bestanden\n";

@@ -407,10 +407,11 @@ final class HaClient implements HaSource
         $this->service($domain, 'set_value', ['entity_id' => $entityId, 'value' => $value]);
     }
 
-    /** Nur die Dienste, die EMS braucht: Zahlen, Auswahlen und Knöpfe. */
+    /** Nur die Dienste, die EMS braucht: Zahlen, Auswahlen, Knöpfe und Schalter (etwa „Boost Charge“ des Anbieters). */
     public function service(string $domain, string $service, array $data): void
     {
-        $allowed = ['number' => ['set_value'], 'input_number' => ['set_value'], 'select' => ['select_option'], 'input_select' => ['select_option'], 'button' => ['press']];
+        $allowed = ['number' => ['set_value'], 'input_number' => ['set_value'], 'select' => ['select_option'], 'input_select' => ['select_option'], 'button' => ['press'],
+            'switch' => ['turn_on', 'turn_off'], 'input_boolean' => ['turn_on', 'turn_off']];
         if (!in_array($service, $allowed[$domain] ?? [], true) || !is_entity_id((string) ($data['entity_id'] ?? '')) || !str_starts_with((string) $data['entity_id'], $domain . '.')) {
             throw new InvalidArgumentException('Dienst ' . $domain . '.' . $service . ' ist für EMS nicht vorgesehen.');
         }

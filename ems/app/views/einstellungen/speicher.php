@@ -2,7 +2,8 @@
 declare(strict_types=1);
 /**
  * Einstellungen → Speicher: Grenzen fürs Auto (wie auf der Seite Speicher), der Backup-Puffer mit Standardwert (beim
- * Netzladen angehoben), Laden aus dem Netz in Ladefenstern (BatteryPlan) und die Entladeleistung für die Aufteilung.
+ * Netzladen angehoben), Laden aus dem Netz (BatteryPlan: Betriebsmodus, Ladeleistung und Lade-Befehl mit ihren Optionen,
+ * dazu die Schritte, mit denen EMS schaltet) und die Entladeleistung für die Aufteilung.
  * Jede Karte speichert nur ihre Felder.
  * @var array $cfg
  * @var array $snap
@@ -58,18 +59,77 @@ $numberField = static fn (string $name, ?float $value, int $decimals, array $att
   </ul>
 <?php endif; ?>
 </section>
-<?php $grid = BatteryPlan::settings($cfg); ?>
+<?php
+$grid = BatteryPlan::settings($cfg);
+try {
+    $haIndex = ha()->index();
+} catch (Throwable) {
+    $haIndex = [];
+}
+$steps = BatteryPlan::steps($cfg, $haIndex);
+// Auswahl einer Option der zugeordneten Entität; ohne Entität oder Optionen nichts (sie erscheinen nach dem Speichern).
+$optionRow = static function (string $name, string $label, ?array $step, string $current, string $auto): string {
+    $options = array_map('strval', (array) ($step['options'] ?? []));
+    if ($step === null || $options === []) {
+        return '';
+    }
+    return ui_form_row($label, ui_select($name, ['' => $auto] + array_combine($options, $options), $current, ['id' => 'f-' . $name]), ['for' => 'f-' . $name, 'stack' => true]);
+};
+$quote = static fn (?string $option): string => $option === null ? '—' : '„' . $option . '“';
+$detected = static fn (?array $step, string $key): string => $step === null || $step[$key] === null ? 'keine passende gefunden' : $step[$key];
+?>
 <section class="card stack" aria-labelledby="grid-charge-title">
   <h3 class="card-title" id="grid-charge-title">Laden aus dem Netz</h3>
-  <p class="body-sm muted">Mit den Ladeplänen unter <?= ui_inline('Speicher → Ausblick', ['href' => url('/speicher') . '#battery-plans']) ?> lädt EMS den Speicher aus dem Netz, wenn Strom günstig ist; geschaltet wird nur bei aktivem EMS. Dafür stellt EMS den Betriebsmodus auf manuell und „Laden erzwingen“ auf die Ladeleistung, danach zurück auf den Betriebsmodus von vorher. Wirkungsgrad und Verschleiß gehen in die Empfehlung ein.</p>
+  <p class="body-sm muted">Mit den Ladeplänen unter <?= ui_inline('Speicher → Ausblick', ['href' => url('/speicher') . '#battery-plans']) ?> lädt EMS den Speicher aus dem Netz, wenn Strom günstig ist; geschaltet wird nur bei aktivem EMS. Wie das geht, ist je Speicher verschieden: Die sonnenBatterie braucht Betriebsmodus und Ladeleistung, Sungrow dazu einen eigenen Lade-Befehl. Was nicht zugeordnet ist, lässt EMS aus.</p>
   <?= $open('battery_grid') ?>
-  <?= ui_entity_field('battery_operating_mode', 'Betriebsmodus', (string) ($cfg['mapping']['battery_operating_mode'] ?? ''), 'select mit manual und automatic, bei der sonnenBatterie select.sonnenbatterie_…_select_operating_mode. Sie erscheint erst, wenn die Integration schreiben darf (Token der JSON-API).', $suggest['battery_operating_mode'] ?? '') ?>
-  <?= ui_entity_field('battery_force_charge', 'Laden erzwingen', (string) ($cfg['mapping']['battery_force_charge'] ?? ''), 'number in Watt, bei der sonnenBatterie number.sonnenbatterie_…_number_charge.', $suggest['battery_force_charge'] ?? '') ?>
+  <?= ui_entity_field('battery_operating_mode', 'Betriebsmodus, optional', (string) ($cfg['mapping']['battery_operating_mode'] ?? ''), 'select, etwa select.sonnenbatterie_…_select_operating_mode (erscheint, wenn die Integration schreiben darf) oder bei Sungrow select.ems_mode.', $suggest['battery_operating_mode'] ?? '') ?>
   <div class="form-rows">
-    <?= ui_form_row('Ladeleistung', $numberField('grid_kw', $grid['power_set'] ? $grid['power_kw'] : null, 2), ['for' => 'f-grid_kw', 'hint' => 'kW. Leer heißt die Entladeleistung, sonst 2,5 kW.']) ?>
+    <?= $optionRow('grid_mode_on', 'Option zum Laden', $steps['mode'], $grid['mode_on'], 'Automatisch: ' . $detected($steps['mode'], 'on')) ?>
+    <?= $optionRow('grid_mode_off', 'Option danach', $steps['mode'], $grid['mode_off'], 'Wie vorher') ?>
+  </div>
+  <?= ui_entity_field('battery_force_charge', 'Ladeleistung', (string) ($cfg['mapping']['battery_force_charge'] ?? ''), 'number in W oder kW, etwa number.sonnenbatterie_…_number_charge oder bei Sungrow number.battery_forced_charge_discharge_power. Beim Beenden setzt EMS sie auf 0.', $suggest['battery_force_charge'] ?? '') ?>
+  <?= ui_entity_field('battery_charge_command', 'Lade-Befehl, optional', (string) ($cfg['mapping']['battery_charge_command'] ?? ''), 'select, nur wo der Speicher zusätzlich einen Befehl braucht, etwa bei Sungrow select.battery_forced_charge_discharge.', $suggest['battery_charge_command'] ?? '') ?>
+  <div class="form-rows">
+    <?= $optionRow('grid_cmd_on', 'Option zum Laden', $steps['cmd'], $grid['cmd_on'], 'Automatisch: ' . $detected($steps['cmd'], 'on')) ?>
+    <?= $optionRow('grid_cmd_off', 'Option zum Beenden', $steps['cmd'], $grid['cmd_off'], 'Automatisch: ' . $detected($steps['cmd'], 'off')) ?>
+  </div>
+  <div class="form-rows">
+    <?= ui_form_row('Leistung beim Laden', $numberField('grid_kw', $grid['power_set'] ? $grid['power_kw'] : null, 2), ['for' => 'f-grid_kw', 'hint' => 'kW. Leer heißt die Entladeleistung, sonst 2,5 kW.']) ?>
     <?= ui_form_row('Wirkungsgrad', $numberField('grid_efficiency_pct', $grid['efficiency'] * 100, 0, ['inputmode' => 'numeric']), ['for' => 'f-grid_efficiency_pct', 'hint' => 'Prozent, Laden und Entladen zusammen. Standard 90 %.']) ?>
     <?= ui_form_row('Verschleiß', $numberField('grid_wear_ct', $grid['wear_ct'], 1), ['for' => 'f-grid_wear_ct', 'hint' => 'ct je kWh, die durch den Speicher geht. Standard 2 ct.']) ?>
   </div>
+<?php if ($steps['power'] !== null || $steps['mode'] !== null || $steps['cmd'] !== null): ?>
+  <div class="stack-tight grid-steps">
+    <p class="label">So schaltet EMS</p>
+    <p class="body-sm"><strong>Beim Start:</strong></p>
+    <ol class="body-sm grid-steps-list">
+<?php if ($steps['mode'] !== null): ?>
+      <li><span class="entity-id"><?= e($steps['mode']['entity']) ?></span> auf <?= e($quote($steps['mode']['on'])) ?></li>
+<?php endif; ?>
+<?php if ($steps['power'] !== null): ?>
+      <li><span class="entity-id"><?= e($steps['power']['entity']) ?></span> auf <?= e(num((float) $steps['power']['on'], $steps['power']['unit'] === 'kW' ? 1 : 0) . NNBSP . $steps['power']['unit']) ?></li>
+<?php endif; ?>
+<?php if ($steps['cmd'] !== null): ?>
+      <li><span class="entity-id"><?= e($steps['cmd']['entity']) ?></span> auf <?= e($quote($steps['cmd']['on'])) ?></li>
+<?php endif; ?>
+    </ol>
+    <p class="body-sm"><strong>Am Ziel oder am Ende der geplanten Zeit:</strong></p>
+    <ol class="body-sm grid-steps-list">
+<?php if ($steps['cmd'] !== null): ?>
+      <li><span class="entity-id"><?= e($steps['cmd']['entity']) ?></span> auf <?= e($quote($steps['cmd']['off'])) ?></li>
+<?php endif; ?>
+<?php if ($steps['power'] !== null): ?>
+      <li><span class="entity-id"><?= e($steps['power']['entity']) ?></span> auf 0<?= NNBSP . e($steps['power']['unit']) ?></li>
+<?php endif; ?>
+<?php if ($steps['mode'] !== null): ?>
+      <li><span class="entity-id"><?= e($steps['mode']['entity']) ?></span> <?= e($steps['mode']['off'] === null ? 'zurück auf den Modus von vorher' : 'auf ' . $quote($steps['mode']['off'])) ?></li>
+<?php endif; ?>
+    </ol>
+  </div>
+<?php endif; ?>
+<?php if ($steps['error'] !== ''): ?>
+  <?= ui_notice('info', e($steps['error'])) ?>
+<?php endif; ?>
   <div class="form-actions"><button class="btn btn-primary" type="submit">Speichern</button></div>
   </form>
 </section>

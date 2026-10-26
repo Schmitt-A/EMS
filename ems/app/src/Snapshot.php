@@ -223,7 +223,8 @@ final class Snapshot
             $window !== null,
             $plan,
             $gridDone,
-            $now
+            $now,
+            ProviderControl::inWindow(ProviderControl::settings($cfg), $pricing->tariffAt($now), $now)
         );
         $cfg['charge']['effective_mode'] = $effective['mode'];
         $cfg['charge']['effective_reason'] = $effective['reason'];
@@ -393,6 +394,11 @@ final class Snapshot
         $carKw = GridPlans::carKw($cfg, $this->store);
         $base['chargepoint']['power_plan_kw'] = ChargePlan::powerKw($cfg['charge'], $carKw);
         $base['chargepoint']['grid_text'] = self::gridText($cfg['charge'], $base['windows'], $plan, (bool) $base['vehicle']['connected'], $now);
+        // Im Zeitraum des Stromanbieters sagt die Karte, dass er plant und bis wann.
+        $provider = ProviderControl::view($cfg, $pricing, $now);
+        if ($provider['inside'] && ($cfg['charge']['effective_reason'] ?? 'provider') === 'provider' && ($cfg['charge']['mode'] ?? '') !== 'aus') {
+            $base['chargepoint']['grid_text'] = $provider['text'];
+        }
         $base['chargepoint']['windows_enabled'] = $enabled;
         $base['chargepoint']['grid_windows'] = self::windowChoices($base['windows'], $now);
         // Mit Ziel zählt die Restzeit bis zum Ziel, nicht bis zum Limit: erst das für Sonne und Speicher, sonst das fürs Netzladen.
@@ -767,6 +773,7 @@ final class Snapshot
             'now' => 'Netzladen jetzt: Das Auto lädt voll aus dem Netz, bis das Ziel erreicht ist oder es abgesteckt wird.',
             'window' => 'Ladefenster: Das Auto lädt voll aus dem Netz, bis das Ziel erreicht ist.',
             'plan' => 'Ladeplan: Die Ladefenster reichen bis zur Uhrzeit nicht, jetzt ist eine zusätzlich geplante Viertelstunde.',
+            'provider' => 'Stromanbieter: Im Zeitraum plant der Anbieter, wann das Auto lädt. Die Wallbox ist frei, der Speicher gibt nichts ab.',
             default => null,
         };
         return [
@@ -775,6 +782,7 @@ final class Snapshot
                 'now' => ' (jetzt)',
                 'window' => ' (Ladefenster)',
                 'plan' => ' (Ladeplan)',
+                'provider' => ' (Anbieter)',
                 default => '',
             },
             'zone' => $zone,

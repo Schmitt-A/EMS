@@ -129,13 +129,17 @@ final class ChargePlan
      *
      * @return array{mode: string, reason: ?string}
      */
-    public static function effective(string $mode, string $grid, bool $connected, bool $inWindow, ?array $plan, bool $done, int $now): array
+    public static function effective(string $mode, string $grid, bool $connected, bool $inWindow, ?array $plan, bool $done, int $now, bool $provider = false): array
     {
         if ($mode === 'aus' || !$connected) {
             return ['mode' => $mode, 'reason' => null];
         }
         if ($grid === 'now') {
             return ['mode' => 'netz', 'reason' => 'now'];
+        }
+        // Im Zeitraum des Stromanbieters (ProviderControl) ist die Wallbox frei; wann das Auto lädt, entscheidet er.
+        if ($provider) {
+            return ['mode' => 'netz', 'reason' => 'provider'];
         }
         // Ein Ladeplan (GridPlans) gilt unabhängig von den Ladefenstern, auch mit statischem Tarif.
         if ($plan !== null && ($plan['source'] ?? 'target') === 'schedule' && in_array(intdiv($now, 900) * 900, (array) ($plan['extra'] ?? []), true)) {
@@ -221,7 +225,8 @@ final class ChargePlan
             $enabled && PriceWindows::at(self::chosen($store, $now), $now) !== null,
             $enabled || $schedule ? $plan : null,
             self::done($store),
-            $now
+            $now,
+            ProviderControl::inWindow(ProviderControl::settings($store->all()), (new Tariff($store))->tariffAt($now), $now)
         );
     }
 

@@ -103,9 +103,21 @@
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
+  max-width: 100%;
   min-height: 2.75rem;
   color: var(--text-2);
   font-weight: 500;
+  text-align: start;
+}
+
+/* Lange Kennungen wie „Vorschlag: switch.octopus_…_smart_control“ brechen um, statt über den Rand zu ragen. */
+.text-action > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.text-action > .icon {
+  flex: none;
 }
 
 .text-danger {

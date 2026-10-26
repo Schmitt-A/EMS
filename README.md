@@ -83,7 +83,22 @@ Unter Speicher → Ausblick stehen Ladepläne für den Speicher, für statischen
 - **Zeitpunkt im Fenster:** so spät wie möglich (fertig zum Ende des Fensters, dynamisch in den günstigsten Viertelstunden) oder sofort ab Beginn (lädt gleich bis zum Ziel, danach versorgt der Speicher das Haus im restlichen Fenster).
 - **Nur wenn:** der Speicher unter einem Ladestand liegt; geprüft, sobald der Plan in den nächsten 24 Stunden dran ist.
 
-EMS rechnet den Speicher dafür Viertelstunde für Viertelstunde bis zum Ende durch: Sonne laut Prognose, das Haus nimmt bis zum Backup-Puffer (Notstrom), das Haus zahlt seinen Preis, das Laden den des Speichers. Über der Liste steht, was der nächste Plan vorhat, etwa „Fenster heute 22:00–morgen 06:00: lädt 22:00–23:15 auf 46 %, etwa 5,4 kWh zu Ø 19,7 ct/kWh, spart etwa 0,38 €“, oder warum er diesmal nicht lädt. Geschaltet wird nur, wenn EMS regelt: EMS stellt den Betriebsmodus des Speichers auf manuell und „Laden erzwingen“ auf die Ladeleistung (Standard die Entladeleistung, sonst 2,5 kW) und am Ziel oder am Ende der geplanten Zeit zurück auf 0 W und den Betriebsmodus von vorher. Beide Entitäten stehen unter Einstellungen → Speicher; bei der sonnenBatterie heißen sie `select.sonnenbatterie_…_select_operating_mode` und `number.sonnenbatterie_…_number_charge` und erscheinen erst, wenn die Integration schreiben darf. Ins Netz geht von der geladenen Energie nichts zurück. Den früheren Energie-Boost ersetzt ein Plan „einmalig“.
+EMS rechnet den Speicher dafür Viertelstunde für Viertelstunde bis zum Ende durch: Sonne laut Prognose, das Haus nimmt bis zum Backup-Puffer (Notstrom), das Haus zahlt seinen Preis, das Laden den des Speichers. Über der Liste steht, was der nächste Plan vorhat, etwa „Fenster heute 22:00–morgen 06:00: lädt 22:00–23:15 auf 46 %, etwa 5,4 kWh zu Ø 19,7 ct/kWh, spart etwa 0,38 €“, oder warum er diesmal nicht lädt. Geschaltet wird nur, wenn EMS regelt. Wie, steht unter Einstellungen → Speicher → Laden aus dem Netz und ist je Speicher verschieden; EMS kennt drei Entitäten, was nicht zugeordnet ist, lässt es aus:
+
+- **Betriebsmodus** (select, optional): beim Start auf die Option zum Laden, am Ende zurück auf den Modus von vorher oder eine gewählte Option.
+- **Ladeleistung** (number in W oder kW nach ihrer Einheit, in ihren Grenzen und Schritten): beim Start die Ladeleistung (Standard die Entladeleistung, sonst 2,5 kW), am Ende 0.
+- **Lade-Befehl** (select, optional): für Speicher, die zusätzlich einen Befehl brauchen; beim Start die Option zum Laden, am Ende die zum Beenden.
+
+Beim Start schaltet EMS Modus, Leistung, Befehl, am Ende Befehl, Leistung, Modus. Die Optionen erkennt EMS nach ihrer Bedeutung, etwa „manual“ oder „Forced mode“, „Forced charge“ und „Stop (default)“; jede lässt sich auch selbst wählen, und die Karte zeigt die Schritte, mit denen EMS schaltet. Bei der sonnenBatterie sind das `select.sonnenbatterie_…_select_operating_mode` (erscheint erst, wenn die Integration schreiben darf) und `number.sonnenbatterie_…_number_charge`, bei Sungrow mit dem Modbus-Paket `select.ems_mode`, `number.battery_forced_charge_discharge_power` und `select.battery_forced_charge_discharge`; gefundene Entitäten stehen als Vorschlag unter dem Feld. Ins Netz geht von der geladenen Energie nichts zurück. Den früheren Energie-Boost ersetzt ein Plan „einmalig“.
+
+## Stromanbieter plant das Laden (etwa Octopus Intelligent)
+
+Bei Tarifen, in denen der Anbieter das Auto selbst steuert, plant er nachts, wann das Auto günstig lädt, und startet und stoppt es über dessen Schnittstelle. Unter Einstellungen → Ladepunkt → „Stromanbieter plant das Laden“ stellt man den Zeitraum ein, in dem der Anbieter plant: die Zeitfenster des Tarifs fürs Auto oder eine eigene Zeit, etwa 00:00 bis 06:00. In diesem Zeitraum gibt EMS die Wallbox mit vollem Strom frei, damit das Auto laden kann, wann der Anbieter will, und der Speicher gibt dabei wie beim Netzladen nichts ans Auto ab; die Kachel der Wallbox sagt, bis wann der Anbieter plant. Mit Octopus kommen zwei Schalter dazu, beide optional:
+
+- **Boost Charge** (Sofortladen beim Anbieter): im Zeitraum schaltet EMS ihn aus, damit der Anbieter plant; außerhalb ein, damit er das Auto nicht sperrt und EMS mit Sonne regeln kann. Weil Octopus Boost Charge von selbst beenden kann, etwa wenn das Auto voll ist, setzt EMS ihn bei angestecktem Auto alle 15 Minuten wieder, und beim Anstecken sofort.
+- **Smart Control** (ohne ihn gibt es Boost Charge nicht): ist er aus, schaltet EMS ihn ein.
+
+Läuft Netzladen „Jetzt“, gilt das auch im Zeitraum, mit Boost Charge an. Geschaltet wird nur, wenn EMS regelt; die letzten Schritte stehen in der Karte.
 
 ## Ladeziele
 

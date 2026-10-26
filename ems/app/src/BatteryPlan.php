@@ -22,8 +22,18 @@ final class BatteryPlan
     private const STEP_KWH = 0.25;
     private const RETRY_S = 60;
     private const HORIZON_S = 86400;
-    /** Betriebsmodi der sonnenBatterie nach Bedeutung, wie Controller::OPTIONS. */
-    private const MODES = ['manual' => ['manual', '1'], 'auto' => ['automatic', 'auto', '2']];
+    /**
+     * Optionen nach Bedeutung, wie Controller::OPTIONS: manual und auto für den Betriebsmodus (sonnenBatterie
+     * manual/automatic, Sungrow „Forced mode“/„Self-consumption mode (default)“), charge und stop für einen eigenen
+     * Lade-Befehl (Sungrow „Forced charge“/„Stop (default)“). Unter Einstellungen → Speicher lässt sich jede Option
+     * auch selbst wählen.
+     */
+    private const MODES = [
+        'manual' => ['manual', '1', 'forced mode', 'forced', 'compulsory mode', 'manuell'],
+        'auto' => ['automatic', 'auto', '2', 'self-consumption mode (default)', 'self-consumption mode', 'self-consumption', 'automatik', 'eigenverbrauch'],
+        'charge' => ['forced charge', 'force charge', 'charge', 'laden', 'zwangsladung'],
+        'stop' => ['stop (default)', 'stop', 'stopp', 'none'],
+    ];
 
     public function __construct(private ConfigStore $store, private HaSource $ha) {}
 
@@ -37,6 +47,12 @@ final class BatteryPlan
         return [
             'mode_entity' => (string) ($m['battery_operating_mode'] ?? ''),
             'power_entity' => (string) ($m['battery_force_charge'] ?? ''),
+            'cmd_entity' => (string) ($m['battery_charge_command'] ?? ''),
+            // Gewählte Optionen; leer heißt nach Bedeutung erkennen (beim Modus danach: den von vorher).
+            'mode_on' => (string) ($b['grid_mode_on'] ?? ''),
+            'mode_off' => (string) ($b['grid_mode_off'] ?? ''),
+            'cmd_on' => (string) ($b['grid_cmd_on'] ?? ''),
+            'cmd_off' => (string) ($b['grid_cmd_off'] ?? ''),
             'power_kw' => clamp_float($power, 0.1, 50),
             'power_set' => is_numeric($b['grid_kw'] ?? null) && (float) $b['grid_kw'] > 0,
             'max_soc' => clamp_float((float) ($b['grid_max_soc'] ?? 100), 10, 100),
@@ -337,7 +353,8 @@ final class BatteryPlan
     {
         $state = $this->store->get(self::KEY, []);
         return array_merge(
-            ['active' => false, 'since' => null, 'until' => null, 'target_soc' => null, 'restore' => null, 'error' => null, 'error_at' => null, 'log' => [], 'source' => null, 'plan_id' => null, 'deadline' => null],
+            ['active' => false, 'since' => null, 'until' => null, 'target_soc' => null, 'restore' => null, 'error' => null, 'error_at' => null, 'log' => [], 'source' => null, 'plan_id' => null, 'deadline' => null,
+                'cmd_entity' => '', 'cmd_restore' => null],
             is_array($state) ? $state : []
         );
     }
@@ -398,18 +415,83 @@ final class BatteryPlan
         return ['action' => 'none'];
     }
 
+    /** Eine Option: die gewählte, wenn es sie gibt, sonst die nach Bedeutung; null, wenn keine passt. */
+    public static function choose(string $wanted, string $meaning, array $options): ?string
+    {
+        foreach ($options as $option) {
+            if ($wanted !== '' && strcasecmp(trim((string) $option), trim($wanted)) === 0) {
+                return (string) $option;
+            }
+        }
+        return self::option($meaning, $options);
+    }
+
+    /**
+     * Wie EMS den Speicher aus dem Netz laden lässt, aus Einstellungen und Zuständen: Betriebsmodus (optional, select),
+     * Ladeleistung (nötig, number in W oder kW nach ihrer Einheit, in ihren Grenzen und Schritten) und Lade-Befehl
+     * (optional, select). Beim Start Modus, Leistung, Befehl; beim Ende Befehl, Leistung 0, Modus zurück. error nennt,
+     * was fehlt; leer heißt, es lässt sich schalten.
+     *
+     * @return array{mode: ?array, power: ?array, cmd: ?array, error: string}
+     */
+    public static function steps(array $cfg, array $index, ?float $powerKw = null): array
+    {
+        $s = self::settings($cfg);
+        $out = ['mode' => null, 'power' => null, 'cmd' => null, 'error' => ''];
+        $missing = static fn (string $id): bool => in_array((string) ($index[$id]['state'] ?? 'unavailable'), ['unavailable', 'unknown', ''], true);
+        $errors = [];
+        if ($s['power_entity'] === '') {
+            $errors[] = 'Die Ladeleistung ist noch nicht zugeordnet (Einstellungen → Speicher).';
+        } else {
+            $attrs = (array) ($index[$s['power_entity']]['attributes'] ?? []);
+            $kw = strtolower(trim((string) ($attrs['unit_of_measurement'] ?? 'W'))) === 'kw';
+            $value = ($powerKw ?? $s['power_kw']) * ($kw ? 1 : 1000);
+            $step = is_numeric($attrs['step'] ?? null) && (float) $attrs['step'] > 0 ? (float) $attrs['step'] : ($kw ? 0.1 : 100.0);
+            $value = round($value / $step) * $step;
+            if (is_numeric($attrs['max'] ?? null)) {
+                $value = min($value, (float) $attrs['max']);
+            }
+            if (is_numeric($attrs['min'] ?? null)) {
+                $value = max($value, (float) $attrs['min']);
+            }
+            $out['power'] = ['entity' => $s['power_entity'], 'unit' => $kw ? 'kW' : 'W', 'on' => round($value, 3), 'off' => 0.0];
+            if ($missing($s['power_entity'])) {
+                $errors[] = 'Die Ladeleistung (' . $s['power_entity'] . ') ist in Home Assistant nicht verfügbar.';
+            }
+        }
+        if ($s['mode_entity'] !== '') {
+            $options = (array) ($index[$s['mode_entity']]['attributes']['options'] ?? []);
+            $on = self::choose($s['mode_on'], 'manual', $options);
+            $off = $s['mode_off'] === '' ? null : self::choose($s['mode_off'], 'auto', $options);
+            $out['mode'] = ['entity' => $s['mode_entity'], 'on' => $on, 'off' => $off, 'options' => $options];
+            if ($missing($s['mode_entity'])) {
+                $errors[] = 'Der Betriebsmodus (' . $s['mode_entity'] . ') ist in Home Assistant nicht verfügbar.';
+            } elseif ($on === null) {
+                $errors[] = 'Beim Betriebsmodus ist keine Option zum Laden gewählt, und keine heißt wie „manual“ oder „Forced mode“.';
+            }
+        }
+        if ($s['cmd_entity'] !== '') {
+            $options = (array) ($index[$s['cmd_entity']]['attributes']['options'] ?? []);
+            $on = self::choose($s['cmd_on'], 'charge', $options);
+            $off = self::choose($s['cmd_off'], 'stop', $options);
+            $out['cmd'] = ['entity' => $s['cmd_entity'], 'on' => $on, 'off' => $off, 'options' => $options];
+            if ($missing($s['cmd_entity'])) {
+                $errors[] = 'Der Lade-Befehl (' . $s['cmd_entity'] . ') ist in Home Assistant nicht verfügbar.';
+            } elseif ($on === null || $off === null) {
+                $errors[] = 'Beim Lade-Befehl fehlt eine Option zum Laden oder zum Beenden, etwa „Forced charge“ und „Stop (default)“.';
+            }
+        }
+        $out['error'] = $errors[0] ?? '';
+        return $out;
+    }
+
     /** Lässt sich gerade schalten? Leer heißt ja, sonst der Grund. */
     public static function blocker(array $cfg, array $index): string
     {
-        $s = self::settings($cfg);
-        return match (true) {
-            !Controller::active($cfg) => 'EMS regelt noch nicht; der Hauptschalter steht unter Einstellungen.',
-            $s['mode_entity'] === '' || $s['power_entity'] === '' => 'Betriebsmodus und „Laden erzwingen“ sind noch nicht zugeordnet (Einstellungen → Speicher).',
-            in_array((string) ($index[$s['mode_entity']]['state'] ?? 'unavailable'), ['unavailable', 'unknown', ''], true) => 'Der Betriebsmodus (' . $s['mode_entity'] . ') ist in Home Assistant nicht verfügbar.',
-            in_array((string) ($index[$s['power_entity']]['state'] ?? 'unavailable'), ['unavailable', 'unknown', ''], true) => '„Laden erzwingen“ (' . $s['power_entity'] . ') ist in Home Assistant nicht verfügbar.',
-            self::option('manual', (array) ($index[$s['mode_entity']]['attributes']['options'] ?? [])) === null => 'Der Betriebsmodus kennt keine Option „manual“.',
-            default => '',
-        };
+        if (!Controller::active($cfg)) {
+            return 'EMS regelt noch nicht; der Hauptschalter steht unter Einstellungen.';
+        }
+        return self::steps($cfg, $index)['error'];
     }
 
     /**
@@ -446,30 +528,45 @@ final class BatteryPlan
             return $state;
         }
         $s = self::settings($cfg);
-        $modeEntity = (string) ($state['active'] ? ($state['mode_entity'] ?? $s['mode_entity']) : $s['mode_entity']);
-        $powerEntity = (string) ($state['active'] ? ($state['power_entity'] ?? $s['power_entity']) : $s['power_entity']);
-        $options = (array) ($index[$modeEntity]['attributes']['options'] ?? []);
+        $select = function (string $entity, string $option): void {
+            $this->ha->service(explode('.', $entity, 2)[0], 'select_option', ['entity_id' => $entity, 'option' => $option]);
+        };
         try {
             if ($step['action'] === 'start') {
-                $current = (string) ($index[$modeEntity]['state'] ?? '');
-                $restore = self::meaning($current) === 'manual' || $current === '' ? self::option('auto', $options) : $current;
-                $manual = self::option('manual', $options);
-                if ($manual === null) {
-                    throw new RuntimeException('Der Betriebsmodus kennt keine Option „manual“.');
+                // Modus, Leistung, Befehl; gemerkt wird, was beim Beenden zurück soll.
+                $plan = self::steps($cfg, $index);
+                $mode = $plan['mode'];
+                $restore = null;
+                if ($mode !== null) {
+                    $current = (string) ($index[$mode['entity']]['state'] ?? '');
+                    $restore = $mode['off'] ?? (self::meaning($current) === 'manual' || $current === '' || $current === $mode['on'] ? self::option('auto', $mode['options']) : $current);
+                    $select($mode['entity'], (string) $mode['on']);
                 }
-                $this->ha->service('select', 'select_option', ['entity_id' => $modeEntity, 'option' => $manual]);
-                $this->ha->setNumber($powerEntity, round($s['power_kw'] * 1000, -2));
+                $this->ha->setNumber($plan['power']['entity'], (float) $plan['power']['on']);
+                if ($plan['cmd'] !== null) {
+                    $select($plan['cmd']['entity'], (string) $plan['cmd']['on']);
+                }
                 $source = $boost !== null ? 'boost' : 'plan';
                 $state = array_merge($state, [
                     'active' => true, 'since' => $now, 'until' => $order['end'], 'target_soc' => $order['target_soc'],
-                    'restore' => $restore, 'mode_entity' => $modeEntity, 'power_entity' => $powerEntity, 'error' => null, 'error_at' => null,
+                    'restore' => $restore, 'mode_entity' => $mode['entity'] ?? '', 'power_entity' => $plan['power']['entity'],
+                    'cmd_entity' => $plan['cmd']['entity'] ?? '', 'cmd_restore' => $plan['cmd']['off'] ?? null, 'error' => null, 'error_at' => null,
                     'source' => $source, 'plan_id' => $order['plan_id'] ?? null, 'deadline' => $order['deadline'] ?? null,
                 ]);
                 $state['log'] = self::log($state['log'], $now, ($source === 'boost' ? 'Energie-Boost' : 'Ladeplan') . ': lädt aus dem Netz mit ' . kw($s['power_kw']) . ' bis ' . pct($order['target_soc']) . ', längstens bis ' . date('H:i', $order['end']) . '.');
             } else {
-                $this->ha->setNumber($powerEntity, 0.0);
-                $restore = (string) (($state['restore'] ?? '') ?: (self::option('auto', $options) ?? 'automatic'));
-                $this->ha->service('select', 'select_option', ['entity_id' => $modeEntity, 'option' => $restore]);
+                // Befehl, Leistung 0, Modus zurück; mit den Entitäten vom Start, auch wenn sie inzwischen anders zugeordnet sind.
+                $cmdEntity = (string) ($state['cmd_entity'] ?? '');
+                if ($cmdEntity !== '') {
+                    $select($cmdEntity, (string) ($state['cmd_restore'] ?? '') ?: (self::option('stop', (array) ($index[$cmdEntity]['attributes']['options'] ?? [])) ?? 'Stop (default)'));
+                }
+                $this->ha->setNumber((string) (($state['power_entity'] ?? '') ?: $s['power_entity']), 0.0);
+                $modeEntity = (string) (array_key_exists('mode_entity', $state) ? $state['mode_entity'] : $s['mode_entity']);
+                $restore = '';
+                if ($modeEntity !== '') {
+                    $restore = (string) (($state['restore'] ?? '') ?: (self::option('auto', (array) ($index[$modeEntity]['attributes']['options'] ?? [])) ?? 'automatic'));
+                    $select($modeEntity, $restore);
+                }
                 $fromPlan = ($state['source'] ?? 'boost') === 'plan';
                 $why = match ($step['why'] ?? '') {
                     'target' => 'Ziel ' . pct((float) $state['target_soc']) . ' erreicht',
@@ -487,8 +584,9 @@ final class BatteryPlan
                     // Einmalig: Am Ziel oder am Ende des Fensters ist der Boost verbraucht.
                     $this->store->put(self::BOOST, []);
                 }
-                $state = array_merge($state, ['active' => false, 'since' => null, 'until' => null, 'target_soc' => null, 'error' => null, 'error_at' => null, 'source' => null, 'plan_id' => null, 'deadline' => null]);
-                $state['log'] = self::log($state['log'], $now, $why . ', zurück auf ' . $restore . '.');
+                $state = array_merge($state, ['active' => false, 'since' => null, 'until' => null, 'target_soc' => null, 'error' => null, 'error_at' => null, 'source' => null, 'plan_id' => null, 'deadline' => null,
+                    'cmd_entity' => '', 'cmd_restore' => null]);
+                $state['log'] = self::log($state['log'], $now, $why . ($restore !== '' ? ', zurück auf ' . $restore : ', Laden beendet') . '.');
             }
         } catch (Throwable $e) {
             $state = array_merge($state, ['error' => ($step['action'] === 'start' ? 'Starten' : 'Beenden') . ' fehlgeschlagen: ' . $e->getMessage(), 'error_at' => $now]);

@@ -407,3 +407,22 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   padding: 0;
   margin-block-end: var(--s-2);
 }
+
+/* Einstellungen → Speicher: die Schritte, mit denen EMS den Speicher aus dem Netz laden lässt. */
+.grid-steps-list {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0;
+  padding-inline-start: 1.25rem;
+}
+
+.grid-steps-list .entity-id {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Einstellungen → Ladepunkt: Zeitraum des Stromanbieters aus dem Tarif oder als eigene Zeit. */
+.provider-form:has(input[name="provider_window"][value="tariff"]:checked) [data-provider="time"],
+.provider-form:has(input[name="provider_window"][value="time"]:checked) [data-provider="tariff"] {
+  display: none;
+}
