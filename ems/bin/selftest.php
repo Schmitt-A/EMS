@@ -1412,8 +1412,15 @@ check(BatteryPlans::conditions($bp['plan'], 30.0, null)['ok'] && !BatteryPlans::
 $gridHa = new class implements HaSource {
     public array $calls = [];
     public array $states = [];
+    public ?string $fail = null;
     public function setNumber(string $entityId, float $value): void { $this->calls[] = [$entityId, $value]; }
-    public function service(string $domain, string $service, array $data): void { $this->calls[] = [$data['entity_id'], $data['option'] ?? $service]; }
+    public function service(string $domain, string $service, array $data): void
+    {
+        $this->calls[] = [$data['entity_id'], $data['option'] ?? $service];
+        if ($this->fail !== null) {
+            throw new RuntimeException($this->fail);
+        }
+    }
     public function notifyServices(): array { return []; }
     public function notify(string $service, array $payload): void {}
     public function configured(): bool { return true; }
@@ -1474,6 +1481,7 @@ $provCfg = ['control' => ['active' => true], 'provider' => ['on' => true, 'windo
 $provHa = clone $gridHa;
 $provHa->calls = [];
 $provHa->states = ['switch.smart' => $entity('off'), 'switch.boost' => $entity('unavailable')];
+$provStore->put(Controller::KEY, ['enabled' => true]);
 $provider = new ProviderControl($provStore, $provHa);
 $plugged = ['cfg' => $provCfg, 'vehicle' => ['connected' => true], 'values' => ['wallbox_car_raw' => 'wait_car']];
 $provider->sync($plugged, $day);
@@ -1492,5 +1500,52 @@ $provider->sync(['cfg' => $provCfg, 'vehicle' => ['connected' => false], 'values
 check($smartOn === [['switch.smart', 'turn_on']] && $boostOn === [['switch.boost', 'turn_on']] && $boostOff === [['switch.boost', 'turn_off']] && $provHa->calls === []
     && str_contains($provider->state()['log'][0]['text'], 'Zeitraum des Anbieters'),
     'Octopus: erst Smart Control an, tagsüber Boost Charge an, nachts aus; ohne Auto kein Boost');
+check(ProviderControl::boostUseful(true, true, true, 21.3, 80.0) && ProviderControl::boostUseful(true, true, true, null, 80.0) && ProviderControl::boostUseful(false, false, false, 80.0, 80.0)
+    && !ProviderControl::boostUseful(true, true, true, 79.5, 80.0) && !ProviderControl::boostUseful(true, true, false, 21.3, 80.0) && !ProviderControl::boostUseful(true, false, true, 21.3, 80.0)
+    && array_map(ProviderControl::retryS(...), [0, 1, 2, 3, 4, 5, 6, 40]) === [0, 60, 120, 240, 480, 900, 900, 900],
+    'Boost Charge an nur bei steckendem Auto, freigegebener Wallbox und Ladestand unter dem Limit; nach Fehlern 1, 2, 4, 8, dann alle 15 min neu');
+// So blieb das Laden am 30.10. stehen: Anstecken, Octopus lehnt ab, die go-e meldet „Abgeschlossen“ bei 21 %.
+$octoHa = clone $gridHa;
+$octoHa->calls = [];
+$octoStore = new ConfigStore(':memory:');
+$octoStore->put(Controller::KEY, ['enabled' => false]);
+$octoHa->states = ['switch.smart' => $entity('on'), 'switch.boost' => $entity('off')];
+$boostCtl = new ProviderControl($octoStore, $octoHa);
+$octoSnap = static fn (string $raw, ?float $soc = 21.3, bool $connected = true): array => ['cfg' => $provCfg, 'vehicle' => ['connected' => $connected, 'soc' => $soc, 'limit' => 80.0], 'values' => ['wallbox_car_raw' => $raw]];
+$boostCtl->sync($octoSnap('Warte auf Fahrzeug'), $day);
+$lockedCalls = $octoHa->calls;
+$octoStore->put(Controller::KEY, ['enabled' => true]);
+$octoHa->fail = 'GraphQL errors: Unable to trigger boost charge.';
+$boostCtl->sync($octoSnap('Warte auf Fahrzeug'), $day + 90);
+$firstError = $boostCtl->state();
+$boostCtl->sync($octoSnap('Abgeschlossen'), $day + 120);
+$tooEarly = count($octoHa->calls);
+$boostCtl->sync($octoSnap('Abgeschlossen'), $day + 150);
+$secondTry = count($octoHa->calls);
+$boostCtl->sync($octoSnap('Abgeschlossen'), $day + 240);
+$stillWaiting = count($octoHa->calls);
+$octoHa->fail = null;
+$boostCtl->sync($octoSnap('Abgeschlossen'), $day + 270);
+check($lockedCalls === [] && $firstError['errors'] === 1 && str_contains((string) $firstError['error'], 'Unable to trigger') && $tooEarly === 1 && $secondTry === 2 && $stillWaiting === 2
+    && $octoHa->calls === [['switch.boost', 'turn_on'], ['switch.boost', 'turn_on'], ['switch.boost', 'turn_on']] && $boostCtl->state()['error'] === null && $boostCtl->state()['errors'] === 0,
+    'Bei „Abgeschlossen“ und 21 % versucht EMS Boost Charge weiter, nach Fehlern nach 1 und 2 min; gesperrte Wallbox schaltet nicht, Erfolg löscht den Fehler');
+$octoHa->calls = [];
+$boostCtl->sync($octoSnap('Abgeschlossen', 80.0), $day + 2000);
+$fullCalls = $octoHa->calls;
+$octoHa->fail = 'kaputt';
+$boostCtl->sync($octoSnap('Abgeschlossen'), $day + 3000);
+$octoHa->fail = null;
+$failed = $boostCtl->state()['error'] !== null;
+$octoHa->states['switch.boost'] = $entity('on');
+$boostCtl->sync($octoSnap('Laden'), $day + 3010);
+$foreign = $boostCtl->state()['error'];
+$octoHa->states['switch.boost'] = $entity('off');
+$octoHa->fail = 'kaputt';
+$boostCtl->sync($octoSnap('Abgeschlossen'), $day + 4000);
+$octoHa->fail = null;
+$failedAgain = $boostCtl->state()['error'] !== null;
+$boostCtl->sync($octoSnap('Inaktiv/Frei', 21.3, false), $day + 4010);
+check($fullCalls === [] && $failed && $foreign === null && $failedAgain && $boostCtl->state()['error'] === null,
+    'Auto am Limit bekommt kein Boost Charge; ein Fehler verschwindet, wenn der Schalter von anderer Stelle richtig steht oder das Auto weg ist');
 
 echo "alle prüfungen bestanden\n";

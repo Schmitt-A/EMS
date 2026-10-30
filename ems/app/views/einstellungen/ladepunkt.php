@@ -46,7 +46,7 @@ $carWindows = array_values(array_filter((array) $providerTariff->tariffAt(time()
 </section>
 <section class="card stack" aria-labelledby="cp-provider-title">
   <h3 class="card-title" id="cp-provider-title">Stromanbieter plant das Laden</h3>
-  <p class="body-sm muted">Für Tarife, bei denen der Anbieter das Auto selbst steuert, etwa Octopus Intelligent: nachts lädt das Auto günstig, wann genau, entscheidet der Anbieter über die Schnittstelle des Autos. In diesem Zeitraum gibt EMS die Wallbox mit vollem Strom frei und schaltet „Boost Charge“ aus; der Speicher gibt dabei nichts ans Auto ab. Außerhalb schaltet EMS „Boost Charge“ ein, damit der Anbieter das Auto nicht sperrt und EMS mit Sonne regeln kann. Geschaltet wird nur bei aktivem EMS.</p>
+  <p class="body-sm muted">Für Tarife, bei denen der Anbieter das Auto selbst steuert, etwa Octopus Intelligent: nachts lädt das Auto günstig, wann genau, entscheidet der Anbieter über die Schnittstelle des Autos. In diesem Zeitraum gibt EMS die Wallbox mit vollem Strom frei und schaltet „Boost Charge“ aus; der Speicher gibt dabei nichts ans Auto ab. Außerhalb schaltet EMS „Boost Charge“ ein, sobald es lädt, damit der Anbieter das Auto nicht sperrt. Geschaltet wird nur bei aktivem EMS.</p>
   <form method="post" action="<?= e(url('/einstellungen')) ?>" class="stack provider-form">
     <?= csrf_field() ?>
     <input type="hidden" name="section" value="provider"><input type="hidden" name="back" value="<?= e($back) ?>">
@@ -63,7 +63,7 @@ $carWindows = array_values(array_filter((array) $providerTariff->tariffAt(time()
     <p class="body-sm"><?= e($providerView['text']) ?></p>
 <?php endif; ?>
 <?php if (!empty($providerState['error'])): ?>
-    <?= ui_notice('triangle-alert', e((string) $providerState['error']), 'warn') ?>
+    <?= ui_notice('triangle-alert', e(date('d.m. H:i', (int) $providerState['error_at']) . ': ' . rtrim((string) $providerState['error'], '. ') . '. EMS versucht es weiter.'), 'warn') ?>
 <?php endif; ?>
 <?php if (!empty($providerState['log'])): ?>
     <ul class="plain-list stack-tight body-sm" role="list" aria-label="Zuletzt geschaltet">
