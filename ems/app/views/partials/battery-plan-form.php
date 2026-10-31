@@ -68,7 +68,7 @@ $dynamic = $sheet['dynamic'];
   <?= ui_divider('Nur wenn') ?>
   <div class="plan-conds">
     <div class="plan-cond">
-      <div class="form-rows"><?= ui_form_row('Speicher unter', ui_toggle('soc_below_on', ($plan['soc_below'] ?? null) !== null, 'Bedingung Speicher', ['id' => $id('soc-on')]), ['for' => $id('soc-on'), 'hint' => 'Jetzt ' . ($soc === null ? 'unbekannt' : pct($soc)) . '. Ist er voller, lädt der Plan diesmal nicht. Geprüft, sobald der Plan in den nächsten 24 Stunden dran ist.']) ?></div>
+      <div class="form-rows"><?= ui_form_row('Speicher unter', ui_toggle('soc_below_on', ($plan['soc_below'] ?? null) !== null, 'Bedingung Speicher', ['id' => $id('soc-on')]), ['for' => $id('soc-on'), 'hint' => 'Jetzt ' . ($soc === null ? 'unbekannt' : pct($soc)) . '. Geprüft, wenn das Laden dran ist: Ist er dann voller, wartet der Plan, bis der Speicher darunter fällt oder die Zeit vorbei ist.']) ?></div>
       <div class="plan-cond-value stack-tight"><?= $range('soc_below', 'Ladestand unter', (float) ($plan['soc_below'] ?? 30), 5) ?></div>
     </div>
   </div>

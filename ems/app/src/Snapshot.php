@@ -377,6 +377,11 @@ final class Snapshot
         $base['session'] = $session;
         $base['plug_group'] = is_array($session) && !empty($session['plug_at']) ? $sessions->plugGroup((int) $session['id']) : null;
         $base['day_group'] = is_array($session) ? $sessions->group((int) $session['id']) : null;
+        $counter = $base['values']['wallbox_session_kwh'] ?? null;
+        if ($counter !== null && !Energy::plausibleSessionKwh((float) $counter, (float) ($base['plug_group']['energy_kwh'] ?? $session['energy_kwh'] ?? 0))) {
+            $base['values']['wallbox_session_kwh'] = null;
+            $base['warnings'][] = 'Lademenge seit Anstecken: ' . kwh((float) $counter, 0) . ' ist der Gesamtzähler der Wallbox, EMS zählt deshalb selbst. Unter Einstellungen → Ladepunkt die Lademenge seit dem Anstecken eintragen (go-e „wh“).';
+        }
         $base['car_label'] = Energy::carLabel($values['wallbox_car_raw'] ?? null);
         $base['phase_label'] = Energy::phaseLabel($values['wallbox_phases_raw'] ?? null);
         $base['activity'] = Energy::activity($values['battery_charge_kw'] ?? null, $values['battery_discharge_kw'] ?? null);

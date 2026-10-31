@@ -16,13 +16,14 @@ declare(strict_types=1);
  * refresh() plant den Plan, dessen Fenster oder Uhrzeit als nächstes kommt (höchstens 24 Stunden voraus), mit
  * schedule(): Viertelstunde für Viertelstunde bis zum Ende, Sonne lädt, das Haus nimmt bis zum Backup-Puffer, geplante
  * Viertelstunden laden aus dem Netz. Der Stand liegt in kv.battery_plan_state; BatteryPlan::sync() lädt in diesen
- * Viertelstunden, nur bei aktivem EMS. Erreicht ist ein Plan bis zum nächsten Mal erledigt (kv.battery_plan_done).
+ * Viertelstunden, nur bei aktivem EMS. Erreicht ist ein Plan bis zum nächsten Mal erledigt (kv.battery_plan_finished).
  */
 final class BatteryPlans
 {
     public const KEY = 'battery_plans';
     public const STATE = 'battery_plan_state';
-    public const DONE = 'battery_plan_done';
+    /** Bis 1.25.1 battery_plan_done; dort konnte auch ein Fenster stehen, das noch gar nicht begonnen hatte. */
+    public const DONE = 'battery_plan_finished';
     public const ARMED = 'battery_plan_armed';
     public const MAX = 10;
     private const REPLAN_S = 900;
@@ -217,12 +218,20 @@ final class BatteryPlans
         $quarters = (array) $in['quarters'];
         // Mit reach peak hört das Laden am Ziel auf; mit end darf es darüber, damit nach dem Verbrauch des Hauses zum Ende
         // das Ziel bleibt (stop_kwh sagt BatteryPlan::sync(), wo es aufhört).
-        $stopAt = ($in['reach'] ?? 'end') === 'peak' ? $target : $cap;
-        $run = static function (array $charge) use ($in, $cap, $floor, $add, $quarters, $stopAt): array {
+        $once = ($in['reach'] ?? 'end') === 'peak';
+        $stopAt = $once ? $target : $cap;
+        $allowed = isset($in['allowed']) ? array_fill_keys(array_map('intval', (array) $in['allowed']), true) : null;
+        $first = $allowed ? min(array_keys($allowed)) : null;
+        $run = static function (array $charge) use ($in, $cap, $floor, $add, $quarters, $stopAt, $first): array {
             $e = clamp_float((float) $in['e_kwh'], 0, $cap);
             $sun = $drain = $charged = 0.0;
-            $peak = $e;
+            // peak: der höchste Stand durchs Laden. top: der höchste Stand ab Beginn des Fensters; was davor im Speicher
+            // ist, hat das Haus bis dahin vielleicht wieder verbraucht.
+            $peak = $top = 0.0;
             foreach ($quarters as [$t, $pv, $house]) {
+                if ($first === null || $t >= $first) {
+                    $top = max($top, $e);
+                }
                 if (isset($charge[$t])) {
                     $next = max($e, min($stopAt, $e + $add));
                     $charged += $next - $e;
@@ -241,18 +250,20 @@ final class BatteryPlans
                     $drain += $take;
                 }
             }
-            return ['e' => $e, 'peak' => $peak, 'sun' => $sun, 'drain' => $drain, 'charged' => $charged];
+            return ['e' => $e, 'peak' => $peak, 'top' => max($top, $e), 'sun' => $sun, 'drain' => $drain, 'charged' => $charged];
         };
-        $reached = static fn (array $r): bool => ($in['reach'] ?? 'end') === 'peak' ? $r['peak'] >= $target - 0.05 : $r['e'] >= $target - 0.05;
+        $reached = static fn (array $r): bool => ($once ? $r['top'] : $r['e']) >= $target - 0.05;
         $base = $run([]);
         $out = ['status' => 'sun', 'slots' => [], 'grid_kwh' => 0.0, 'sun_kwh' => round($base['sun'], 1), 'drain_kwh' => round($base['drain'], 1), 'avg_ct' => null, 'end_kwh' => round($base['e'], 1)];
-        if ((float) $in['e_kwh'] >= $target - 0.05) {
+        // Erledigt ist nur, was im laufenden Fenster schon am Ziel ist. Davor sagt der Stand von jetzt nichts: Ein sonniger
+        // Nachmittag kann über dem Ziel liegen und der Speicher zu Beginn des Fensters trotzdem leer sein.
+        $started = $first === null || (int) ($quarters[0][0] ?? 0) >= $first;
+        if ($once && $started && (float) $in['e_kwh'] >= $target - 0.05) {
             return ['status' => 'done'] + $out;
         }
-        if ($base['e'] >= $target - 0.05) {
+        if ($reached($base)) {
             return $out;
         }
-        $allowed = isset($in['allowed']) ? array_fill_keys(array_map('intval', (array) $in['allowed']), true) : null;
         $order = array_values(array_filter($quarters, static fn (array $q): bool => $allowed === null || isset($allowed[$q[0]])));
         if (($in['order'] ?? 'late') === 'early') {
             usort($order, static fn (array $a, array $b): int => $a[0] <=> $b[0]);
@@ -344,26 +355,24 @@ final class BatteryPlans
         $begin = $due['occ']['start'];
         $horizon = $tariff->horizon();
         $sig = md5((string) json_encode([$plan, $due['occ']]));
-        if (!$force && $old !== null && $old['plan_id'] === $plan['id'] && (int) $old['deadline'] === $deadline && (int) ($old['horizon'] ?? 0) === $horizon
+        $key = $plan['id'] . '@' . $deadline;
+        // „Speicher unter“ zählt erst, wenn das Laden dran ist; bis dahin kann der Stand noch weit davon weg sein.
+        $open = $plan['soc_below'] !== null && (string) $store->get(self::ARMED, '') !== $key;
+        // Zu Beginn des Fensters und zur ersten Viertelstunde des Plans frisch rechnen, nicht erst nach den 15 min.
+        $begun = $begin !== null && $now >= $begin && (int) ($old['computed_at'] ?? 0) < $begin;
+        $check = $open && isset($old['slots'][0]) && (int) $old['slots'][0] <= $now;
+        if (!$force && !$begun && !$check && $old !== null && $old['plan_id'] === $plan['id'] && (int) $old['deadline'] === $deadline && (int) ($old['horizon'] ?? 0) === $horizon
             && ($old['sig'] ?? '') === $sig && $now - (int) ($old['computed_at'] ?? 0) < self::REPLAN_S) {
             return $old;
         }
         $soc = is_numeric($values['battery_soc'] ?? null) ? (float) $values['battery_soc'] : null;
-        $key = $plan['id'] . '@' . $deadline;
         $cond = self::conditions($plan, $soc);
-        if ((string) $store->get(self::ARMED, '') === $key) {
-            $cond['ok'] = true;
-        } elseif ($cond['ok'] && $plan['soc_below'] !== null) {
-            $store->put(self::ARMED, $key);
-        }
         $s = BatteryPlan::settings($cfg);
         $capacity = self::capacity($values);
         $state = ['plan_id' => $plan['id'], 'once' => $plan['once'], 'amount' => $plan['amount'], 'start' => $begin, 'deadline' => $deadline, 'target_soc' => (float) $plan['target_soc'],
-            'horizon' => $horizon, 'sig' => $sig, 'computed_at' => $now, 'conditions' => $cond['text'], 'slots' => [], 'grid_kwh' => null, 'sun_kwh' => 0.0, 'drain_kwh' => 0.0,
-            'avg_ct' => null, 'saving_eur' => null, 'power_kw' => $s['power_kw']];
-        if (!$cond['ok']) {
-            $state['status'] = 'skip';
-        } elseif ($soc === null || $capacity === null) {
+            'horizon' => $horizon, 'sig' => $sig, 'computed_at' => $now, 'conditions' => $cond['text'], 'check_soc' => $open ? (float) $plan['soc_below'] : null, 'slots' => [], 'grid_kwh' => null,
+            'sun_kwh' => 0.0, 'drain_kwh' => 0.0, 'avg_ct' => null, 'saving_eur' => null, 'power_kw' => $s['power_kw']];
+        if ($soc === null || $capacity === null) {
             $state['status'] = 'unknown';
         } else {
             $profile = is_array($snap['house_profile'] ?? null) ? $snap['house_profile'] : array_fill(0, 24, (float) ($snap['house_mean_kw'] ?? 0.5));
@@ -386,7 +395,8 @@ final class BatteryPlans
                     $target = (float) ($plan['start'] === 'early' || $begin === null ? $decision['target_soc'] : $decision['end_soc']);
                     $state['target_soc'] = $target;
                 } else {
-                    $state['status'] = match ($decision['reason']) { 'sun' => 'enough', 'price' => 'price', 'full' => 'done', default => 'unknown' };
+                    // Voll zählt als erledigt erst im Fenster; davor ist es nur die Erwartung.
+                    $state['status'] = match ($decision['reason']) { 'sun' => 'enough', 'price' => 'price', 'full' => $begin !== null && $now < $begin ? 'enough' : 'done', default => 'unknown' };
                 }
             }
             if ($state['status'] === 'pending') {
@@ -409,6 +419,17 @@ final class BatteryPlans
                 }
                 $state = array_merge($state, $run);
                 $state['stop_soc'] = isset($run['stop_kwh']) ? round(min(100.0, (float) $run['stop_kwh'] / $capacity * 100), 1) : $target;
+                // Ist das Laden dran, gilt die Bedingung: Trifft sie zu, lädt der Plan bis zum Ziel, auch wenn der Stand dabei
+                // über die Grenze steigt. Sonst wartet er und prüft in 15 min wieder; das Haus kann ihn ja noch darunter bringen.
+                if ($open && isset($state['slots'][0]) && (int) $state['slots'][0] <= $now) {
+                    if ($cond['ok']) {
+                        $store->put(self::ARMED, $key);
+                        $state['check_soc'] = null;
+                    } else {
+                        $state['status'] = 'skip';
+                        $state['slots'] = [];
+                    }
+                }
             }
         }
         $store->put(self::STATE, $state);
@@ -443,15 +464,16 @@ final class BatteryPlans
         $price = $state['avg_ct'] === null ? '' : ' zu Ø ' . ct((float) $state['avg_ct']);
         $saving = (float) ($state['saving_eur'] ?? 0) >= 0.05 ? ', spart etwa ' . euro((float) $state['saving_eur']) : '';
         $house = (float) ($state['drain_kwh'] ?? 0) >= 0.5 ? '; bis dahin nimmt das Haus etwa ' . kwh((float) $state['drain_kwh'], 1) . ' aus dem Speicher' : '';
+        $if = ($state['check_soc'] ?? null) !== null ? ', falls der Speicher dann unter ' . pct((float) $state['check_soc']) . ' ist' : '';
         return match ((string) $state['status']) {
-            'skip' => $when . ': lädt diesmal nicht, ' . $state['conditions'] . '.',
+            'skip' => $when . ': lädt gerade nicht, ' . $state['conditions'] . '.',
             'unknown' => $when . ': Es fehlen Ladestand, Größe des Speichers oder der übliche Hausverbrauch.',
             'done' => $when . ': Der Speicher hat ' . pct((float) $state['target_soc']) . ' schon.',
-            'sun' => $when . ': Die Sonne schafft ' . pct((float) $state['target_soc']) . ' voraussichtlich allein.',
+            'sun' => $when . ': Sonne und Speicher schaffen ' . pct((float) $state['target_soc']) . ' voraussichtlich allein.',
             'enough' => $when . ': Sonne und Speicher reichen voraussichtlich bis einen Tag danach, kein Laden nötig.',
             'price' => $when . ': lohnt sich diesmal nicht, der Preisunterschied deckt Verlust und Verschleiß nicht.',
-            'tight' => $when . ': Die Zeit ist knapp, der Speicher lädt durchgehend' . $price . ' und erreicht ' . pct((float) $state['target_soc']) . ' wohl nicht ganz.',
-            default => $when . ': lädt ' . $list . ' auf ' . pct((float) $state['target_soc']) . ', etwa ' . kwh((float) $state['grid_kwh'], 1) . $price . $saving . $house . '.',
+            'tight' => $when . ': Die Zeit ist knapp, der Speicher lädt durchgehend' . $price . $if . ($if === '' ? '' : ',') . ' und erreicht ' . pct((float) $state['target_soc']) . ' wohl nicht ganz.',
+            default => $when . ': lädt ' . $list . ' auf ' . pct((float) $state['target_soc']) . ', etwa ' . kwh((float) $state['grid_kwh'], 1) . $price . $saving . $if . $house . '.',
         };
     }
 

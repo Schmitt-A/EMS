@@ -8,6 +8,7 @@ declare(strict_types=1);
  * („Smart Control“, ohne die es Boost Charge nicht gibt).
  * - Im Zeitraum gibt EMS die Wallbox mit vollem Strom frei (ChargePlan::effective(), Grund provider; der Speicher gibt
  *   wie beim Netzladen nichts ans Auto ab) und schaltet Boost Charge aus: Wann das Auto lädt, entscheidet der Anbieter.
+ *   Nur in den Viertelstunden eines Ladeplans oder bei „Jetzt“ bleibt Boost Charge an, dann entscheidet EMS.
  * - Außerhalb schaltet EMS Boost Charge ein, sobald es die Wallbox freigibt, damit der Anbieter das Auto nicht sperrt.
  *   Boost Charge kann beim Anbieter von selbst enden, etwa wenn das Auto voll ist; dann setzt EMS ihn wieder, solange es
  *   laden will, alle 15 min.
@@ -67,10 +68,13 @@ final class ProviderControl
         return null;
     }
 
-    /** Soll Boost Charge an sein? Außerhalb des Zeitraums ja; im Zeitraum nur, solange EMS selbst „Jetzt“ lädt. */
-    public static function wantBoost(bool $inWindow, string $grid): bool
+    /**
+     * Soll Boost Charge an sein? Außerhalb des Zeitraums ja; im Zeitraum nur, solange EMS selbst lädt: mit „Jetzt“ oder in
+     * einer Viertelstunde eines Ladeplans (Grund plan). Sonst hält der Anbieter das Auto an, auch wenn die Wallbox frei ist.
+     */
+    public static function wantBoost(bool $inWindow, string $grid, ?string $reason = null): bool
     {
-        return !$inWindow || $grid === 'now';
+        return !$inWindow || $grid === 'now' || $reason === 'plan';
     }
 
     /**
@@ -122,7 +126,8 @@ final class ProviderControl
         }
         $tariff = new Tariff($this->store);
         $inside = self::inWindow($s, $tariff->tariffAt($now), $now);
-        $want = self::wantBoost($inside, Energy::grid($cfg['charge']['grid'] ?? 'off')) ? 'on' : 'off';
+        $reason = $cfg['charge']['effective_reason'] ?? null;
+        $want = self::wantBoost($inside, Energy::grid($cfg['charge']['grid'] ?? 'off'), $reason) ? 'on' : 'off';
         $connected = !empty($snap['vehicle']['connected']);
         $enabled = !empty((new Controller($this->store, $this->ha))->state()['enabled']);
         $soc = is_numeric($snap['vehicle']['soc'] ?? null) ? (float) $snap['vehicle']['soc'] : null;
@@ -149,7 +154,7 @@ final class ProviderControl
                 return $state;
             }
             $current = (string) ($index[$s['boost']]['state'] ?? 'unavailable');
-            $due = $changed || $plugged || $now - (int) $state['written_at'] >= self::REASSERT_S;
+            $due = $changed || $plugged || (int) $state['errors'] > 0 || $now - (int) $state['written_at'] >= self::REASSERT_S;
             $useful = self::boostUseful($want === 'on', $connected, $enabled, $soc, $limit);
             // Ein Fehler zählt nur, solange EMS noch schalten will; steht der Schalter richtig, egal durch wen, ist er erledigt.
             if (!$controlOff && ($current === $want || !$useful)) {
@@ -162,6 +167,7 @@ final class ProviderControl
                 $state = self::cleared($state);
                 $state['log'] = self::log($state['log'], $now, match (true) {
                     $want === 'off' => 'Zeitraum des Anbieters: Boost Charge aus, der Anbieter plant das Laden.',
+                    $inside && $reason === 'plan' => 'Ladeplan: Boost Charge an, damit das Auto bis zur Uhrzeit lädt.',
                     $inside => 'Netzladen jetzt: Boost Charge an.',
                     default => 'EMS lädt: Boost Charge an, damit der Anbieter das Auto nicht sperrt.',
                 });

@@ -44,6 +44,15 @@ final class Energy
         };
     }
 
+    /**
+     * Passt der Zähler der Wallbox zur Lademenge seit dem Anstecken? Liegt er weit über dem, was EMS seit dem Anstecken
+     * selbst gezählt hat, ist es der Gesamtzähler (go-e „eto“ statt „wh“); mit ihm wäre jedes Energieziel sofort erreicht.
+     */
+    public static function plausibleSessionKwh(float $counter, float $counted): bool
+    {
+        return $counter <= $counted + 200.0;
+    }
+
     /** Dauer in Sekunden aus einem Sensor mit Einheit h, min oder s; ohne Einheit Minuten. */
     public static function durationSeconds(?float $value, ?string $unit): ?int
     {

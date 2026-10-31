@@ -1403,10 +1403,44 @@ check($bpRun['status'] === 'ok' && $bpRun['avg_ct'] === 15.0 && count($bpRun['sl
 $bpEarly = BatteryPlans::schedule(['order' => 'early', 'allowed' => array_map(static fn (array $q): int => $q[0], array_slice($bpQuarters, 8))] + $bpBase);
 check($bpEarly['status'] === 'ok' && $bpEarly['slots'][0] === $bpT0 + 2 * 3600 && count(array_filter($bpEarly['slots'], static fn (int $q): bool => $q < $bpT0 + 2 * 3600)) === 0,
     'Speicher-Ladeplan: sofort ab Beginn des Fensters, nur im erlaubten Fenster');
-check(BatteryPlans::schedule(['e_kwh' => 8.5] + $bpBase)['status'] === 'done' && BatteryPlans::schedule(['power_kw' => 0.5] + $bpBase)['status'] === 'tight'
+check(BatteryPlans::schedule(['e_kwh' => 8.5, 'reach' => 'peak'] + $bpBase)['status'] === 'done' && BatteryPlans::schedule(['e_kwh' => 8.5] + $bpBase)['status'] === 'ok' && BatteryPlans::schedule(['power_kw' => 0.5] + $bpBase)['status'] === 'tight'
     && BatteryPlans::schedule(['quarters' => array_map(static fn (array $q): array => [$q[0], 8.0, 0.4, $q[3]], $bpQuarters)] + $bpBase)['status'] === 'sun', 'Speicher-Ladeplan: schon voll, zu knapp, die Sonne schafft es');
 check(BatteryPlans::conditions($bp['plan'], 30.0, null)['ok'] && !BatteryPlans::conditions($bp['plan'], 50.0, null)['ok'] && BatteryPlans::current(['status' => 'ok', 'slots' => [$bpT0, $bpT0 + 900], 'target_soc' => 80, 'plan_id' => 'b1', 'deadline' => $bpT0 + 7200], $bpT0 + 1000)['end'] === $bpT0 + 1800,
     'Speicher-Ladeplan: Bedingung Ladestand, der laufende Lauf von Viertelstunden');
+// Vor dem Fenster zählt, was zu seinem Beginn im Speicher ist, nicht der Stand von jetzt.
+$bpPeak = ['reach' => 'peak', 'order' => 'early', 'allowed' => array_map(static fn (array $q): int => $q[0], array_slice($bpQuarters, 8))];
+$bpDrained = BatteryPlans::schedule(['e_kwh' => 8.5] + $bpPeak + $bpBase);
+check($bpDrained['status'] === 'ok' && $bpDrained['slots'] === [$bpT0 + 7200] && $bpDrained['stop_kwh'] === 8.0 && BatteryPlans::schedule(['e_kwh' => 10.0] + $bpPeak + $bpBase)['status'] === 'sun',
+    'Speicher-Ladeplan: über dem Ziel ist vor dem Fenster nicht erledigt, geladen wird, was dann fehlt, und nur bis zum Ziel');
+// So blieb das Laden nach dem 27.10. aus: Am sonnigen Nachmittag lag der Speicher über dem Ziel, das galt als erledigt, nachts war er leer.
+$bpNight = BatteryPlans::clean(['when' => 'window', 'days' => [1, 2, 3, 4, 5, 6, 7], 'target_soc' => 50, 'start' => 'early', 'soc_below' => 15])['plan'];
+$bpReplay = static function () use ($bpNight): ConfigStore {
+    $store = new ConfigStore(':memory:');
+    $store->put('tariffs', Tariff::normalize(['mode' => 'static', 'import_ct' => 30.0, 'windows' => [['from' => '00:00', 'to' => '06:00', 'days' => [], 'for' => ['battery'], 'kind' => 'price', 'ct' => 15.0]]]));
+    $store->put(BatteryPlans::KEY, [$bpNight]);
+    return $store;
+};
+$bpAt = static fn (string $time): int => (int) strtotime('2026-11-' . $time . ' Europe/Berlin');
+$bpSoc = static fn (ConfigStore $store, float $soc): array => ['cfg' => $store->all(), 'values' => ['battery_soc' => $soc, 'battery_total_kwh' => 10.0], 'house_profile' => array_fill(0, 24, 0.5)];
+$bpStore = $bpReplay();
+$bpMorning = BatteryPlans::refresh($bpStore, $bpSoc($bpStore, 3.0), $bpAt('02 09:00'));
+$bpArmedEarly = (string) $bpStore->get(BatteryPlans::ARMED, '');
+$bpSunny = BatteryPlans::refresh($bpStore, $bpSoc($bpStore, 100.0), $bpAt('02 14:00'), true);
+$bpMidnight = BatteryPlans::refresh($bpStore, $bpSoc($bpStore, 4.0), $bpAt('03 00:00') + 5);
+check($bpMorning['status'] === 'ok' && (int) $bpMorning['check_soc'] === 15 && str_contains(BatteryPlans::text($bpMorning, $bpAt('02 09:00')), 'falls der Speicher dann unter') && $bpArmedEarly === ''
+    && $bpSunny['status'] === 'sun' && (int) $bpStore->get(BatteryPlans::DONE, 0) === 0
+    && $bpMidnight['status'] === 'ok' && $bpMidnight['check_soc'] === null && $bpMidnight['slots'][0] === $bpAt('03 00:00') && BatteryPlans::current($bpMidnight, $bpAt('03 00:00') + 5)['target_soc'] === 50.0,
+    'Speicher-Ladeplan: ein sonniger Nachmittag erledigt das Fenster nicht, um Mitternacht lädt er bei leerem Speicher');
+$bpStore = $bpReplay();
+BatteryPlans::refresh($bpStore, $bpSoc($bpStore, 3.0), $bpAt('02 23:50'));
+$bpFull = BatteryPlans::refresh($bpStore, $bpSoc($bpStore, 40.0), $bpAt('03 00:00') + 5);
+$bpLater = BatteryPlans::refresh($bpStore, $bpSoc($bpStore, 40.0), $bpAt('03 00:05'));
+$bpBelow = BatteryPlans::refresh($bpStore, $bpSoc($bpStore, 14.0), $bpAt('03 00:15') + 10);
+$bpRising = BatteryPlans::refresh($bpStore, $bpSoc($bpStore, 30.0), $bpAt('03 00:30') + 20);
+$bpReached = BatteryPlans::refresh($bpStore, $bpSoc($bpStore, 50.0), $bpAt('03 00:45') + 30);
+check($bpFull['status'] === 'skip' && $bpFull['slots'] === [] && BatteryPlans::current($bpFull, $bpAt('03 00:00') + 5) === null && str_contains(BatteryPlans::text($bpFull, $bpAt('03 00:00') + 5), 'lädt gerade nicht') && $bpLater['computed_at'] === $bpFull['computed_at']
+    && $bpBelow['status'] === 'ok' && BatteryPlans::current($bpBelow, $bpAt('03 00:15') + 10) !== null && $bpRising['status'] === 'ok' && $bpReached['status'] === 'done' && (int) $bpStore->get(BatteryPlans::DONE, 0) === $bpAt('03 06:00'),
+    'Speicher-Ladeplan: „Speicher unter“ gilt, wenn das Laden dran ist; einmal erfüllt lädt er bis zum Ziel, dort ist das Fenster erledigt');
 
 // Speicher aus dem Netz laden, universell: sonnenBatterie (Modus und Leistung) und Sungrow (Modus, Leistung, Befehl).
 $gridHa = new class implements HaSource {
@@ -1504,6 +1538,35 @@ check(ProviderControl::boostUseful(true, true, true, 21.3, 80.0) && ProviderCont
     && !ProviderControl::boostUseful(true, true, true, 79.5, 80.0) && !ProviderControl::boostUseful(true, true, false, 21.3, 80.0) && !ProviderControl::boostUseful(true, false, true, 21.3, 80.0)
     && array_map(ProviderControl::retryS(...), [0, 1, 2, 3, 4, 5, 6, 40]) === [0, 60, 120, 240, 480, 900, 900, 900],
     'Boost Charge an nur bei steckendem Auto, freigegebener Wallbox und Ladestand unter dem Limit; nach Fehlern 1, 2, 4, 8, dann alle 15 min neu');
+// Ein Ladeplan im Zeitraum des Anbieters: So blieb das Auto in der Nacht zum 31.10. bei 20 % stehen, obwohl der Plan 50 % bis 06:00 wollte.
+$planQuarter = intdiv($night, 900) * 900;
+check(ChargePlan::effective('smart_dauerhaft', 'off', true, false, ['source' => 'schedule', 'extra' => [$planQuarter]], false, $night, true) === ['mode' => 'netz', 'reason' => 'plan']
+    && ChargePlan::effective('smart_dauerhaft', 'off', true, false, ['source' => 'schedule', 'extra' => [$planQuarter + 900]], false, $night, true)['reason'] === 'provider'
+    && ProviderControl::wantBoost(true, 'off', 'plan') && !ProviderControl::wantBoost(true, 'off', 'provider'), 'Die Viertelstunden eines Ladeplans gehen dem Zeitraum des Anbieters vor, dort bleibt Boost Charge an');
+$planHa = clone $gridHa;
+$planHa->calls = [];
+$planHa->states = ['switch.smart' => $entity('on'), 'switch.boost' => $entity('off')];
+$planStore = new ConfigStore(':memory:');
+$planStore->put(Controller::KEY, ['enabled' => true]);
+$planCtl = new ProviderControl($planStore, $planHa);
+$planSnap = static fn (?string $reason): array => ['cfg' => ['charge' => ['grid' => 'off', 'effective_reason' => $reason]] + $provCfg, 'vehicle' => ['connected' => true, 'soc' => 20.0, 'limit' => 80.0], 'values' => []];
+$planCtl->sync($planSnap('provider'), $night);
+$planQuiet = $planHa->calls;
+$planCtl->sync($planSnap('plan'), $night + 900);
+$planOn = $planHa->calls;
+$planLog = $planCtl->state()['log'][0]['text'] ?? '';
+$planHa->states['switch.boost'] = $entity('on');
+$planCtl->sync($planSnap('provider'), $night + 1800);
+$planOff = $planHa->calls;
+$planHa->states['switch.boost'] = $entity('off');
+$planHa->fail = 'GraphQL errors: Unable to trigger boost charge.';
+$planCtl->sync($planSnap('plan'), $night + 2000);
+$planHa->fail = null;
+$planCtl->sync($planSnap('plan'), $night + 2070);
+check($planQuiet === [] && $planOn === [['switch.boost', 'turn_on']] && str_contains($planLog, 'Ladeplan') && $planOff === [['switch.boost', 'turn_on'], ['switch.boost', 'turn_off']],
+    'Octopus: im Zeitraum Boost Charge an, sobald der Ladeplan lädt, und wieder aus, wenn er fertig ist');
+check(count($planHa->calls) === 4 && $planCtl->state()['error'] === null, 'Ein Fehler beim Schalten wird nach der Wartezeit wiederholt, auch wenn das letzte Schalten keine 15 min her ist');
+check(Energy::plausibleSessionKwh(25.0, 24.0) && Energy::plausibleSessionKwh(150.0, 0.0) && !Energy::plausibleSessionKwh(6017.3, 24.0), 'Lademenge seit Anstecken: Der Gesamtzähler der Wallbox zählt nicht');
 // So blieb das Laden am 30.10. stehen: Anstecken, Octopus lehnt ab, die go-e meldet „Abgeschlossen“ bei 21 %.
 $octoHa = clone $gridHa;
 $octoHa->calls = [];

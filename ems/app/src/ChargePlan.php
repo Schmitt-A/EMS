@@ -137,13 +137,14 @@ final class ChargePlan
         if ($grid === 'now') {
             return ['mode' => 'netz', 'reason' => 'now'];
         }
+        // Ein Ladeplan (GridPlans) gilt unabhängig von den Ladefenstern, auch mit statischem Tarif. Er geht dem Stromanbieter
+        // vor: Dessen Plan kennt das Ziel nicht, ProviderControl schaltet dafür Boost Charge ein.
+        if ($plan !== null && ($plan['source'] ?? 'target') === 'schedule' && in_array(intdiv($now, 900) * 900, (array) ($plan['extra'] ?? []), true)) {
+            return ['mode' => 'netz', 'reason' => 'plan'];
+        }
         // Im Zeitraum des Stromanbieters (ProviderControl) ist die Wallbox frei; wann das Auto lädt, entscheidet er.
         if ($provider) {
             return ['mode' => 'netz', 'reason' => 'provider'];
-        }
-        // Ein Ladeplan (GridPlans) gilt unabhängig von den Ladefenstern, auch mit statischem Tarif.
-        if ($plan !== null && ($plan['source'] ?? 'target') === 'schedule' && in_array(intdiv($now, 900) * 900, (array) ($plan['extra'] ?? []), true)) {
-            return ['mode' => 'netz', 'reason' => 'plan'];
         }
         if ($grid === 'windows' && !$done) {
             if ($plan !== null && in_array(intdiv($now, 900) * 900, (array) ($plan['extra'] ?? []), true)) {
